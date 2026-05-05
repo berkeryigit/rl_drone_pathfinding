@@ -32,4 +32,4 @@ train:
   log_dir: ./runs/ppo
   ckpt_dir: ./runs/ppo/checkpoints
   tb_log: ./runs/ppo/tb
-  resume_from: ./runs/ppo/checkpoints/ppo_drone_140000_steps.zip
+  resume_from: ./runs/ppo/checkpoints/ppo_drone_248544_steps.zip
