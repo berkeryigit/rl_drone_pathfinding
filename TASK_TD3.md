@@ -2,7 +2,7 @@
 
 **Branch:** `algo/td3`
 **Algoritma:** TD3 — off-policy actor-critic, **continuous action space**
-**Sahip:** _(takım arkadaşı buraya kendi adını yazsın)_
+**Sahip:** Mehmet Akif Albayrak (220202082) — GitHub: `AKeeF-Albayrak`
 
 ## Neden TD3 burada uyar
 - `DroneExplorationEnv` action space'i `Box([-1,-1,-1], [1,1,1])` (vx, vz, wz). PPO ile aynı env'i, **sıfır değişiklik yapmadan** kullanabilirsin.
