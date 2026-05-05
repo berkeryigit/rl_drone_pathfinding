@@ -2,7 +2,7 @@
 # Bir kerelik kurulum: colcon build + venv + pip install.
 # Yarin sifirdan baslarken (yeni clone vb.) tek komut:
 #   ./scripts/setup.sh
-set -euo pipefail
+set -eo pipefail
 cd "$(dirname "$0")/.."
 
 echo "[setup.sh] colcon build..."

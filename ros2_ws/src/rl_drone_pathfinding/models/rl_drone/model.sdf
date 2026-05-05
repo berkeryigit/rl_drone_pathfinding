@@ -32,7 +32,7 @@
       <sensor name="lidar" type="gpu_lidar">
         <pose>0 0 0.07 0 0 0</pose>
         <topic>scan</topic>
-        <update_rate>10</update_rate>
+        <update_rate>50</update_rate>
         <ray>
           <scan>
             <horizontal>
@@ -61,6 +61,42 @@
         </ray>
         <always_on>1</always_on>
         <visualize>true</visualize>
+      </sensor>
+
+      <!-- Upward 1-ray distance: pitch +pi/2 rotates sensor +X axis to world +Z. -->
+      <sensor name="lidar_up" type="gpu_lidar">
+        <pose>0 0 0.07 0 -1.5708 0</pose>
+        <topic>scan_up</topic>
+        <update_rate>50</update_rate>
+        <ray>
+          <scan>
+            <horizontal><samples>1</samples><resolution>1</resolution>
+              <min_angle>0</min_angle><max_angle>0</max_angle></horizontal>
+            <vertical><samples>1</samples><resolution>1</resolution>
+              <min_angle>0</min_angle><max_angle>0</max_angle></vertical>
+          </scan>
+          <range><min>0.10</min><max>10.0</max><resolution>0.02</resolution></range>
+          <noise><type>gaussian</type><mean>0.0</mean><stddev>0.02</stddev></noise>
+        </ray>
+        <always_on>1</always_on>
+      </sensor>
+
+      <!-- Downward 1-ray distance: pitch -pi/2 rotates +X to world -Z. -->
+      <sensor name="lidar_down" type="gpu_lidar">
+        <pose>0 0 -0.07 0 1.5708 0</pose>
+        <topic>scan_down</topic>
+        <update_rate>50</update_rate>
+        <ray>
+          <scan>
+            <horizontal><samples>1</samples><resolution>1</resolution>
+              <min_angle>0</min_angle><max_angle>0</max_angle></horizontal>
+            <vertical><samples>1</samples><resolution>1</resolution>
+              <min_angle>0</min_angle><max_angle>0</max_angle></vertical>
+          </scan>
+          <range><min>0.10</min><max>10.0</max><resolution>0.02</resolution></range>
+          <noise><type>gaussian</type><mean>0.0</mean><stddev>0.02</stddev></noise>
+        </ray>
+        <always_on>1</always_on>
       </sensor>
 
       <!-- IMU -->

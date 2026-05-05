@@ -8,7 +8,9 @@
 #   2) sim_launch.py'yi background'a alır, /scan ve /odom mesajını bekler
 #   3) train_ppo'yu ön planda koşturur (loglar terminale)
 #   4) Eğitim biter / Ctrl-C basılınca sim'i temiz şekilde indirir
-set -euo pipefail
+# `set -u` would fire on unbound vars inside ROS's setup.bash (e.g.
+# AMENT_TRACE_SETUP_FILES); we keep -e and pipefail but drop -u.
+set -eo pipefail
 
 cd "$(dirname "$0")/.."
 PROJ_ROOT="$(pwd)"

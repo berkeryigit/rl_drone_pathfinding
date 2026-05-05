@@ -25,17 +25,23 @@ def generate_launch_description():
         + ':' + os.environ.get('GZ_SIM_RESOURCE_PATH', '')
     )
 
+    # `headless:=true` -> server-only (no GUI). Default true because training
+    # is much faster without rendering; flip to false to inspect visually.
     headless_arg = DeclareLaunchArgument(
-        'headless', default_value='false',
+        'headless', default_value='true',
         description='Run Gazebo without GUI (server-only).')
+
+    headless_str = os.environ.get('SIM_HEADLESS', '1')
+    headless_flag = '-s' if headless_str not in ('0', 'false', 'False', '') else ''
 
     # `-r` runs the sim immediately; without it gz starts paused and no sensor
     # data flows. `-v 3` keeps log noise reasonable.
+    gz_args_value = f'-r -v 3 {headless_flag} {world_file}'.strip()
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')),
         launch_arguments={
-            'gz_args': f'-r -v 3 {world_file}',
+            'gz_args': gz_args_value,
         }.items(),
     )
 

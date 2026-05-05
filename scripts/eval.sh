@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Egitilmis modeli sim'e baglayip kac episode roll-out yapar.
 #   ./scripts/eval.sh runs/ppo/checkpoints/ppo_drone_final.zip [N_EPS]
-set -euo pipefail
+# `set -u` trips on ROS setup.bash unbound vars; keep -e + pipefail.
+set -eo pipefail
 
 cd "$(dirname "$0")/.."
 
