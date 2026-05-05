@@ -78,12 +78,18 @@ def main(argv=None):
         name_prefix="ppo_drone",
     )
 
-    model.learn(total_timesteps=int(tr_cfg["total_timesteps"]),
-                callback=ckpt_cb,
-                progress_bar=True)
     final = ckpt_dir / "ppo_drone_final.zip"
+    try:
+        model.learn(total_timesteps=int(tr_cfg["total_timesteps"]),
+                    callback=ckpt_cb,
+                    progress_bar=True)
+    except KeyboardInterrupt:
+        # SIGINT (Ctrl-C, `timeout --signal=SIGINT`, manual kill -INT) lands here.
+        # Save the live policy so no walltime is lost.
+        final = ckpt_dir / "ppo_drone_interrupted.zip"
+        print(f"\n[train_ppo] interrupted -> saving current policy to {final}")
     model.save(str(final))
-    print(f"[train_ppo] saved final model to {final}")
+    print(f"[train_ppo] saved model to {final}")
 
 
 if __name__ == "__main__":
