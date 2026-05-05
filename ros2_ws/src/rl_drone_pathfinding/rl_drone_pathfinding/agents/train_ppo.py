@@ -48,7 +48,8 @@ def main(argv=None):
 
     vec_env = DummyVecEnv([_make_env(env_cfg)])
 
-    if tr_cfg.get("resume_from"):
+    resuming = bool(tr_cfg.get("resume_from"))
+    if resuming:
         print(f"[train_ppo] resuming from {tr_cfg['resume_from']}")
         model = PPO.load(tr_cfg["resume_from"], env=vec_env,
                          tensorboard_log=str(tb_log))
@@ -82,7 +83,8 @@ def main(argv=None):
     try:
         model.learn(total_timesteps=int(tr_cfg["total_timesteps"]),
                     callback=ckpt_cb,
-                    progress_bar=True)
+                    progress_bar=True,
+                    reset_num_timesteps=not resuming)
     except KeyboardInterrupt:
         # SIGINT (Ctrl-C, `timeout --signal=SIGINT`, manual kill -INT) lands here.
         # Save the live policy so no walltime is lost.
