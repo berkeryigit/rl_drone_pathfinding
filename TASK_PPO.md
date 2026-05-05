@@ -1,8 +1,8 @@
-# TASK — PPO (Continuous) — Berker Yiğit
+# TASK — PPO (Continuous)
 
 **Branch:** `algo/ppo`
 **Algoritma:** PPO (Proximal Policy Optimization), continuous action space
-**Sahip:** Berker Yiğit
+**Sahip:** Berker Yiğit (220202046) — GitHub: `berkeryigit`
 
 ## Durum
 - Pipeline + sim hazır, ilk eğitim 140k step'e kadar yapıldı (`runs/ppo/checkpoints/ppo_drone_140000_steps.zip`).
