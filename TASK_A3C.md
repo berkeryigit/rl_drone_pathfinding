@@ -2,7 +2,7 @@
 
 **Branch:** `algo/a3c`
 **Algoritma:** A3C → **A2C (synchronous variant)** önerilir, aşağıyı oku
-**Sahip:** _(takım arkadaşı buraya kendi adını yazsın)_
+**Sahip:** Kürşat Emircan Balta (220202065) — GitHub: `heroicbattle`
 
 ## Önemli — A3C vs A2C
 
