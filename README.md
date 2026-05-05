@@ -55,28 +55,45 @@ rl_drone_pathfinding/
   * aynı hücrede kalma: **-0.1**
   * her step zaman cezası: **-0.001**
 
-## Çalıştırma (Docker)
+## Hızlı başlangıç (host, Ubuntu 24.04 + ROS Jazzy + Gazebo Harmonic)
 
+Sıfırdan kurulum (yeni klon, ya da venv silinmişse) — **tek seferlik**:
 ```bash
 cd ~/Desktop/RLProje/rl_drone_pathfinding
-./docker/build.sh                # ilk seferde, ~5-15 dk
-./docker/run.sh                  # konteynere shell
+./scripts/setup.sh        # colcon build + .venv + pip install (3-5 dk)
+```
 
-# konteyner içinde:
-cd /workspace/ros2_ws
-colcon build --symlink-install
-source install/setup.bash
+Eğitim (her seferinde tek satır, sim'i de background'a kendisi alır):
+```bash
+./scripts/train.sh                       # configs/ppo.yaml ile 500k step
+# veya farklı config:
+./scripts/train.sh configs/ppo_quick.yaml
+```
 
-# 1) sadece simülasyon:
+Değerlendirme (eğitilmiş modeli sim'e bağlayıp roll-out):
+```bash
+./scripts/eval.sh runs/ppo/checkpoints/ppo_drone_final.zip 5
+```
+
+TensorBoard:
+```bash
+source .venv/bin/activate
+tensorboard --logdir runs/ppo/tb        # http://localhost:6006
+```
+
+Sadece simülasyonu görmek (Gazebo GUI):
+```bash
+source /opt/ros/jazzy/setup.bash
+source ros2_ws/install/setup.bash
 ros2 launch rl_drone_pathfinding sim_launch.py
+```
 
-# 2) ayrı bir terminalde (docker exec -it rl_drone bash) eğitim:
-cd /workspace
-python3 -m rl_drone_pathfinding.agents.train_ppo --config configs/ppo.yaml
+## Docker yolu (alternatif, taşınabilir)
 
-# 3) eğitilmiş modeli değerlendirme:
-python3 -m rl_drone_pathfinding.agents.eval_ppo \
-    --model runs/ppo/checkpoints/ppo_drone_final.zip --episodes 5
+```bash
+./docker/build.sh                # ilk seferde, 5-15 dk
+./docker/run.sh                  # konteynere shell
+# konteyner içinde aynı: ./scripts/setup.sh && ./scripts/train.sh
 ```
 
 ## Yol haritası

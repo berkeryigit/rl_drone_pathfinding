@@ -1,9 +1,12 @@
 # Python deps installed inside the Docker image (and optionally in a venv on host).
 # rclpy / sensor_msgs / nav_msgs are provided by ROS 2 Jazzy apt packages.
 gymnasium==0.29.1
-stable-baselines3[extra]==2.3.2
+# Plain SB3 (no [extra]) — Atari deps (ale-py 0.8) don't build on Python 3.12.
+# We add tensorboard / rich / opencv-python ourselves below if needed.
+stable-baselines3==2.3.2
 torch==2.4.0
 numpy>=1.24,<2.0
 pyyaml>=6.0
 tensorboard>=2.16
 tqdm>=4.66
+rich>=13.7

@@ -72,6 +72,22 @@ training koşulmadı.
 
 * `.gitignore`, `README.md`, `fixes.txt`
 
+### Aynı gün — pip + venv + smoke test (eğitim öncesi son hazırlık)
+
+Yarın eğitim koşulurken sürpriz çıkmasın diye Python tarafı da bugün doğrulandı.
+
+* `python3 -m venv .venv --system-site-packages` (rclpy gibi ROS Python paketlerini
+  görmesi için `--system-site-packages` şart) + `pip install -r requirements.txt`.
+* `requirements.txt`: `stable-baselines3[extra]==2.3.2` Python 3.12 ile uyumsuz
+  (ale-py 0.8 build edemiyor) → düz `stable-baselines3==2.3.2` + ayrı
+  `tensorboard` / `rich` ile değiştirildi.
+* Torch 2.4.0 + NVIDIA CUDA 12.1 wheel'leriyle kuruldu (~2GB).
+* `python3 -m rl_drone_pathfinding.envs.smoke_test` — sim canlı iken: env
+  reset OK, 50 step OK, lidar normalize doğru (0.10..0.40), reward fonksiyonu
+  çalışıyor, exception yok. **Pipeline yarın eğitime hazır.**
+* `scripts/setup.sh` (colcon + venv + pip), `scripts/train.sh` (sim auto-launch
+  + train_ppo), `scripts/eval.sh` eklendi → README güncellendi.
+
 ### Aynı gün — host'ta sim doğrulama koşusu
 
 Docker'a girmeye gerek kalmadan host'ta (Ubuntu 24.04 + ROS Jazzy + gz Harmonic
@@ -95,12 +111,23 @@ elle `ros2 topic pub /cmd_vel`):
 * `cmd_vel.angular.z = 0.5` 2s → yaw 1.57 → 2.65 rad (Δ≈1.08, beklenen 1.0).
 * Z sabit 0.6 → link-level gravity-off doğru çalışıyor.
 
-### Henüz **yapılmamış** olanlar (yarın)
+### Yarın (2026-05-06) eğitim — tek satır
+
+```bash
+cd ~/Desktop/RLProje/rl_drone_pathfinding
+./scripts/train.sh                              # configs/ppo.yaml, 500k step
+# ayrı terminal: source .venv/bin/activate && tensorboard --logdir runs/ppo/tb
+```
+
+500k step için RTX-class GPU'da ~süreyi ölç ve buraya not düş. Eğer 8 saat+ olursa
+configs/ppo_quick.yaml diye `total_timesteps: 100000` olan bir varyant aç,
+önce onunla baseline al.
+
+### İleride (eğitimden sonra)
 
 1. (opsiyonel, sadece ekip teslimatı için) `./docker/build.sh` → image build.
-2. `python3 -m rl_drone_pathfinding.envs.smoke_test` → Gymnasium env'in
-   reset/step gerçekten ROS2 ile konuşuyor mu? (ML deps host'ta yok, ya pip
-   ile kur ya Docker'da koş.)
-3. Asıl eğitim: `python3 -m rl_drone_pathfinding.agents.train_ppo`.
-   500k step için RTX-class GPU'da ~kaç saat olacağını ölç → not düş.
-4. TensorBoard'da reward eğrisi + episode_length + custom metrik (cells, rooms).
+2. Reward eğrisi + ep_len + custom metrik (cells, rooms) TensorBoard'da grafik.
+3. Dinamik kapı + hareketli engel + lidar gürültüsü senaryoları (PDF §2 + §3).
+4. PPO vs (TD3 / DQN / A3C) karşılaştırma — ekip arkadaşlarının kendi paketleri
+   (ya ayrı klasör ya ayrı branch) hazır olunca aynı env üstünde koşturup
+   reward/cells/rooms karşılaştır.
