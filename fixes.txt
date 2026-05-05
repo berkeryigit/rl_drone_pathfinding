@@ -12,7 +12,54 @@ HATA  : ...
 NEDEN : ...
 
 ================================================================
-[BOŞ — henüz çalıştırma yapılmadı, pipeline kuruldu]
+2026-05-05 — Pipeline doğrulama koşusu (sim sanity, eğitim YOK)
+================================================================
+
+---
+2026-05-05 | ros2_ws/src/rl_drone_pathfinding/setup.py
+HATA   : colcon build fail
+         "error: can't copy '.../build/.../models/rl_drone':
+          doesn't exist or not a regular file"
+ÇÖZÜM  : data_files'da `glob('models/*')` yerine her model dir için ayrı
+         entry: `(share/.../models/rl_drone, glob('models/rl_drone/*'))`.
+NEDEN  : setuptools data_files file beklediği için dir'i kopyalayamıyor.
+         marone_sim'de modeller tek dosya olduğundan farkına varılmamıştı,
+         bizde model dizini var.
+
+---
+2026-05-05 | ros2_ws/src/rl_drone_pathfinding/launch/sim_launch.py
+HATA   : ros2 topic hz /scan, /odom, /clock hep "Terminated" /
+         hiçbir mesaj almıyor; gz tarafında ise topic'ler dolu.
+ÇÖZÜM  : IncludeLaunchDescription için gz_args'a `-r` (run-on-start)
+         ekledim: `'gz_args': f'-r -v 3 {world_file}'`.
+NEDEN  : `gz sim` -r olmadan **paused** başlar; world açılır ama tick
+         atmaz, dolayısıyla sensörler ve clock publish etmez. Bridge
+         çalışıyor ama veri yok.
+
+---
+2026-05-05 | ros2 topic hz /scan
+HATA   : flag'siz hz çağrısı bazen "Terminated" verebiliyor.
+ÇÖZÜM  : `ros2 topic hz /scan --qos-reliability best_effort` ile çağır;
+         doğrulama için `ros2 topic echo /scan --once` daha güvenilir.
+NEDEN  : Bridge /scan'i BEST_EFFORT olarak yayınlıyor (sensor QoS),
+         hz default subscriber olarak RELIABLE bağlanmaya çalışıyor.
+         echo --once daha forgiving.
+
+---
+2026-05-05 | DOĞRULAMA SONUCU
+KOMUT  : ros2 launch rl_drone_pathfinding sim_launch.py
+         + ros2 topic pub /cmd_vel ...
+SONUÇ  : ✓ Gazebo Harmonic ayağa kalktı (multi_room dünyası + drone)
+         ✓ /clock akıyor (sim time ilerliyor)
+         ✓ /scan, /odom, /imu publish ediyor
+         ✓ cmd_vel.linear.x=0.3 → 3s'de y: -4.0 → -3.04 (drone yaw=π/2'de
+           spawn olduğu için body-x = world +y, doğru)
+         ✓ cmd_vel.angular.z=0.5 → 2s'de yaw 1.57 → 2.65 rad (Δ≈1.08,
+           beklenen 1.0)
+         ✓ Hover doğru (z sabit 0.6)
+
+================================================================
+Yarın muhtemelen karşılaşılabilecek + hazır çözüm notları:
 ================================================================
 
 Yarın muhtemelen karşılaşılabilecek + hazır çözüm notları:

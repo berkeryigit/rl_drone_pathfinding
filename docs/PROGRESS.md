@@ -72,14 +72,35 @@ training koşulmadı.
 
 * `.gitignore`, `README.md`, `fixes.txt`
 
+### Aynı gün — host'ta sim doğrulama koşusu
+
+Docker'a girmeye gerek kalmadan host'ta (Ubuntu 24.04 + ROS Jazzy + gz Harmonic
++ ros-jazzy-ros-gz*) doğrulama yapıldı, **eğitim koşulmadı**.
+
+İlk denemede **2 bug** çıktı, ikisi de düzeltildi (detay `fixes.txt`'de):
+
+1. `setup.py` data_files: `glob('models/*')` → setuptools dir kopyalayamayıp
+   colcon build fail ediyor. Her model dir için ayrı entry yazıldı:
+   `(share/.../models/rl_drone, glob('models/rl_drone/*'))`.
+2. `launch/sim_launch.py`: `IncludeLaunchDescription` için `gz_args`'a `-r`
+   eklenmemişti → gz paused başlıyor, sensör/clock publish etmiyordu.
+   `'gz_args': f'-r -v 3 {world_file}'` olarak düzeltildi.
+
+Doğrulama sonucu (host, `ros2 launch rl_drone_pathfinding sim_launch.py` +
+elle `ros2 topic pub /cmd_vel`):
+
+* /clock + /scan + /odom + /imu hepsi yayında, sim time akıyor.
+* `cmd_vel.linear.x = 0.3` 3s → drone y: -4.0 → -3.04 (~0.95m, beklenen 0.9m).
+  Yaw=π/2 spawn olduğundan body-x → world +y, doğru.
+* `cmd_vel.angular.z = 0.5` 2s → yaw 1.57 → 2.65 rad (Δ≈1.08, beklenen 1.0).
+* Z sabit 0.6 → link-level gravity-off doğru çalışıyor.
+
 ### Henüz **yapılmamış** olanlar (yarın)
 
-1. `./docker/build.sh` → ilk image build (5-15 dk).
-2. Konteyner içinde `colcon build --symlink-install` → paket binary'leri.
-3. `ros2 launch rl_drone_pathfinding sim_launch.py` → Gazebo + bridge sanity.
-4. `ros2 topic echo /scan` / `/odom` → veri akıyor mu?
-5. `python3 -m rl_drone_pathfinding.envs.smoke_test` → env reset/step gerçekten
-   ROS2 ile konuşuyor mu?
-6. Asıl eğitim: `python3 -m rl_drone_pathfinding.agents.train_ppo`.
+1. (opsiyonel, sadece ekip teslimatı için) `./docker/build.sh` → image build.
+2. `python3 -m rl_drone_pathfinding.envs.smoke_test` → Gymnasium env'in
+   reset/step gerçekten ROS2 ile konuşuyor mu? (ML deps host'ta yok, ya pip
+   ile kur ya Docker'da koş.)
+3. Asıl eğitim: `python3 -m rl_drone_pathfinding.agents.train_ppo`.
    500k step için RTX-class GPU'da ~kaç saat olacağını ölç → not düş.
-7. TensorBoard'da reward eğrisi + episode_length + custom metrik (cells, rooms).
+4. TensorBoard'da reward eğrisi + episode_length + custom metrik (cells, rooms).
