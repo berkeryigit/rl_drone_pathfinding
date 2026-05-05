@@ -2,7 +2,7 @@
 
 **Branch:** `algo/dqn`
 **Algoritma:** DQN — value-based, **discrete action space**
-**Sahip:** _(takım arkadaşı buraya kendi adını yazsın)_
+**Sahip:** Berk Karaoğlu (220202079) — GitHub: `brkrgl`
 
 ## Önemli — DQN sürekli aksiyonu kabul etmez
 Mevcut `DroneExplorationEnv` continuous (Box) action veriyor. DQN için **discrete wrapper env** yazman gerek. Aşağıda 7-aksiyonluk basit şema önerilmiş; istersen 27-aksiyonluk full grid de yapabilirsin.
