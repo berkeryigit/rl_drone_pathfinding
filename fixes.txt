@@ -1,0 +1,56 @@
+fixes.txt — rl_drone_pathfinding
+================================
+
+Karşılaşılan hata + çözüm + (mümkünse) neden. Yeni hata alındıkça en üste
+ekle, tarih ve dosya/komut bilgisini koru ki ileride aramak kolay olsun.
+
+Format:
+---
+TARİH | KOMUT/DOSYA
+HATA  : ...
+ÇÖZÜM : ...
+NEDEN : ...
+
+================================================================
+[BOŞ — henüz çalıştırma yapılmadı, pipeline kuruldu]
+================================================================
+
+Yarın muhtemelen karşılaşılabilecek + hazır çözüm notları:
+
+---
+KOMUT  : ./docker/build.sh
+HATA   : "no matching manifest for linux/amd64"  (osrf/ros:jazzy-desktop)
+ÇÖZÜM  : `docker pull osrf/ros:jazzy-desktop` ile elle çek; yetmezse
+         `ros:jazzy-perception`'a düş.
+NEDEN  : Bazı ROS 2 image'leri her arch için yayınlanmamış olabiliyor.
+
+---
+KOMUT  : docker compose up
+HATA   : "could not select device driver "nvidia" with capabilities: [[gpu]]"
+ÇÖZÜM  : nvidia-container-toolkit kurulu mu? `sudo apt install nvidia-container-toolkit`
+         + `sudo systemctl restart docker`.
+NEDEN  : Compose'un GPU reservation'ı için NVIDIA container runtime gerekli.
+
+---
+KOMUT  : ros2 launch rl_drone_pathfinding sim_launch.py
+HATA   : "Could not find resource 'gz-sim-velocity-control-system'"
+ÇÖZÜM  : Plugin kütüphanesi `libgz-sim-velocity-control-system.so`. apt'tan
+         `gz-harmonic` ya da `libgz-sim8-plugins` kontrol et.
+NEDEN  : Harmonic plugin paketleri ros-jazzy-ros-gz ile beraber geliyor
+         ama bazen ayrıyca `libgz-sim8-plugins` istiyor.
+
+---
+KOMUT  : python3 -m rl_drone_pathfinding.envs.smoke_test
+HATA   : `ModuleNotFoundError: No module named 'rl_drone_pathfinding'`
+ÇÖZÜM  : `source /workspace/ros2_ws/install/setup.bash` yapılmış olmalı.
+         `colcon build --symlink-install` çıktısı `install/`'a yazıyor.
+NEDEN  : ament_python paketler colcon install/'a `lib/python3.X/site-packages`
+         olarak deploy edilir; PYTHONPATH oradan dolar.
+
+---
+KOMUT  : env.reset()
+HATA   : `gz service` set_pose timeout (Gazebo açık değil)
+ÇÖZÜM  : Önce `ros2 launch rl_drone_pathfinding sim_launch.py` çalıştır,
+         sonra train script'i başlat.
+NEDEN  : Env Gazebo'yu spawn etmiyor; ayrı süreç olarak konuşuyor.
+         (İleride: training script gz'yi de subprocess'le başlatsın.)

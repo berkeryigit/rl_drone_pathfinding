@@ -1,0 +1,56 @@
+"""Roll out a trained PPO policy on DroneExplorationEnv and print episode stats."""
+from __future__ import annotations
+
+import argparse
+
+import numpy as np
+import yaml
+from stable_baselines3 import PPO
+
+from rl_drone_pathfinding.envs import DroneExplorationEnv
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="configs/ppo.yaml")
+    parser.add_argument("--model", required=True,
+                        help="Path to a trained PPO .zip")
+    parser.add_argument("--episodes", type=int, default=5)
+    parser.add_argument("--deterministic", action="store_true")
+    args = parser.parse_args(argv)
+
+    with open(args.config, "r") as f:
+        cfg = yaml.safe_load(f)
+    env_cfg = cfg["env"]
+
+    env = DroneExplorationEnv(
+        world_name=env_cfg["world_name"],
+        drone_name=env_cfg["drone_name"],
+        max_episode_steps=env_cfg["max_episode_steps"],
+    )
+    model = PPO.load(args.model)
+
+    returns = []
+    for ep in range(args.episodes):
+        obs, _ = env.reset()
+        done = False
+        ep_ret = 0.0
+        last_info = {}
+        while not done:
+            action, _ = model.predict(obs, deterministic=args.deterministic)
+            obs, r, term, trunc, info = env.step(action)
+            ep_ret += r
+            last_info = info
+            done = term or trunc
+        returns.append(ep_ret)
+        print(f"ep {ep:02d}  return={ep_ret:+.2f}  "
+              f"cells={last_info.get('explored_cells')}  "
+              f"rooms={last_info.get('visited_rooms')}")
+
+    print(f"\nmean return over {args.episodes} eps: "
+          f"{np.mean(returns):+.2f}  (std {np.std(returns):.2f})")
+    env.close()
+
+
+if __name__ == "__main__":
+    main()

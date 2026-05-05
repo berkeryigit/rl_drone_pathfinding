@@ -1,0 +1,142 @@
+<?xml version="1.0" ?>
+<sdf version="1.10">
+  <world name="multi_room">
+
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.005</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <plugin filename="gz-sim-physics-system"
+            name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system"
+            name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system"
+            name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-sensors-system"
+            name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-imu-system"
+            name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-contact-system"
+            name="gz::sim::systems::Contact"/>
+
+    <gravity>0 0 -9.81</gravity>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>40 40</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>40 40</size></plane></geometry>
+          <material><ambient>0.5 0.5 0.5 1</ambient><diffuse>0.6 0.6 0.6 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ====== Outer walls of a 16x16 m building ====== -->
+    <model name="building">
+      <static>true</static>
+
+      <!-- North wall -->
+      <link name="wall_n">
+        <pose>0 8 1 0 0 0</pose>
+        <collision name="c"><geometry><box><size>16 0.2 2</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>16 0.2 2</size></box></geometry>
+          <material><ambient>0.7 0.7 0.7 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material></visual>
+      </link>
+      <!-- South wall -->
+      <link name="wall_s">
+        <pose>0 -8 1 0 0 0</pose>
+        <collision name="c"><geometry><box><size>16 0.2 2</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>16 0.2 2</size></box></geometry>
+          <material><ambient>0.7 0.7 0.7 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material></visual>
+      </link>
+      <!-- West wall -->
+      <link name="wall_w">
+        <pose>-8 0 1 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 16 2</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 16 2</size></box></geometry>
+          <material><ambient>0.7 0.7 0.7 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material></visual>
+      </link>
+      <!-- East wall -->
+      <link name="wall_e">
+        <pose>8 0 1 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 16 2</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 16 2</size></box></geometry>
+          <material><ambient>0.7 0.7 0.7 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material></visual>
+      </link>
+
+      <!-- Internal vertical wall (x=0), with a 2m door gap centered at y=0 -->
+      <link name="wall_v_top">
+        <pose>0 4.5 1 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 7 2</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 7 2</size></box></geometry>
+          <material><ambient>0.6 0.6 0.7 1</ambient><diffuse>0.6 0.6 0.7 1</diffuse></material></visual>
+      </link>
+      <link name="wall_v_bot">
+        <pose>0 -4.5 1 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 7 2</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 7 2</size></box></geometry>
+          <material><ambient>0.6 0.6 0.7 1</ambient><diffuse>0.6 0.6 0.7 1</diffuse></material></visual>
+      </link>
+
+      <!-- Internal horizontal wall (y=0), with a 2m door gap centered at x=0 -->
+      <link name="wall_h_left">
+        <pose>-4.5 0 1 0 0 0</pose>
+        <collision name="c"><geometry><box><size>7 0.2 2</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>7 0.2 2</size></box></geometry>
+          <material><ambient>0.6 0.6 0.7 1</ambient><diffuse>0.6 0.6 0.7 1</diffuse></material></visual>
+      </link>
+      <link name="wall_h_right">
+        <pose>4.5 0 1 0 0 0</pose>
+        <collision name="c"><geometry><box><size>7 0.2 2</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>7 0.2 2</size></box></geometry>
+          <material><ambient>0.6 0.6 0.7 1</ambient><diffuse>0.6 0.6 0.7 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- ====== Static obstacles in rooms ====== -->
+    <model name="obs_pillar_1">
+      <static>true</static>
+      <pose>4 5 0.5 0 0 0</pose>
+      <link name="l">
+        <collision name="c"><geometry><cylinder><radius>0.3</radius><length>1.0</length></cylinder></geometry></collision>
+        <visual name="v"><geometry><cylinder><radius>0.3</radius><length>1.0</length></cylinder></geometry>
+          <material><ambient>0.4 0.2 0.2 1</ambient><diffuse>0.5 0.2 0.2 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_pillar_2">
+      <static>true</static>
+      <pose>-5 -3 0.5 0 0 0</pose>
+      <link name="l">
+        <collision name="c"><geometry><cylinder><radius>0.3</radius><length>1.0</length></cylinder></geometry></collision>
+        <visual name="v"><geometry><cylinder><radius>0.3</radius><length>1.0</length></cylinder></geometry>
+          <material><ambient>0.4 0.2 0.2 1</ambient><diffuse>0.5 0.2 0.2 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="obs_box_1">
+      <static>true</static>
+      <pose>5 -5 0.4 0 0 0.7</pose>
+      <link name="l">
+        <collision name="c"><geometry><box><size>0.8 0.8 0.8</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.8 0.8 0.8</size></box></geometry>
+          <material><ambient>0.2 0.3 0.4 1</ambient><diffuse>0.2 0.3 0.5 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- Drone is spawned via launch (ros_gz_sim::create) so this world is reusable. -->
+
+  </world>
+</sdf>

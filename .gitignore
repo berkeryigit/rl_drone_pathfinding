@@ -1,0 +1,31 @@
+# --- python ---
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+.venv/
+.env
+
+# --- ros2 ---
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# --- training artifacts ---
+runs/
+checkpoints/
+*.zip
+*.pt
+*.ckpt
+tb/
+events.out.tfevents.*
+
+# --- editor / OS ---
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# --- docker ---
+.docker/
