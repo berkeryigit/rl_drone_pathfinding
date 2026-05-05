@@ -25,7 +25,10 @@ ppo:
       vf: [128, 128]
 
 train:
-  total_timesteps: 100000
+  # 300k upper bound: with `timeout 90m` watchdog, the run will SIGINT before
+  # this. Picked larger than expected throughput so the timeout (not learn())
+  # is what ends the run, giving us "as many steps as we can in 90 minutes".
+  total_timesteps: 300000
   save_freq: 10000
   log_dir: ./runs/ppo
   ckpt_dir: ./runs/ppo/checkpoints
