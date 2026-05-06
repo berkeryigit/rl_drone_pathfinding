@@ -116,3 +116,116 @@ tensorboard --logdir runs/a2c/tb
 - Eval video / GIF (3-5 episode), keşfedilen voxel sayısı, ulaşılan kat sayısı
 - Hyperparameter tablosu + tasarım notları (neden A2C, A3C ile fark açıklaması)
 - PPO/TD3/DQN ile karşılaştırma satırı (rapor için ortak tablo)
+
+---
+
+## ⚠ ZORUNLU: 250k step'te ara test (Berker'in PPO'da yaşadığı tuzak)
+
+**Hikaye:** PPO branch'inde 290k step eğittik, sonra eval'de drone spawn
+odasından çıkamadığını gördük. Policy "hover ve duvarlardan kaç" local
+optimum'una sıkışmıştı. Geri dönüp **reward fonksiyonunu büyütüp + entropy
+artırıp + SDF deliklerini büyütüp** sıfırdan başladık. **Bu hatayı tekrar
+yapma — eğitimi sonuna kadar koşturmadan ara kontrol et. A2C özellikle bu
+tuzağa düşmeye yatkın çünkü PPO'nun clipping'i yok, policy hızlı kollapse
+edebilir.**
+
+### Adım 1: 250k checkpoint'e ulaşınca eğitimi DURDUR
+
+`train_a2c.py`'de PPO'daki gibi try/except KeyboardInterrupt → save bloğu
+olmalı (PPO şablonundan kopyala, [`agents/train_ppo.py`](ros2_ws/src/rl_drone_pathfinding/rl_drone_pathfinding/agents/train_ppo.py:82) bak).
+
+```bash
+pgrep -f train_a2c
+kill -INT <PID>      # SIGINT, save_path/a2c_drone_interrupted.zip yazar
+```
+
+### Adım 2: GUI'li eval (drone'u görsel olarak izle)
+
+```bash
+SIM_HEADLESS=0 ./scripts/eval.sh \
+    runs/a2c/checkpoints/a2c_drone_250000_steps.zip 10
+```
+
+10 episode'u izle. Şuna bak:
+
+| Gözlem | Anlamı |
+|---|---|
+| Spawn odasından çıkmıyor (PPO v1 senaryosu) | **Local optimum.** ent_coef düşük + advantage estimate yetersiz. |
+| Policy çok kararsız, episode başına çok değişiyor | **A2C'nin n_steps=5 update'i çok agresif.** n_steps'i artır. |
+| Sürekli aynı yöne dönüyor (yaw kilidi) | **Action space bias.** Policy net'in son katmanı suboptimal başlatıldı, baştan başlat. |
+| 1-2 oda dolaşıyor ama kapıyı bulamıyor | **GAE çok düşük varyanslı, tahminler miyop.** gae_lambda 1.0 → 0.95 dene. |
+| Kata atlıyor (z>2.5) | **Bravo.** Devam ettir, hedefi 500k+'a çıkar. |
+
+### Adım 3: Beğenmediysen — A2C'ye özgü ayar setleri
+
+**A) Spawn'da takıldıysa (PPO v1 senaryosu) — exploration yetersiz:**
+```yaml
+# configs/a2c.yaml
+a2c:
+  ent_coef: 0.0 → 0.02     # PPO'da 0.005→0.02 yaptık, A2C için baştan 0.02 dene
+  # n_steps: 5 → 16        # daha uzun rollout, daha iyi advantage estimate
+```
+
+**B) Policy çok kararsız (loss zigzag):**
+```yaml
+a2c:
+  learning_rate: 7.0e-4 → 3.0e-4   # PPO seviyesi
+  max_grad_norm: 0.5 → 0.3         # gradient clipping daha sıkı
+  # ya da n_steps: 5 → 16 (her update için daha çok veri)
+```
+
+**C) GAE/advantage tahmini zayıf (kapıyı görüp geçmiyor):**
+```yaml
+a2c:
+  gae_lambda: 1.0 → 0.95   # bias-variance tradeoff PPO yönüne kayar
+  gamma: 0.99 → 0.995      # daha uzak hedefler
+  vf_coef: 0.5 → 1.0       # value function loss'a daha çok ağırlık
+```
+
+> ⚠ **Env reward'larına dokunma** — PPO ile karşılaştırma bozulur.
+> Sadece `a2c.yaml`'ı oynat.
+
+### Adım 4: Resume veya baştan başlat
+
+**Resume (küçük tweak):**
+```yaml
+train:
+  resume_from: ./runs/a2c/checkpoints/a2c_drone_250000_steps.zip
+  total_timesteps: 500000
+```
+> A2C `resume_from` `A2C.load(path, env=...)` ile yapılır. PPO örneğinde
+> "absolute target" math fix var (`agents/train_ppo.py:82-100`); aynı
+> mantığı `train_a2c.py`'ye kopyalaman gerek, yoksa SB3
+> `total_timesteps`'i delta gibi yorumlar.
+
+**Baştan (büyük tweak — n_steps veya ent_coef değiştirdiysen):**
+```yaml
+train:
+  resume_from: null
+  log_dir: ./runs/a2c_v2
+  ckpt_dir: ./runs/a2c_v2/checkpoints
+  tb_log: ./runs/a2c_v2/tb
+```
+
+### Adım 5: Kayıt tut
+
+`fixes.txt` + `docs/PROGRESS.md` — Berker PPO'da bu disiplini kurdu, sen de
+kendi A2C bölümünü aç. Hocaya rapor verirken "v1 denedik, böyle takıldı,
+v2'de şu tweak ile çözdük" narratifi puan açısından kıymetli. Ekstra: A2C
+neden A3C yerine seçildi açıklaması zaten yukarıda var; bunu da koru.
+
+---
+
+## Hızlı referans: PPO branch'inde ne yapıldı
+
+Detaylı: `git checkout algo/ppo && cat docs/PROGRESS.md` (en alttaki
+2026-05-06 bölümü).
+
+Özetle:
+- Run 1: sıfırdan 0→140k baseline.
+- Run 2: 140k→290k resume → eval'de drone spawn odasında takıldı.
+- Run 3 (v2): reward 3x büyütüldü, ent_coef 0.005→0.02, SDF delikleri
+  2x2→3x3, baştan başlatıldı.
+- Algoritma seçimine özgü tuzaklar farklı (PPO clipping korur, A2C ham
+  policy gradient daha kırılgan) ama **"ara checkpoint'te eval et"**
+  prensibi ortak.
