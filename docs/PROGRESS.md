@@ -358,3 +358,56 @@ Tüm grafikler `docs/figures/`:
 - `reward_curve_summary.png` (tek panel reward özet)
 - `v3_plateau_zoom.png` (regression görünür)
 - `entropy_zoom.png` (KRİTİK: std explosion)
+
+### v4 → v5 pivot: PPO update stabilization (saat 02:00)
+
+#### Veri (v4 fresh, 310k step'te durduruldu)
+
+`scripts/plot_training.py` v4 dahil yeniden koşturuldu. Bulgular:
+
+1. **Entropy fix tutmuş** ✓ — v4'te std 1 → 0.7'ye **düşüyor** (v3'te
+   1 → 14 explode etmişti). entropy_loss -4.3 → -3.0 (yukarı = az
+   entropi). ent_coef 0.001 doğru çağrı.
+
+2. **Reward hâlâ peak-then-regress paterni** ⚠ — v4 60-100k civarı peak
+   ~+85'e ulaşıyor, sonra 200-310k arası **+30 ile +85 arası yüksek
+   varyans osilasyon** ortalama ~+50. Yani v4 daha da **kötü** (yüksek
+   varyans), reward summary grafiğinden net görünüyor.
+
+3. v3 ile karşılaştırma:
+   - v3: smooth ama yavaş peak (440k +95) sonra düşüş +45
+   - v4: hızlı peak (80k +85) sonra osilasyon +30/+85 mean +50
+
+#### Sebep teşhisi
+
+Entropy düzelmesine rağmen reward osilasyonu sürüyor → sorun **PPO update
+mechanics**, exploration değil. Yüksek magnitudeli reward (oda +50, kat
++200, idle decay -0.5, çarpışma -10) → yüksek varyans advantage → büyük
+policy gradient güncellemeleri → her n_steps=2048 rollout'tan sonra
+policy fazla değişiyor → sonraki rollout'ta data distribution kayıyor
+→ önceki öğrenmeyi unutuyor.
+
+PPO'nun bunu önlemek için clip_range=0.2 mekanizması var ama bizim
+reward scale'imizde 0.2 hâlâ büyük. Ek olarak n_epochs=10 ile her
+rollout'a 10 kez gradient gönderilmesi overfit'i derinleştiriyor.
+
+#### v5 müdahaleleri (env'e dokunma yok, sadece PPO yaml)
+
+| Param | v4 | v5 | Neden |
+|---|---|---|---|
+| `clip_range` | 0.2 | **0.1** | Per-step policy shift'i sınırla, overshoot durdur |
+| `n_epochs` | 10 | **5** | Her rollout'tan daha az gradient pass, daha az overfit |
+| `batch_size` | 64 | **256** | Minibatch gradient'i daha düşük varyanslı |
+| `gae_lambda` | 0.95 | **0.9** | Advantage estimate biraz daha bias / az varyans |
+| `ent_coef` | 0.001 | 0.001 | v4'te tuttu, koru |
+
+Idle decay env değişikliği aynen v4'tekiyle korundu. Multi-floor spawn
++ bumped rewards aynı.
+
+#### v5 run plan'ı
+
+Saat 02:05 başladı: sıfırdan 350k watcher (v3/v4'te ne olduğunu anlamış
+olduğumuz step sayısı), sonra durup eval + plot + (gerekirse) v6.
+Beklenti: peak biraz daha geç gelir ama daha smooth, düşüşsüz / az
+varyanslı plateau. Eğer hâlâ osilasyon varsa, v6'da reward
+normalization (VecNormalize) veya lr schedule eklemek gerekecek.

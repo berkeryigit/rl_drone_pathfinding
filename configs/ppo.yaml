@@ -11,12 +11,12 @@ ppo:
   policy: MlpPolicy
   learning_rate: 3.0e-4
   n_steps: 2048
-  batch_size: 64
-  n_epochs: 10
+  batch_size: 256       # v5: 64->256. Larger minibatch -> lower-variance gradient estimate -> more stable updates. v4 reward had +30/+85 oscillation post-peak; this kills the noise.
+  n_epochs: 5           # v5: 10->5. Half the gradient passes per rollout, less per-rollout overfit, smoother trajectory.
   gamma: 0.99
-  gae_lambda: 0.95
-  clip_range: 0.2
-  ent_coef: 0.001       # v4: dropped 0.02->0.001. v3 plot showed entropy EXPLOSION (std 1->14, eval rooms=1 in deterministic). High ent_coef + large rewards (oda+50, kat+200) made policy maximize entropy via huge std rather than learning a good mean action.
+  gae_lambda: 0.9       # v5: 0.95->0.9. Slightly more bias for less variance in advantage estimates (fits high-magnitude reward env better).
+  clip_range: 0.1       # v5: 0.2->0.1. Tighter PPO clip -> smaller per-step policy shift -> stops the "overshoot then regress" pattern in v3/v4.
+  ent_coef: 0.001       # v4 fix: kept at 0.001 (was 0.02 -> entropy EXPLOSION std 1->14). v5 keeps this stable level.
   vf_coef: 0.5
   max_grad_norm: 0.5
   policy_kwargs:
@@ -29,14 +29,15 @@ train:
   # from its loaded num_timesteps). Otherwise it's the from-scratch budget.
   total_timesteps: 2000000
   save_freq: 10000
-  # v4 = v3 + idle penalty time-decay (no new voxel for >=30 steps -> -0.5
-  # instead of -0.1) + ent_coef 0.02->0.001 to fix the entropy explosion
-  # that drove std from 1 to 14 in v3 (-> deterministic eval = "rooms=1
-  # in 10/11 eps"). Resumed from v3's peak (440k) instead of fresh, so
-  # the partially-learned floor navigation isn't thrown away.
+  # v5 = v4 PPO update stabilization. Same env (idle decay + multi-floor
+  # spawn + 3x rewards), same low ent_coef. Only PPO update mechanics
+  # changed: tighter clip_range, smaller n_epochs, larger batch, lower
+  # gae_lambda. Goal: kill the "fast peak then regress/oscillate" pattern
+  # we saw in v3 (440k peak +95 -> 1.45M +45) and v4 (60k peak +85 ->
+  # 310k osc +30/+85, mean +50).
   # v1 -> runs/ppo/, v2 -> runs/ppo_v2_explore/, v3 -> runs/ppo_v3_floors/,
-  # v4 -> runs/ppo_v4_low_ent/.
-  log_dir: ./runs/ppo_v4_low_ent
-  ckpt_dir: ./runs/ppo_v4_low_ent/checkpoints
-  tb_log: ./runs/ppo_v4_low_ent/tb
-  resume_from: null     # v4 fresh start (idle decay + low ent_coef = farklı reward landscape, eski policy fayda etmez)
+  # v4 -> runs/ppo_v4_low_ent/, v5 -> runs/ppo_v5_stable/.
+  log_dir: ./runs/ppo_v5_stable
+  ckpt_dir: ./runs/ppo_v5_stable/checkpoints
+  tb_log: ./runs/ppo_v5_stable/tb
+  resume_from: null     # fresh start: PPO mechanics changed enough that v4's policy/value would drift (training data distribution shifts under new clip_range/n_epochs).

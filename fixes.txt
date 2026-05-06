@@ -12,6 +12,36 @@ HATA  : ...
 NEDEN : ...
 
 ================================================================
+2026-05-07 — Eğitim run v5: PPO update stabilization (350k hedefli)
+================================================================
+
+---
+2026-05-07 | configs/ppo.yaml
+HATA   : v4 fresh start 310k step'te durduruldu. Plot teşhisi:
+         (a) entropy fix tutmuş — std 1 → 0.7 (v3'teki 1→14 explosion
+             yok). ent_coef=0.001 doğru karar.
+         (b) AMA reward hâlâ peak-then-osc paterni: v4 80k'da +85
+             peak yapıp 200-310k arası +30/+85 osilasyonuna girdi,
+             ortalama ~+50.
+         (c) v3'teki "smooth peak then regress" v4'te "fast peak then
+             oscillate"a dönüştü. Daha kötü değil ama daha kararsız.
+ÇÖZÜM  : v5 = PPO update mechanics stabilization (env'e dokunmadan):
+         - clip_range 0.2 → 0.1 (per-step policy shift sınırla)
+         - n_epochs 10 → 5 (her rollout'a daha az overfit)
+         - batch_size 64 → 256 (gradient varyansı düşür)
+         - gae_lambda 0.95 → 0.9 (advantage estimate stabilizasyonu)
+         - ent_coef 0.001 (v4 değeri, koru)
+         Output runs/ppo_v5_stable/, fresh start (PPO mekanikleri
+         değişti, eski policy'nin gradient pattern'ı stale olur).
+NEDEN  : Yüksek magnitude reward (oda+50, kat+200, idle decay -0.5,
+         çarpışma -10) + clip_range=0.2 + n_epochs=10 = her rollout'tan
+         sonra policy fazla değişiyor → data distribution kayıyor →
+         önceki öğrenmeyi unutuyor → reward osilasyonu. PPO'nun clip
+         mekanizması bizim reward scale'imize yetmiyordu.
+GRAFİK : docs/figures/ — v4 dahil aynı 4 PNG yeniden üretildi. Net
+         karşılaştırma reward_curve_summary.png'de görünüyor.
+
+================================================================
 2026-05-06 — Eğitim run v4: entropy explosion fix (440k → 2M hedef)
 ================================================================
 
