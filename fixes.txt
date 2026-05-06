@@ -12,6 +12,40 @@ HATA  : ...
 NEDEN : ...
 
 ================================================================
+2026-05-06 — Eğitim run v4: entropy explosion fix (440k → 2M hedef)
+================================================================
+
+---
+2026-05-06 | configs/ppo.yaml + envs/drone_exploration_env.py
+HATA   : v3'te 1.45M step'e kadar gittik. Plot ile teşhis edince:
+         (a) ep_rew_mean plateau değil, REGRESSION — 440k peak ~+95,
+             1.45M'de ~+45'e düşmüş.
+         (b) Action distribution std 1 → 14 (!) explode etmiş.
+         (c) v3/310k eval'de rooms=1 in 10/11 deterministic episodes
+             → mean action zayıf öğrenilmiş.
+ÇÖZÜM  : v4 = 3 müdahale:
+         A) ent_coef 0.02 → 0.001 (20x düşür). ent_coef × Gaussian
+            entropy bonus policy'yi std büyütmeye teşvik ediyordu;
+            küçük bonus ile policy std'yi doğal olarak küçültür,
+            mean action gradient'i hâkim olur.
+         B) Idle penalty time-decay: <30 step idle = -0.1 (arama),
+            ≥30 step idle = -0.5 (oda biten, ÇIK). Spawn-room hover
+            stratejisini ekonomik olmayan yapar.
+         C) Resume from v3'ün PEAK checkpoint'inden (440k) — fresh
+            start değil, öğrenme korundu.
+         Output: runs/ppo_v4_low_ent/.
+NEDEN  : ent_coef × entropy_loss PPO loss'ta. Reward magnitude büyük
+         olunca (oda +50, kat +200) advantage büyür → policy gradient
+         büyür. ent_coef=0.02 entropi'yi maximize etmek için "std büyüt
+         (Gaussian entropy = 0.5·log(2πeσ²))" gradient'i veriyordu →
+         policy random action almaya yöneldi. Eval deterministic'te bu
+         random davranış kayboluyor, mean action zayıf çünkü policy
+         onu optimize etmemişti.
+GRAFİK : docs/figures/{training_curves_all,entropy_zoom,
+         v3_plateau_zoom,reward_curve_summary}.png
+         scripts/plot_training.py ile yeniden üretilebilir.
+
+================================================================
 2026-05-06 — Eğitim run v3: multi-floor spawn (140k → 2M hedef)
 ================================================================
 

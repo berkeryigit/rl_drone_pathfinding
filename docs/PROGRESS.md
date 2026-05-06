@@ -285,3 +285,76 @@ Saat 11:55 başladı: 140k → 2M (1.86M step delta), ~12-14 saat. Eğer
 ~250-300k civarı eval'de drone üst kata çıkmaya başlamamışsa, daha
 agresif tweak'ler gerekecek (örn. voxel multiplier üst katlarda,
 intrinsic curiosity bonus). Şu an minimal-değişiklik prensibi.
+
+### v3 → v4 pivot: entropy explosion fix (saat 22:15)
+
+#### Veri (1.45M step'te durduruldu, plot scriptiyle teşhis)
+
+`scripts/plot_training.py` koşturup TB event'lerinden v1/v2/v3 6-panel
+grafiği + entropy zoom + reward zoom çıkarıldı (`docs/figures/`).
+
+**Bulgular:**
+
+1. `docs/figures/v3_plateau_zoom.png` — ep_rew_mean **plateau değil,
+   regression**: 440k civarı PEAK ~+95, sonra +40-50'ye geri düştü.
+   1.0M-1.45M ortalaması ~+45.
+
+2. `docs/figures/entropy_zoom.png` — KRİTİK BULGU: action distribution
+   `std` **1 → 14**'e patladı (action space [-1,1] iken!). `entropy_loss`
+   -4 → -12 (daha negatif = yüksek entropi). Yani policy çökmedi —
+   tam tersi, **explode etti.**
+
+3. v3/310k eval'de "rooms=1 in 10/11 episodes" gözleminin sebebi şu:
+   `--deterministic` eval mean action kullanır. Mean action zayıf çünkü
+   policy std'sini büyüterek (rastgele aksiyon → bazen kazanç) reward
+   topluyor; mean action'ı optimize etmiyor.
+
+#### Sebep teşhisi
+
+`ent_coef × entropy_loss` PPO loss'una eklenir. Reward magnitude büyük
+olduğunda (oda +50, kat +200), advantage büyük → policy gradient büyük.
+ent_coef=0.02 entropi'yi maximize etmek için **policy std'sini büyütme**
+gradient'i veriyor (Gaussian entropy = 0.5·log(2πeσ²) → std artırmak
+entropi artırır, ücretsiz bonus). Reward gradient bunu durduramamış.
+
+#### v4 müdahaleleri
+
+A. **`ent_coef`: 0.02 → 0.001** (20x düşürüldü). Entropi bonusu hâlâ
+   var ama std'yi büyütme cezbeden değil. Policy doğal olarak std'yi
+   küçültür, mean action gradient'i hâkim olur.
+
+B. **Idle penalty time-decay** (`envs/drone_exploration_env.py`):
+   ```python
+   if self._steps_since_new_voxel < 30:
+       reward += -0.1     # arama, yön bulma — normal
+   else:
+       reward += -0.5     # oda biten, ÇIK
+   ```
+   v3'te drone spawn odasında 850 step idle olup -85 birikiyordu ama
+   yine de net pozitif kalıyordu (+150 voxel). Yeni decay ile aynı
+   strateji -425 (5x ceza) → net negatif → drone başka odaya gitmek
+   zorunda kalır.
+
+C. **Resume from peak (440k)** — fresh start değil. v3'ün öğrenmiş
+   olduğu floor 0 navigation + biraz da floor 1/2 farkındalığını
+   koruyalım. ent_coef düşük olunca policy std'si bu peak'ten itibaren
+   düşmeye başlayacak.
+
+D. Output `runs/ppo_v4_low_ent/`, v3 sonuçları korundu.
+
+#### v4 run plan'ı
+
+Saat 22:15 başladı: 440k → 2M (1.56M step delta), ~12 saat (yarın
+~10:00 civarı biter). Beklenti:
+
+- ilk 50-100k step'te reward düşebilir (idle decay sert, drone uyum
+  sağlamaya çalışır)
+- 600k civarı: std küçülmeye başlar (eski 14 → ~3-5)
+- 1M+ : mean action policy iyileşir, deterministic eval'de rooms>1
+- 2M sonu: hedef rooms 3-4 ortalama, ara sıra üst kata çıkış
+
+Tüm grafikler `docs/figures/`:
+- `training_curves_all.png` (6-panel v1-v2-v3)
+- `reward_curve_summary.png` (tek panel reward özet)
+- `v3_plateau_zoom.png` (regression görünür)
+- `entropy_zoom.png` (KRİTİK: std explosion)

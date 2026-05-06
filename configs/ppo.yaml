@@ -16,7 +16,7 @@ ppo:
   gamma: 0.99
   gae_lambda: 0.95
   clip_range: 0.2
-  ent_coef: 0.02        # bumped 0.005->0.02: at 290k, policy collapsed to "hover in spawn room". Combined with 3x bigger discovery rewards in env.
+  ent_coef: 0.001       # v4: dropped 0.02->0.001. v3 plot showed entropy EXPLOSION (std 1->14, eval rooms=1 in deterministic). High ent_coef + large rewards (oda+50, kat+200) made policy maximize entropy via huge std rather than learning a good mean action.
   vf_coef: 0.5
   max_grad_norm: 0.5
   policy_kwargs:
@@ -29,12 +29,14 @@ train:
   # from its loaded num_timesteps). Otherwise it's the from-scratch budget.
   total_timesteps: 2000000
   save_freq: 10000
-  # v3 = v2 + multi-floor spawn (5 floor-0 + 2 floor-1 + 1 floor-2) +
-  # floor bonus 100->200. At v2/140k, drone happily explored floor 0
-  # rooms but never climbed; spawning on upper floors gives the value
-  # function direct exposure to upper-floor states.
-  # v1 -> runs/ppo/, v2 -> runs/ppo_v2_explore/, v3 -> runs/ppo_v3_floors/.
-  log_dir: ./runs/ppo_v3_floors
-  ckpt_dir: ./runs/ppo_v3_floors/checkpoints
-  tb_log: ./runs/ppo_v3_floors/tb
-  resume_from: ./runs/ppo_v2_explore/checkpoints/ppo_drone_140000_steps.zip
+  # v4 = v3 + idle penalty time-decay (no new voxel for >=30 steps -> -0.5
+  # instead of -0.1) + ent_coef 0.02->0.001 to fix the entropy explosion
+  # that drove std from 1 to 14 in v3 (-> deterministic eval = "rooms=1
+  # in 10/11 eps"). Resumed from v3's peak (440k) instead of fresh, so
+  # the partially-learned floor navigation isn't thrown away.
+  # v1 -> runs/ppo/, v2 -> runs/ppo_v2_explore/, v3 -> runs/ppo_v3_floors/,
+  # v4 -> runs/ppo_v4_low_ent/.
+  log_dir: ./runs/ppo_v4_low_ent
+  ckpt_dir: ./runs/ppo_v4_low_ent/checkpoints
+  tb_log: ./runs/ppo_v4_low_ent/tb
+  resume_from: ./runs/ppo_v3_floors/checkpoints/ppo_drone_440000_steps.zip

@@ -30,7 +30,8 @@ Reward (per-step):
          climbing through the holes.
     -10  on collision (terminates)
     -0.5 if any directional clearance < 0.5 m (near-collision, horiz/up/down)
-    -0.1 if no new voxel explored this step (idle)
+    -0.1 if no new voxel for <30 steps (mild — searching for direction)
+    -0.5 if no new voxel for >=30 steps (room exhausted — GET OUT)
     -0.001 per step (time)
 
 Episode ends:
@@ -382,7 +383,14 @@ class DroneExplorationEnv(gym.Env):
             reward += 3.0
             self._steps_since_new_voxel = 0
         else:
-            reward += -0.1
+            # v4: time-decaying idle penalty. Lingering in an exhausted
+            # room (no new voxel for >=30 steps) becomes 5x more painful,
+            # forcing the policy out of the "explore one room then hover"
+            # local optimum that v3 evals revealed (rooms=1 in 10/11 eps).
+            if self._steps_since_new_voxel < 30:
+                reward += -0.1
+            else:
+                reward += -0.5
             self._steps_since_new_voxel += 1
 
         if new_room:
