@@ -29,10 +29,12 @@ train:
   # from its loaded num_timesteps). Otherwise it's the from-scratch budget.
   total_timesteps: 2000000
   save_freq: 10000
-  # v2 = bumped exploration rewards (env code) + ent_coef 0.02 + 3x3 floor
-  # holes (multi_room.sdf). v1 results live under ./runs/ppo/ — keep them
-  # for the report ("we tried v1, it stalled in the spawn room").
-  log_dir: ./runs/ppo_v2_explore
-  ckpt_dir: ./runs/ppo_v2_explore/checkpoints
-  tb_log: ./runs/ppo_v2_explore/tb
-  resume_from: null
+  # v3 = v2 + multi-floor spawn (5 floor-0 + 2 floor-1 + 1 floor-2) +
+  # floor bonus 100->200. At v2/140k, drone happily explored floor 0
+  # rooms but never climbed; spawning on upper floors gives the value
+  # function direct exposure to upper-floor states.
+  # v1 -> runs/ppo/, v2 -> runs/ppo_v2_explore/, v3 -> runs/ppo_v3_floors/.
+  log_dir: ./runs/ppo_v3_floors
+  ckpt_dir: ./runs/ppo_v3_floors/checkpoints
+  tb_log: ./runs/ppo_v3_floors/tb
+  resume_from: ./runs/ppo_v2_explore/checkpoints/ppo_drone_140000_steps.zip

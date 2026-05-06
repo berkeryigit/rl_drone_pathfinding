@@ -25,7 +25,9 @@ Action (3-d, continuous):
 Reward (per-step):
     +3.0 * (#new explored voxels this step)
     +50  on entering a new room (12 rooms total: 4 per floor)
-    +100 on entering a new floor (3 floors)
+    +200 on entering a new floor (3 floors) -- bumped from +100 because
+         at 140k step the agent was happily exploring floor 0 but never
+         climbing through the holes.
     -10  on collision (terminates)
     -0.5 if any directional clearance < 0.5 m (near-collision, horiz/up/down)
     -0.1 if no new voxel explored this step (idle)
@@ -78,13 +80,22 @@ STEP_DT = 0.02            # wall-clock sleep per env step. With sim RTF=0 and
                           # lidar @ 50 Hz, sim_time advances >> wall_time so
                           # one wall-step still gives plenty of new sensor data.
 
-# Spawn pose candidates (all on floor 0, varied positions).
+# Spawn pose candidates: 5 on floor 0 + 2 on floor 1 + 1 on floor 2 = 8.
+# Upper-floor spawns added at v3: with floor-0-only spawns the agent never
+# experienced upper-floor states in rollouts, so its value function had no
+# basis for valuing "go up". Spawning at z=3.0 / z=5.5 occasionally lets
+# PPO learn upper-floor navigation directly. Floor still gets the +200
+# bonus only on FIRST visit per episode (visited_floors prefilled at reset
+# with spawn floor), so this is not a reward exploit.
 SPAWN_CANDIDATES = [
-    ( 4.0, -4.0, 0.6,  1.57),
-    (-4.0, -4.0, 0.6,  0.0 ),
-    (-4.0,  4.0, 0.6, -1.57),
-    ( 4.0,  4.0, 0.6,  3.14),
-    ( 0.0, -6.0, 0.6,  0.0 ),
+    ( 4.0, -4.0, 0.6,  1.57),   # floor 0, SE
+    (-4.0, -4.0, 0.6,  0.0 ),   # floor 0, SW
+    (-4.0,  4.0, 0.6, -1.57),   # floor 0, NW
+    ( 4.0,  4.0, 0.6,  3.14),   # floor 0, NE (right under the floor 0->1 hole)
+    ( 0.0, -6.0, 0.6,  0.0 ),   # floor 0, S middle
+    ( 4.0,  4.0, 3.1,  3.14),   # floor 1, NE (right above the same hole)
+    (-4.0,  4.0, 3.1,  0.0 ),   # floor 1, NW
+    (-5.0, -5.0, 5.6,  0.0 ),   # floor 2, SW (right above the floor 1->2 hole)
 ]
 
 
@@ -377,7 +388,7 @@ class DroneExplorationEnv(gym.Env):
         if new_room:
             reward += 50.0
         if new_floor:
-            reward += 100.0
+            reward += 200.0
 
         clearance = min(scan_min, scan_up, scan_down)
         if clearance < NEAR_COLLISION_DIST:

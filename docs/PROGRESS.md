@@ -231,3 +231,57 @@ Saat 11:05 başladı: sıfırdan 2M step, ~12-14 saat (sıfırdan başlamak
 +~%20 yavaş çünkü ilk 50k random eylemlerle çok episode terminate ediyor).
 Berker eve giderken çalışıyor olacak; checkpoint her 10k step'te,
 overwrite-safe.
+
+### v2 → v3 pivot: multi-floor spawn (saat 11:50)
+
+#### Gözlem (140k step eval)
+
+v2 başarılı kısmı: ep_rew_mean -33 (10k) → +3 (65k) → **+40 (140k)**.
+Discovery rewards + ent_coef bumpı tutmuş, drone artık spawn odasında
+takılı değil — çoklu oda dolaşıyor, kapıları geçiyor.
+
+v2'nin hâlâ eksik kısmı: drone **sadece floor 0'da** dolaşıyor. Berker
+eval'i 11:48-11:50 arasında izledi, drone hep aynı katta. Üst katlara
+hiç çıkmıyor.
+
+#### Sebep teşhisi
+
+1. **Spawn hep floor 0'da.** SPAWN_CANDIDATES'in 5 noktası da z=0.6'da
+   (zemin). PPO on-policy → drone training rollout'larında üst katları
+   asla deneyimlemiyor → value function "yukarı çıkma" eylemine değer
+   atfedemiyor.
+2. **Vertical hareket pahalı.** vz_max=0.4 m/s, 2.5m yüksekliğe çıkmak
+   ~6 saniye = forward exploration zaman kaybı. Anlık discovery reward
+   kaybı gamma=0.99 ile değerlendirildiğinde +100'lük gecikmiş floor
+   bonusundan değerli görünüyor.
+3. (4,4,0.6) NE spawn'ı tam delik altı ama yine de yukarı çıkmıyor —
+   çünkü hiç yukarı çıkmış trayektory tatmamış, value function
+   up-direction action'a 0 yakın değer veriyor.
+
+#### v3 müdahaleleri
+
+* `envs/drone_exploration_env.py` — SPAWN_CANDIDATES diversifiye edildi:
+  - 5 spawn floor 0 (eskisi gibi)
+  - 2 spawn floor 1 (z=3.1, NE delik üstü ve NW)
+  - 1 spawn floor 2 (z=5.6, SW delik üstü)
+  - **Cheat değil** çünkü `_visited_floors` reset'te spawn floor ile
+    prefill ediliyor, +200 ancak başka floor'a geçince veriliyor.
+  - Beklenen etki: %37 ihtimalle drone üst katta uyanır, oradan keşfe
+    başlar, value fn üst katları da öğrenir, ileri rollout'larda "yukarı
+    çıkmak yararlı" gradient'i belirir.
+
+* `envs/drone_exploration_env.py` — `new_floor` bonusu **+100 → +200**.
+  Floor geçişi en nadir event, oda (+50) ile arasındaki oran 4x'e
+  çıkarıldı.
+
+* `configs/ppo.yaml` — output dizini `runs/ppo_v3_floors/`'a alındı,
+  v2 sonuçları `runs/ppo_v2_explore/` altında dokunulmadan kalıyor.
+  `resume_from: ppo_drone_140000_steps.zip` (v2'nin 140k checkpoint'i —
+  floor 0 navigation öğrenilmiş, oradan üst katları eklemek hızlı olur).
+
+#### v3 run plan'ı
+
+Saat 11:55 başladı: 140k → 2M (1.86M step delta), ~12-14 saat. Eğer
+~250-300k civarı eval'de drone üst kata çıkmaya başlamamışsa, daha
+agresif tweak'ler gerekecek (örn. voxel multiplier üst katlarda,
+intrinsic curiosity bonus). Şu an minimal-değişiklik prensibi.
