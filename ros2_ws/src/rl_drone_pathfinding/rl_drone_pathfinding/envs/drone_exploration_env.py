@@ -23,9 +23,9 @@ Action (3-d, continuous):
     a[2] in [-1, 1] -> angular z velocity in [-w_max, w_max]
 
 Reward (per-step):
-    +1.0 * (#new explored voxels this step)
-    +15  on entering a new room (12 rooms total: 4 per floor)
-    +25  on entering a new floor (3 floors)
+    +3.0 * (#new explored voxels this step)
+    +50  on entering a new room (12 rooms total: 4 per floor)
+    +100 on entering a new floor (3 floors)
     -10  on collision (terminates)
     -0.5 if any directional clearance < 0.5 m (near-collision, horiz/up/down)
     -0.1 if no new voxel explored this step (idle)
@@ -368,16 +368,16 @@ class DroneExplorationEnv(gym.Env):
 
         reward = -0.001
         if new_voxel:
-            reward += 1.0
+            reward += 3.0
             self._steps_since_new_voxel = 0
         else:
             reward += -0.1
             self._steps_since_new_voxel += 1
 
         if new_room:
-            reward += 15.0
+            reward += 50.0
         if new_floor:
-            reward += 25.0
+            reward += 100.0
 
         clearance = min(scan_min, scan_up, scan_down)
         if clearance < NEAR_COLLISION_DIST:

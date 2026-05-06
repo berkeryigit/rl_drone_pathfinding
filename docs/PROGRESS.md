@@ -131,3 +131,52 @@ configs/ppo_quick.yaml diye `total_timesteps: 100000` olan bir varyant aç,
 4. PPO vs (TD3 / DQN / A3C) karşılaştırma — ekip arkadaşlarının kendi paketleri
    (ya ayrı klasör ya ayrı branch) hazır olunca aynı env üstünde koşturup
    reward/cells/rooms karşılaştır.
+
+---
+
+## 2026-05-06 — Berker — Eğitim run 2 (resume) → run 3 (exploration boost)
+
+### Run 2: 140k → 290k step (sabah)
+
+* `configs/ppo.yaml`: `total_timesteps: 500000`,
+  `resume_from: ppo_drone_140000_steps.zip`. `train_ppo.py`'a
+  `reset_num_timesteps=False` eklendi → checkpoint sayacı korunarak resume.
+* Saat 10:24'te checkpoint 288544'e ulaştı, eval için durduruldu.
+* Eval gözlemi (saat 10:30, GUI'li): drone spawn odasından çıkamıyor, hover +
+  duvardan kaçma loop'una sıkışmış. Local optimum.
+  - `ep_len_mean` 299 → 381 (yaşıyor)
+  - `ep_rew_mean` -12.7 → -19 (sadece -0.001 step + -0.1 idle topluyor)
+  - `entropy_loss` -3.62 (hâlâ keşif var ama yetmemiş)
+  - Sebep: door-crossing +15 ödülü gamma=0.99'la bu kadar uzaktayken value
+    fn göremiyor. Discovery sinyali zayıf.
+
+### Run 3: 290k → 2M step (saat 10:35'te başladı, ~10-12 saat)
+
+Yapılan müdahaleler:
+
+* `envs/drone_exploration_env.py` — discovery rewards 3x:
+  - yeni voxel: `+1.0 → +3.0`
+  - yeni oda:   `+15  → +50`
+  - yeni kat:   `+25  → +100`
+  Çarpışma/idle/step penaltyleri AYNI bırakıldı (keşif bonusunu artırmak amaç,
+  güvenlik sinyalini bozmamak için).
+* `configs/ppo.yaml` — `ent_coef: 0.005 → 0.02` (4x policy entropy bonusu).
+  Toplam: discovery × 3 + entropy × 4 = "bir tık daha cesur ol, bulduğunda da
+  daha çok kazan."
+* `agents/train_ppo.py`:
+  - **Bug fix**: SB3'te `reset_num_timesteps=False` iken `total_timesteps`
+    DELTA olarak yorumlanıyor (SB3 internally num_timesteps ekliyor). YAML
+    yorumu "absolute" diyordu ama davranış öyle değildi. Resume'de
+    target - current hesaplanıp delta olarak learn()'e geçildi → yaml
+    gerçekten absolute oldu.
+  - **Override eklendi**: `PPO.load()` kaydedilmiş hyperparametreleri geri
+    yüklediği için, resume'den sonra `model.ent_coef = yaml.ent_coef`
+    set ediliyor. Yoksa yaml'daki 0.02 etkisiz kalırdı.
+* Resume kaynağı: `ppo_drone_290k_pre_eval.zip` (interrupted.zip'in yedeği,
+  step=292337). Yeni interrupt'lar interrupted.zip'i overwrite etse de bu
+  yedek korunur.
+
+Beklenen: ilk 50-100k step'te reward DÜŞÜŞÜ olabilir (entropy yüksek + value
+fn yeni reward ölçeğine adapte olurken). Sonra ep_rew_mean'in net pozitife
+çıkması beklenir, çünkü bir tek door-crossing artık +50 (eskiden -19'luk bir
+episode'u tek başına +30'a çevirir).

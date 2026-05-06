@@ -53,6 +53,12 @@ def main(argv=None):
         print(f"[train_ppo] resuming from {tr_cfg['resume_from']}")
         model = PPO.load(tr_cfg["resume_from"], env=vec_env,
                          tensorboard_log=str(tb_log))
+        # PPO.load restores the saved hyperparameters; override the ones we
+        # commonly retune so YAML edits actually take effect on resume.
+        new_ent = float(ppo_cfg["ent_coef"])
+        if abs(model.ent_coef - new_ent) > 1e-9:
+            print(f"[train_ppo] override ent_coef {model.ent_coef} -> {new_ent}")
+            model.ent_coef = new_ent
     else:
         model = PPO(
             policy=ppo_cfg["policy"],
@@ -80,8 +86,25 @@ def main(argv=None):
     )
 
     final = ckpt_dir / "ppo_drone_final.zip"
+    target = int(tr_cfg["total_timesteps"])
+    if resuming:
+        # SB3 with reset_num_timesteps=False treats `total_timesteps` as a
+        # *delta* (it adds num_timesteps internally). Convert our YAML
+        # convention (target = absolute) to that delta so the run actually
+        # stops at the configured target step count.
+        remaining = target - int(model.num_timesteps)
+        if remaining <= 0:
+            print(f"[train_ppo] target {target} already reached "
+                  f"(current={model.num_timesteps}); nothing to train")
+            return
+        print(f"[train_ppo] target={target}, current={model.num_timesteps}, "
+              f"training {remaining} more steps")
+        learn_steps = remaining
+    else:
+        learn_steps = target
+
     try:
-        model.learn(total_timesteps=int(tr_cfg["total_timesteps"]),
+        model.learn(total_timesteps=learn_steps,
                     callback=ckpt_cb,
                     progress_bar=True,
                     reset_num_timesteps=not resuming)

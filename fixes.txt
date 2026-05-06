@@ -12,6 +12,45 @@ HATA  : ...
 NEDEN : ...
 
 ================================================================
+2026-05-06 — Eğitim run 3: exploration boost (290k → 2M hedef)
+================================================================
+
+---
+2026-05-06 | configs/ppo.yaml + envs/drone_exploration_env.py
+HATA   : 290k step'te eval'de drone spawn odasından çıkamıyor —
+         policy "hover ve duvarlardan kaç" local optimum'una sıkışmış.
+         ep_len 299→381 (yaşıyor), ep_rew_mean -12.7 → -19 (sadece
+         ceza topluyor). Door-crossing +15 ödülü çok uzakta, value
+         function gamma=0.99 effective horizon (~100 step) içinde
+         göremiyor.
+ÇÖZÜM  : 1) env reward'larını 3x büyüttük:
+            - yeni voxel +1.0 → +3.0
+            - yeni oda  +15  → +50
+            - yeni kat  +25  → +100
+         2) ent_coef 0.005 → 0.02 (4x policy entropy bonusu)
+         3) train_ppo.py: PPO.load() saved hyperparams'ı geri
+            yüklediği için, resume sonrası model.ent_coef'i yaml'dan
+            override eden satır eklendi.
+NEDEN  : Sparse reward + on-policy PPO + tek harita → over-converge.
+         Discovery bonus'larını ölçek olarak büyütmek + entropy
+         bonus'unu artırmak escape şansı veriyor.
+
+---
+2026-05-06 | ros2_ws/src/rl_drone_pathfinding/rl_drone_pathfinding/agents/train_ppo.py
+HATA   : YAML comment "When resuming, this is the absolute target
+         step count" diyordu ama SB3'te reset_num_timesteps=False
+         iken total_timesteps DELTA gibi davranıyor (SB3 internally
+         num_timesteps ekliyor). Yani target=500000, current=140000
+         → gerçekte 640000'a kadar gidiyordu, yaml'daki yorum
+         yanlıştı.
+ÇÖZÜM  : Resume'de target - current_num_timesteps hesaplanıp
+         delta olarak learn()'e geçildi. YAML target artık
+         gerçekten ABSOLUTE.
+NEDEN  : SB3 base_class._setup_learn → reset_num_timesteps=False
+         branch'inde `total_timesteps += self.num_timesteps`
+         yapılıyor.
+
+================================================================
 2026-05-05 — Pipeline doğrulama koşusu (sim sanity, eğitim YOK)
 ================================================================
 

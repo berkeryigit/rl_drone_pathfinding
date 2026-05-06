@@ -16,7 +16,7 @@ ppo:
   gamma: 0.99
   gae_lambda: 0.95
   clip_range: 0.2
-  ent_coef: 0.005       # a touch of exploration bonus, room-first reward already pushes exploration
+  ent_coef: 0.02        # bumped 0.005->0.02: at 290k, policy collapsed to "hover in spawn room". Combined with 3x bigger discovery rewards in env.
   vf_coef: 0.5
   max_grad_norm: 0.5
   policy_kwargs:
@@ -27,9 +27,9 @@ ppo:
 train:
   # When resuming, this is the absolute target step count (model continues
   # from its loaded num_timesteps). Otherwise it's the from-scratch budget.
-  total_timesteps: 500000
+  total_timesteps: 2000000
   save_freq: 10000
   log_dir: ./runs/ppo
   ckpt_dir: ./runs/ppo/checkpoints
   tb_log: ./runs/ppo/tb
-  resume_from: ./runs/ppo/checkpoints/ppo_drone_248544_steps.zip
+  resume_from: ./runs/ppo/checkpoints/ppo_drone_290k_pre_eval.zip
