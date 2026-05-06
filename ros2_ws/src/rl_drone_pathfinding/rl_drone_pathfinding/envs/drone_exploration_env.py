@@ -4,8 +4,8 @@ World layout (built by ros2_ws/.../worlds/multi_room.sdf):
     * 16x16 m building, 3 floors of 2.5 m each (total height 7.5 m).
     * Each floor has a "+" of internal walls dividing it into 4 quadrant rooms,
       each with a 2 m door gap centered at the origin.
-    * Floor 0 -> 1 hole: NE quadrant (x in [4, 6], y in [4, 6]).
-    * Floor 1 -> 2 hole: SW quadrant (x in [-6, -4], y in [-6, -4]).
+    * Floor 0 -> 1 hole: NE quadrant (x in [3.5, 6.5], y in [3.5, 6.5]).
+    * Floor 1 -> 2 hole: SW quadrant (x in [-6.5, -3.5], y in [-6.5, -3.5]).
     * The drone has a horizontal 360 lidar plus 1-ray up/down lidars.
 
 Observation (45-d, normalized to [-1, 1] / [0, 1]):

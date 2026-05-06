@@ -180,3 +180,54 @@ Beklenen: ilk 50-100k step'te reward DÜŞÜŞÜ olabilir (entropy yüksek + val
 fn yeni reward ölçeğine adapte olurken). Sonra ep_rew_mean'in net pozitife
 çıkması beklenir, çünkü bir tek door-crossing artık +50 (eskiden -19'luk bir
 episode'u tek başına +30'a çevirir).
+
+### Run 3 ↻ pivot: sıfırdan başlat + SDF deliklerini büyüt (saat 11:00)
+
+Run 3'ü ~5 dk sonra durdurduk. Sebep: yeni reward fonksiyonu eski value
+function'ı geçersiz kılıyor; over-converged 290k policy'den kurtulmak yerine
+**baştan başlamak daha temiz** (öğrenme zaten 290k harcandı, FAKAT o policy
+"hover" ezberlemişti — tablanın silinmesi 1.7M step'in büyük kısmını
+zaten yeniden yatırım sayılır, üstelik temiz bir öğrenme eğrisi raporlama
+için ÇOK daha güzel).
+
+#### Çıkarılan/Yeniden yapılan kararlar
+
+1. **FAST-LIO 2 fikri reddedildi.** Berker önerdi: arka planda lidar SLAM
+   koşturup map çıkaralım, observation'a ekleyelim. Reddedildim çünkü:
+   (a) sim'de zaten ground-truth pozisyon var (`/odom`), env de kendi
+   voxel grid'ini tutuyor; (b) SLAM pipeline sim FPS'i 39→~10'a düşürür;
+   (c) map'i observation yapmak için MLP yerine CNN gerek → mimari değişir,
+   1 günlük iş; (d) rapor için süslü ama task'a katkı yok.
+
+2. **SDF: Floor delikleri 2x2 → 3x3 büyütüldü.**
+   - Berker GUI'de floor 1→2 deliğini bulamadığını söyledi. Matematiksel
+     olarak vardı (SW quadrant, x∈[-6,-4], y∈[-6,-4]) ama 2x2 bir delik
+     16x16 binada drone'un random keşifle bulması zor.
+   - Yeni:
+     * Floor 0→1 hole: NE quadrant, x∈[3.5,6.5], y∈[3.5,6.5] (3x3)
+     * Floor 1→2 hole: SW quadrant, x∈[-6.5,-3.5], y∈[-6.5,-3.5] (3x3)
+   - Alan 2.25x büyüdü, tesadüfen üstünden geçme şansı ~2x.
+   - SDF link'ler yeniden boyutlandırıldı: floor*_left/right/mid_s/mid_n
+     panelleri tam delik etrafını saracak şekilde.
+   - Env docstring güncellendi.
+
+3. **Eski runs/ppo/ koruma kararı.** v1 (eski reward + 2x2 delik + ent_coef
+   0.005) sonuçları silinmedi:
+   * `runs/ppo/checkpoints/` → 140k, 248k, 268-288k step'ler hâlâ orada
+   * `runs/ppo/tb/` → TensorBoard logları
+   * Yeni v2 run yeni klasöre yazıyor: `runs/ppo_v2_explore/`
+   - Hocaya rapor gösterirken: "v1'i denedik, drone spawn'da takıldı (eval
+     videosu + TB grafiği). Reward fonksiyonunu rölelendirip + entropy
+     bumpladık + SDF delikleri büyüttük → v2'de şu sonuca ulaştık."
+     Bu iterasyonlu deney narratif raporda artı.
+
+4. **Yaml: `resume_from: null`**, output paths'ı `runs/ppo_v2_explore/`'a
+   çevirdik. `total_timesteps: 2000000` aynı (artık absolute target,
+   train_ppo.py fix'i sayesinde).
+
+#### v2 run plan'ı
+
+Saat 11:05 başladı: sıfırdan 2M step, ~12-14 saat (sıfırdan başlamak
++~%20 yavaş çünkü ilk 50k random eylemlerle çok episode terminate ediyor).
+Berker eve giderken çalışıyor olacak; checkpoint her 10k step'te,
+overwrite-safe.

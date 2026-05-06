@@ -55,8 +55,10 @@
     <!-- ============================================================== -->
     <!-- 3-storey building. Each floor is 16x16 m, 2.5 m tall.          -->
     <!-- Total height: 7.5 m. Outer walls span the full height.         -->
-    <!-- Floor 0 -> 1 hole: NE quadrant, 4..6 in x, 4..6 in y.          -->
-    <!-- Floor 1 -> 2 hole: SW quadrant, -6..-4 in x, -6..-4 in y.      -->
+    <!-- Floor 0 -> 1 hole: NE quadrant, 3.5..6.5 in x, 3.5..6.5 in y.  -->
+    <!-- Floor 1 -> 2 hole: SW quadrant, -6.5..-3.5 in x, -6.5..-3.5 y. -->
+    <!-- (3 m x 3 m holes; enlarged from 2x2 so the agent can find them -->
+    <!--  during random exploration.)                                    -->
     <!-- Internal walls per floor: vertical at x=0 and horizontal at    -->
     <!-- y=0, each with a 2 m door gap centered at the origin.          -->
     <!-- ============================================================== -->
@@ -89,59 +91,63 @@
           <material><ambient>0.7 0.7 0.7 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material></visual>
       </link>
 
-      <!-- ============== Floor 1 (z = 2.5), hole at NE 4..6, 4..6 ============== -->
-      <!-- left big slab: x in [-8,4] -->
+      <!-- ============== Floor 1 (z = 2.5), hole at NE 3.5..6.5, 3.5..6.5 ============== -->
+      <!-- left big slab: x in [-8, 3.5] -->
       <link name="floor1_left">
-        <pose>-2 0 2.5 0 0 0</pose>
-        <collision name="c"><geometry><box><size>12 16 0.1</size></box></geometry></collision>
-        <visual name="v"><geometry><box><size>12 16 0.1</size></box></geometry>
+        <pose>-2.25 0 2.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>11.5 16 0.1</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>11.5 16 0.1</size></box></geometry>
           <material><ambient>0.55 0.45 0.35 1</ambient><diffuse>0.6 0.5 0.4 1</diffuse></material></visual>
       </link>
-      <!-- right thin slab: x in [6,8] -->
+      <!-- right thin slab: x in [6.5, 8] -->
       <link name="floor1_right">
-        <pose>7 0 2.5 0 0 0</pose>
-        <collision name="c"><geometry><box><size>2 16 0.1</size></box></geometry></collision>
-        <visual name="v"><geometry><box><size>2 16 0.1</size></box></geometry>
+        <pose>7.25 0 2.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>1.5 16 0.1</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>1.5 16 0.1</size></box></geometry>
           <material><ambient>0.55 0.45 0.35 1</ambient><diffuse>0.6 0.5 0.4 1</diffuse></material></visual>
       </link>
-      <!-- mid south of hole: x in [4,6], y in [-8,4] -->
+      <!-- mid south of hole: x in [3.5, 6.5], y in [-8, 3.5] -->
       <link name="floor1_mid_s">
-        <pose>5 -2 2.5 0 0 0</pose>
-        <collision name="c"><geometry><box><size>2 12 0.1</size></box></geometry></collision>
-        <visual name="v"><geometry><box><size>2 12 0.1</size></box></geometry>
+        <pose>5 -2.25 2.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>3 11.5 0.1</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>3 11.5 0.1</size></box></geometry>
           <material><ambient>0.55 0.45 0.35 1</ambient><diffuse>0.6 0.5 0.4 1</diffuse></material></visual>
       </link>
-      <!-- mid north of hole: x in [4,6], y in [6,8] -->
+      <!-- mid north of hole: x in [3.5, 6.5], y in [6.5, 8] -->
       <link name="floor1_mid_n">
-        <pose>5 7 2.5 0 0 0</pose>
-        <collision name="c"><geometry><box><size>2 2 0.1</size></box></geometry></collision>
-        <visual name="v"><geometry><box><size>2 2 0.1</size></box></geometry>
+        <pose>5 7.25 2.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>3 1.5 0.1</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>3 1.5 0.1</size></box></geometry>
           <material><ambient>0.55 0.45 0.35 1</ambient><diffuse>0.6 0.5 0.4 1</diffuse></material></visual>
       </link>
 
-      <!-- ============== Floor 2 (z = 5.0), hole at SW -6..-4, -6..-4 ============== -->
+      <!-- ============== Floor 2 (z = 5.0), hole at SW -6.5..-3.5, -6.5..-3.5 ============== -->
+      <!-- right big slab: x in [-3.5, 8] -->
       <link name="floor2_right">
-        <pose>2 0 5.0 0 0 0</pose>
-        <collision name="c"><geometry><box><size>12 16 0.1</size></box></geometry></collision>
-        <visual name="v"><geometry><box><size>12 16 0.1</size></box></geometry>
+        <pose>2.25 0 5.0 0 0 0</pose>
+        <collision name="c"><geometry><box><size>11.5 16 0.1</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>11.5 16 0.1</size></box></geometry>
           <material><ambient>0.5 0.5 0.6 1</ambient><diffuse>0.55 0.55 0.65 1</diffuse></material></visual>
       </link>
+      <!-- left thin slab: x in [-8, -6.5] -->
       <link name="floor2_left">
-        <pose>-7 0 5.0 0 0 0</pose>
-        <collision name="c"><geometry><box><size>2 16 0.1</size></box></geometry></collision>
-        <visual name="v"><geometry><box><size>2 16 0.1</size></box></geometry>
+        <pose>-7.25 0 5.0 0 0 0</pose>
+        <collision name="c"><geometry><box><size>1.5 16 0.1</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>1.5 16 0.1</size></box></geometry>
           <material><ambient>0.5 0.5 0.6 1</ambient><diffuse>0.55 0.55 0.65 1</diffuse></material></visual>
       </link>
+      <!-- mid south of hole: x in [-6.5, -3.5], y in [-8, -6.5] -->
       <link name="floor2_mid_s">
-        <pose>-5 -7 5.0 0 0 0</pose>
-        <collision name="c"><geometry><box><size>2 2 0.1</size></box></geometry></collision>
-        <visual name="v"><geometry><box><size>2 2 0.1</size></box></geometry>
+        <pose>-5 -7.25 5.0 0 0 0</pose>
+        <collision name="c"><geometry><box><size>3 1.5 0.1</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>3 1.5 0.1</size></box></geometry>
           <material><ambient>0.5 0.5 0.6 1</ambient><diffuse>0.55 0.55 0.65 1</diffuse></material></visual>
       </link>
+      <!-- mid north of hole: x in [-6.5, -3.5], y in [-3.5, 8] -->
       <link name="floor2_mid_n">
-        <pose>-5 2 5.0 0 0 0</pose>
-        <collision name="c"><geometry><box><size>2 12 0.1</size></box></geometry></collision>
-        <visual name="v"><geometry><box><size>2 12 0.1</size></box></geometry>
+        <pose>-5 2.25 5.0 0 0 0</pose>
+        <collision name="c"><geometry><box><size>3 11.5 0.1</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>3 11.5 0.1</size></box></geometry>
           <material><ambient>0.5 0.5 0.6 1</ambient><diffuse>0.55 0.55 0.65 1</diffuse></material></visual>
       </link>
 
