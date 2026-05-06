@@ -39,4 +39,4 @@ train:
   log_dir: ./runs/ppo_v4_low_ent
   ckpt_dir: ./runs/ppo_v4_low_ent/checkpoints
   tb_log: ./runs/ppo_v4_low_ent/tb
-  resume_from: ./runs/ppo_v3_floors/checkpoints/ppo_drone_440000_steps.zip
+  resume_from: null     # v4 fresh start (idle decay + low ent_coef = farklı reward landscape, eski policy fayda etmez)
