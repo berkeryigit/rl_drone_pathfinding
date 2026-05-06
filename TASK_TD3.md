@@ -114,3 +114,119 @@ tensorboard --logdir runs/td3/tb                  # metrics
 - Eval video / GIF (3-5 episode), keşfedilen voxel sayısı, ulaşılan kat sayısı
 - Hyperparameter tablosu + tasarım notları (neden TD3, action noise stratejisi)
 - PPO/DQN/A2C(A3C) ile karşılaştırma satırı (rapor için ortak tablo)
+
+---
+
+## ⚠ ZORUNLU: 250k step'te ara test (Berker'in PPO'da yaşadığı tuzak)
+
+**Hikaye:** PPO branch'inde 290k step eğittik, sonra eval'de drone spawn
+odasından çıkamadığını gördük. Policy "hover ve duvarlardan kaç" local
+optimum'una sıkışmıştı. Geri dönüp **reward fonksiyonunu büyütüp + entropy
+artırıp + SDF deliklerini büyütüp** sıfırdan başladık. **Bu hatayı tekrar
+yapma — eğitimi sonuna kadar koşturmadan ara kontrol et.**
+
+### Adım 1: 250k checkpoint'e ulaşınca eğitimi DURDUR (kapatma!)
+
+Terminalde train.sh çalışıyorsa **Ctrl-C** bas. `train_td3.py`'de PPO'daki
+gibi try/except KeyboardInterrupt → `td3_drone_interrupted.zip` save
+mantığını kurmalısın (PPO şablonundan kopyala, [`agents/train_ppo.py`](ros2_ws/src/rl_drone_pathfinding/rl_drone_pathfinding/agents/train_ppo.py) bak).
+
+```bash
+# Eğitim arka planda ise:
+pgrep -f train_td3
+kill -INT <PID>      # SIGINT, KeyboardInterrupt'ı tetikler, save eder
+```
+
+### Adım 2: GUI'li eval (drone'u görsel olarak izle)
+
+```bash
+SIM_HEADLESS=0 ./scripts/eval.sh \
+    runs/td3/checkpoints/td3_drone_250000_steps.zip 10
+```
+
+10 episode boyunca Gazebo penceresinde drone'u izle. Şuna bak:
+
+| Gözlem | Anlamı |
+|---|---|
+| Spawn odasından çıkmıyor, hover/dön loop'una girmiş | **Local optimum (PPO v1 senaryosu).** Action noise yetersiz veya reward sinyali zayıf. |
+| Sürekli duvara dalıp ölüyor | **Action noise çok yüksek.** sigma'yı düşür. |
+| 1-2 oda dolaşıyor ama kapıyı bulamıyor | **Exploration yeterli ama discovery sinyali zayıf.** Reward shaping veya gamma tweak. |
+| Kata atlıyor (z>2.5'a çıkıyor) | **Bravo.** Devam ettir, hedefi 500k+'a çıkar. |
+
+### Adım 3: Beğenmediysen — TD3'e özgü ayar setleri
+
+**A) Drone spawn'da takıldıysa (PPO v1 senaryosu) — exploration eksik:**
+```yaml
+# configs/td3.yaml
+td3:
+  ...
+  learning_starts: 20000   # 10k → 20k: replay buffer'ı daha çok rastgele eylemle doldur
+  # train_td3.py'de:
+  # action_noise sigma 0.1 → 0.3 (3x)
+  # target_policy_noise 0.2 → 0.3
+```
+
+**B) Sürekli ölüyorsa — exploration fazla:**
+```yaml
+td3:
+  ...
+  # train_td3.py'de:
+  # action_noise sigma 0.1 → 0.05 (yarısı)
+  learning_rate: 1.0e-3 → 5.0e-4   # daha temkinli güncelleme
+```
+
+**C) Discovery sinyali yetersiz görünüyorsa (kapıyı görüp geçmiyorsa):**
+
+Berker PPO'da reward shaping yaptı — env code değişmek zorundaydı. Sen
+**aynı env'i kullan ama TD3'e özgü gamma'yı düşür** (yakın horizon'a odaklan):
+
+```yaml
+td3:
+  gamma: 0.99 → 0.95   # effective horizon ~100 → ~20 step, yakın hedefler kıymetlenir
+```
+
+> ⚠ Env reward fonksiyonunu DEĞİŞTİRİRSEN, PPO branch'i ile karşılaştırılamaz
+> hâle gelir. **Tercihen env'e dokunma**; sadece kendi `td3.yaml`'ını ve
+> `train_td3.py` içindeki action_noise'u oynat. Eğer env değişikliği şartsa,
+> Berker ile (algo/ppo branch sahibi) konuşup ortak değişiklik yapın.
+
+### Adım 4: Resume veya baştan başlat
+
+**Mevcut policy üstüne devam (parametreyi sadece tweakliyorsan):**
+```yaml
+# configs/td3.yaml
+train:
+  resume_from: ./runs/td3/checkpoints/td3_drone_250000_steps.zip
+  total_timesteps: 500000   # absolute target (train_td3.py'de absolute math eklemen gerek, PPO örneğine bak)
+```
+Sonra: `./scripts/train_td3.sh configs/td3.yaml`
+
+**Sıfırdan baştan (action_noise/lr büyük tweak yaptıysan, eski Q net stale olur):**
+```yaml
+train:
+  resume_from: null
+  total_timesteps: 500000
+  log_dir: ./runs/td3_v2     # yeni klasör, eski v1 sonuçlarını koru
+  ckpt_dir: ./runs/td3_v2/checkpoints
+  tb_log: ./runs/td3_v2/tb
+```
+
+### Adım 5: Kayıt tut
+
+`fixes.txt`'ye ne denedin/sonuç ne oldu yaz. `docs/PROGRESS.md`'ye TD3
+bölümü aç. Örnek format için Berker'in PPO girdilerine bak.
+
+---
+
+## Hızlı referans: PPO branch'inde ne yapıldı
+
+Detaylı: `git checkout algo/ppo && cat docs/PROGRESS.md` (en alttaki
+2026-05-06 bölümü).
+
+Özetle:
+- Run 1: sıfırdan 0→140k, baseline. Çalışıyordu.
+- Run 2: 140k→290k resume. Eval'de drone spawn odasında takıldığı görüldü.
+- Run 3 (v2): reward 3x büyütüldü (`+1→+3`, `+15→+50`, `+25→+100`),
+  ent_coef 0.005→0.02, SDF delikleri 2x2→3x3, baştan başlatıldı.
+- Algoritma seçimine özgü tuzaklar farklı (PPO entropy bonus oynar, TD3
+  action noise oynar) ama **"ara checkpoint'te eval et"** prensibi ortak.
