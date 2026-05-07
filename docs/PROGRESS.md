@@ -494,3 +494,27 @@ olarak kabul eder, her training step'te `progress_remaining` ile çağırır.
 Saat 06:38'de başladı, fresh start. Beklenti: peak v6 seviyesinde veya
 biraz altında ulaşır ama sonrası DÜŞÜŞSÜZ — ya plateau ya da yavaş
 yukarı. lr decay'in tipik faydası "peak'i bozmadan koruma."
+
+### Autonomous loop bitiş (saat 08:36)
+
+Loop durduruldu (saat 08:30 cutoff geçti, CronDelete 25ab885e). Gece
+boyunca 3 cron iterasyonu çalıştı:
+
+- **iter 1 (04:36)**: v5 → v6 (VecNormalize). En etkili müdahale; reward
+  ortalaması +45 → +95'e çıktı, smooth eğri.
+- **iter 2 (06:36)**: v6 → v7 (linear lr decay). Marjinal iyileşme;
+  peak korundu, 220k civarı +90.
+- **iter 3 (08:36)**: stop cutoff, v7 durduruldu (221k step).
+
+v7'nin son hali: 221k step, ep_rew_mean ~+66 (anlık), peak ~+105 (210k).
+v6'ya göre daha smooth ama büyük bir sıçrama yok.
+
+#### Sabah uyandığında — öneriler
+
+1. **Mevcut en iyi policy'yi eval et**: `runs/ppo_v6_normalized/checkpoints/ppo_drone_220000_steps.zip` (v6'nın peak'i). VecNormalize stats:
+   `runs/ppo_v6_normalized/checkpoints/vec_normalize.pkl` — eval script bunu yüklemen lazım.
+2. **v7'yi 2M'e devam ettir**: lr decay zaten orada, devam etmek kolay. resume_from güncelle.
+3. **v8 dene** (eğer eval kötüyse): playbook'taki sonraki adımlar — bigger network [256,256] veya reward magnitude reduction (kat 200→100, oda 50→30).
+
+GitHub'da tüm grafikler güncel: `docs/figures/`. README için "v1→v7
+ablation table" zaten hazır (PROGRESS.md, fixes.txt).

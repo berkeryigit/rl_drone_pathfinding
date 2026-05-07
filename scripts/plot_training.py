@@ -27,6 +27,7 @@ VERSIONS = {
     "v4 ent_coef 0.001 + idle decay": REPO / "runs/ppo_v4_low_ent/tb/PPO_1",
     "v5 PPO stabilization (clip 0.1, ep 5, batch 256)": REPO / "runs/ppo_v5_stable/tb/PPO_1",
     "v6 VecNormalize (obs+reward, clip 10)": REPO / "runs/ppo_v6_normalized/tb/PPO_1",
+    "v7 + linear lr decay 3e-4->3e-5": REPO / "runs/ppo_v7_lrdecay/tb/PPO_1",
 }
 
 METRICS = [

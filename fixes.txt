@@ -12,6 +12,22 @@ HATA  : ...
 NEDEN : ...
 
 ================================================================
+2026-05-07 — Autonomous loop bitiş (saat 08:36, v7 final state)
+================================================================
+
+---
+2026-05-07 | autonomous loop özet
+SONUÇ  : 3 iterasyon çalıştı (04:36, 06:36, 08:36). En etkili müdahale
+         iter 1'deki VecNormalize (v5 +45 → v6 +95). lr decay
+         marjinal kazandırdı. v7 221k'da durdu.
+NOT    : Sabah uyandığında 3 yol var:
+         (1) v6/220k peak policy eval et (vec_normalize.pkl yükle)
+         (2) v7'yi 2M'e devam ettir (resume_from update)
+         (3) v8: bigger network [256,256] veya reward magnitude reduction.
+GRAFİK : docs/figures/ — tüm versiyonlar (v1-v7) tek ekranda.
+         GitHub: https://github.com/berkeryigit/rl_drone_pathfinding/tree/algo/ppo/docs/figures
+
+================================================================
 2026-05-07 — Eğitim run v7: linear lr decay (autonomous loop iter 2)
 ================================================================
 
