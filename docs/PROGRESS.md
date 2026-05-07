@@ -411,3 +411,49 @@ olduğumuz step sayısı), sonra durup eval + plot + (gerekirse) v6.
 Beklenti: peak biraz daha geç gelir ama daha smooth, düşüşsüz / az
 varyanslı plateau. Eğer hâlâ osilasyon varsa, v6'da reward
 normalization (VecNormalize) veya lr schedule eklemek gerekecek.
+
+### v5 → v6 pivot: VecNormalize wrapper (saat 04:36, autonomous loop)
+
+#### Veri (v5 @ 182k step)
+
+v5 PPO mechanics değişiklikleri (clip 0.1, ep 5, batch 256, gae 0.9)
+osilasyonu çözmedi:
+
+- Reward 80k civarı +85 peak yaptı, sonra **v4 ile özdeş yüksek-frekans
+  osilasyon** (+25 ile +80 arası), 180k'da ortalama ~+45.
+- Entropy sağlıklı: std ~0.7 sabit. v3'teki explosion problemi yok, ent_coef=0.001 doğru.
+- v4 ve v5 reward eğrileri reward_curve_summary.png'de neredeyse üst üste çakışıyor.
+
+#### Sebep teşhisi
+
+PPO update mechanics değil, **reward magnitude varyansı** sorun:
+- Idle -0.1, çarpışma -10, voxel +3, oda +50, kat +200
+- Bir episode'da kat geçişi olursa +200, olmazsa +50/+150 → value targets
+  ekstrem değişken
+- value_loss spike → policy gradient noisy → osilasyon
+
+v5'te denenen 4 mechanics tweak'i bu varyansı tüketmedi çünkü hepsi
+gradient ölçeğine göre relatif (clip relative to current policy etc.).
+Reward'ı **mutlak terimle ölçeklendirmek** lazım.
+
+#### v6 müdahaleleri
+
+| Param | v5 | v6 | Neden |
+|---|---|---|---|
+| `VecNormalize` | yok | **enabled** | Running mean/std ile reward + obs normalize, value targets unit-scale |
+| `clip_reward` | — | **10.0** | Single-step reward clipped ±10, kat +200 outlier'ı sönümle |
+| `ent_coef` | 0.001 | 0.001 | Tutuldu (v4'te çözmüştü) |
+| Diğer PPO | aynı | aynı | clip 0.1, ep 5, batch 256, gae 0.9 |
+| Çıktı | runs/ppo_v5_stable | **runs/ppo_v6_normalized** | v5 sonuçları korundu |
+
+train_ppo.py'de yeni `vec_normalize` yaml block okunuyor; aktifse
+`VecNormalize(vec_env, ...)` wrap'liyor. Eğitim sonunda
+`vec_normalize.pkl` da save ediliyor (eval için gerekli).
+
+#### v6 run plan'ı
+
+Saat 04:38'de başladı, fresh start. ~2 saat sonra autonomous cron loop
+yine durup v7 kararı verecek. Beklenti: reward smooth-ish bir trajectory
+izler, peak'ten sonra sürekli oscillation yerine daha düz bir öğrenme
+eğrisi. ep_rew_mean'in mutlak değeri normalize edildiği için BAŞKA
+ölçek ama trend net görünür.

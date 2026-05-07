@@ -29,15 +29,20 @@ train:
   # from its loaded num_timesteps). Otherwise it's the from-scratch budget.
   total_timesteps: 2000000
   save_freq: 10000
-  # v5 = v4 PPO update stabilization. Same env (idle decay + multi-floor
-  # spawn + 3x rewards), same low ent_coef. Only PPO update mechanics
-  # changed: tighter clip_range, smaller n_epochs, larger batch, lower
-  # gae_lambda. Goal: kill the "fast peak then regress/oscillate" pattern
-  # we saw in v3 (440k peak +95 -> 1.45M +45) and v4 (60k peak +85 ->
-  # 310k osc +30/+85, mean +50).
-  # v1 -> runs/ppo/, v2 -> runs/ppo_v2_explore/, v3 -> runs/ppo_v3_floors/,
-  # v4 -> runs/ppo_v4_low_ent/, v5 -> runs/ppo_v5_stable/.
-  log_dir: ./runs/ppo_v5_stable
-  ckpt_dir: ./runs/ppo_v5_stable/checkpoints
-  tb_log: ./runs/ppo_v5_stable/tb
-  resume_from: null     # fresh start: PPO mechanics changed enough that v4's policy/value would drift (training data distribution shifts under new clip_range/n_epochs).
+  # v6 = v5 PPO mechanics + VecNormalize wrapper for obs+reward. v5 plot
+  # showed clip_range/epochs/batch/gae changes did NOT help — same fast
+  # peak (~+85 at 80k) then high-frequency oscillation (+25/+80) thru
+  # 180k. Root cause: reward magnitude variance across episodes (kat +200
+  # nadir, çoğu +50 oda veya idle) → value targets ekstrem → policy
+  # gradient stabil olamıyor. VecNormalize running mean/std + clip_reward=10
+  # makes value loss unit-scale and caps single-step outliers.
+  # v1 ppo, v2 explore, v3 floors, v4 low_ent, v5 stable, v6 normalized.
+  log_dir: ./runs/ppo_v6_normalized
+  ckpt_dir: ./runs/ppo_v6_normalized/checkpoints
+  tb_log: ./runs/ppo_v6_normalized/tb
+  resume_from: null     # fresh: VecNormalize running stats start at 0; resuming would mismatch reward scale.
+  vec_normalize:
+    enabled: true
+    norm_obs: true
+    norm_reward: true
+    clip_reward: 10.0   # normalized reward clipped to ±10 (most signal preserved, only outlier kat +200 spikes get clipped)

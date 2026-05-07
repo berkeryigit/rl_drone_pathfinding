@@ -9,7 +9,7 @@ import yaml
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
 from rl_drone_pathfinding.envs import DroneExplorationEnv
 
@@ -47,6 +47,27 @@ def main(argv=None):
     tb_log = Path(tr_cfg["tb_log"]); tb_log.mkdir(parents=True, exist_ok=True)
 
     vec_env = DummyVecEnv([_make_env(env_cfg)])
+
+    # v6: VecNormalize for obs + reward normalization. Reward magnitudes
+    # in this env span ~3 orders of magnitude (idle -0.1 ... floor +200),
+    # which gave value-loss spikes and reward oscillation in v3-v5. Running
+    # mean/std normalization makes value targets unit-scale and clip_reward
+    # caps single-step outliers. Toggle from yaml so older configs still
+    # reproduce.
+    vn_cfg = tr_cfg.get("vec_normalize", {}) or {}
+    use_vn = bool(vn_cfg.get("enabled", False))
+    if use_vn:
+        vec_env = VecNormalize(
+            vec_env,
+            norm_obs=bool(vn_cfg.get("norm_obs", True)),
+            norm_reward=bool(vn_cfg.get("norm_reward", True)),
+            clip_reward=float(vn_cfg.get("clip_reward", 10.0)),
+            gamma=float(ppo_cfg.get("gamma", 0.99)),
+        )
+        print(f"[train_ppo] VecNormalize enabled: norm_obs="
+              f"{vn_cfg.get('norm_obs', True)}, norm_reward="
+              f"{vn_cfg.get('norm_reward', True)}, "
+              f"clip_reward={vn_cfg.get('clip_reward', 10.0)}")
 
     resuming = bool(tr_cfg.get("resume_from"))
     if resuming:
@@ -115,6 +136,10 @@ def main(argv=None):
         print(f"\n[train_ppo] interrupted -> saving current policy to {final}")
     model.save(str(final))
     print(f"[train_ppo] saved model to {final}")
+    if use_vn:
+        vn_path = ckpt_dir / "vec_normalize.pkl"
+        vec_env.save(str(vn_path))
+        print(f"[train_ppo] saved VecNormalize stats to {vn_path}")
 
 
 if __name__ == "__main__":

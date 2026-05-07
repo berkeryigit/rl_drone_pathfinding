@@ -12,6 +12,31 @@ HATA  : ...
 NEDEN : ...
 
 ================================================================
+2026-05-07 — Eğitim run v6: VecNormalize wrapper (autonomous loop)
+================================================================
+
+---
+2026-05-07 | configs/ppo.yaml + agents/train_ppo.py
+HATA   : v5 PPO update mechanics değişiklikleri (clip 0.1, ep 5, batch
+         256, gae 0.9) reward osilasyonunu çözmedi. 80k'da +85 peak,
+         sonra v4 ile ÖZDEŞ desen: +25/+80 yüksek-frekans osilasyon,
+         180k'da ortalama +45.
+ÇÖZÜM  : v6 = VecNormalize wrapper (obs+reward normalize, clip_reward=10).
+         train_ppo.py'ye VecNormalize import + yaml'dan toggle. Yaml'a
+         vec_normalize: {enabled: true, ...} block. Output
+         runs/ppo_v6_normalized/. Diğer PPO params v5'ten korundu.
+NEDEN  : Sorun PPO update mechanics değil, reward magnitude varyansı:
+         idle -0.1, çarpışma -10, voxel +3, oda +50, kat +200 — 3 büyüklük
+         derecesi fark. Episode-to-episode value targets ekstrem değişken
+         (kat geçişi varsa +200, yoksa +50) → value_loss spike → policy
+         gradient noisy → osilasyon. VecNormalize running mean/std ile
+         reward'ı unit-scale'e getirip clip_reward=10 outlier'ları
+         sönümlüyor. v5'in 4 mechanics tweak'i bunu çözemedi çünkü
+         hepsi gradient ölçeğine relatif; absolute reward scaling lazımdı.
+GRAFİK : docs/figures/ — v5 dahil 4 PNG güncellendi. v4-v5 reward eğrileri
+         neredeyse üst üste, v6 farkı sonraki cron iterasyonunda görünecek.
+
+================================================================
 2026-05-07 — Eğitim run v5: PPO update stabilization (350k hedefli)
 ================================================================
 
