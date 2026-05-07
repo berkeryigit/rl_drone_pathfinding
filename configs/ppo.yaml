@@ -46,7 +46,11 @@ train:
   log_dir: ./runs/ppo_v7_lrdecay
   ckpt_dir: ./runs/ppo_v7_lrdecay/checkpoints
   tb_log: ./runs/ppo_v7_lrdecay/tb
-  resume_from: null     # fresh: VecNormalize running stats start at 0; resuming would mismatch reward scale.
+  # Default: resume v7 from where the autonomous loop stopped (221k step,
+  # 2026-05-07 sabah). `./scripts/train.sh` direkt çalıştırırsan v7 kaldığı
+  # yerden 2M'e devam eder. Diğer seçenekler için configs/ppo.yaml'i edit
+  # et (eval için: scripts/eval.sh runs/ppo_v6_normalized/checkpoints/ppo_drone_220000_steps.zip).
+  resume_from: ./runs/ppo_v7_lrdecay/checkpoints/ppo_drone_interrupted.zip
   vec_normalize:
     enabled: true
     norm_obs: true
