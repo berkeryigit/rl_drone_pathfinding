@@ -19,6 +19,22 @@ def _load_config(path: str) -> dict:
         return yaml.safe_load(f)
 
 
+def _build_lr(ppo_cfg: dict):
+    """Return a learning_rate value or callable schedule per yaml config."""
+    base = float(ppo_cfg["learning_rate"])
+    sched = ppo_cfg.get("lr_schedule")
+    if sched is None or sched == "constant":
+        return base
+    if sched == "linear":
+        final = float(ppo_cfg.get("lr_final", base * 0.1))
+
+        def f(progress_remaining: float) -> float:
+            # progress_remaining: 1.0 at start -> 0.0 at end
+            return final + progress_remaining * (base - final)
+        return f
+    raise ValueError(f"unknown lr_schedule={sched!r}")
+
+
 def _make_env(env_cfg: dict):
     def _factory():
         env = DroneExplorationEnv(
@@ -84,7 +100,7 @@ def main(argv=None):
         model = PPO(
             policy=ppo_cfg["policy"],
             env=vec_env,
-            learning_rate=float(ppo_cfg["learning_rate"]),
+            learning_rate=_build_lr(ppo_cfg),
             n_steps=int(ppo_cfg["n_steps"]),
             batch_size=int(ppo_cfg["batch_size"]),
             n_epochs=int(ppo_cfg["n_epochs"]),

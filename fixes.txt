@@ -12,6 +12,28 @@ HATA  : ...
 NEDEN : ...
 
 ================================================================
+2026-05-07 — Eğitim run v7: linear lr decay (autonomous loop iter 2)
+================================================================
+
+---
+2026-05-07 | configs/ppo.yaml + agents/train_ppo.py
+HATA   : v6 VecNormalize ÇOK iyi çalıştı — smooth eğri, peak +110
+         (v3-v5 ortalama +45, v6 ~+95, 2x improvement). AMA hâlâ
+         peak-then-regress: 150k +110 → 235k +85 düşüş.
+ÇÖZÜM  : v7 = v6 + linear lr decay 3e-4 → 3e-5. train_ppo.py'ye
+         _build_lr() helper, yaml'dan lr_schedule + lr_final oku,
+         callable schedule olarak PPO'ya geçir. Output
+         runs/ppo_v7_lrdecay/. Diğer params v6'dan korundu.
+NEDEN  : Sabit lr=3e-4 ile policy converge ettikten sonra hâlâ büyük
+         güncelleme yapılıyor → en iyi politikayı kemiriyor (peak'ten
+         düşüş). Linear decay end-of-training'de küçük lr ile fine-tune
+         yapar, peak korunur. Klasik PPO best practice; SB3 docs da
+         önerir reward osc/peak-regress için.
+GRAFİK : docs/figures/ — v6 dahil 4 PNG güncellendi. v6 reward eğrisi
+         smooth ve net en yüksek peak; entropy_loss/std grafiklerinde
+         v4-v5-v6 üst üste çakışıyor (entropy fix sürdürülüyor).
+
+================================================================
 2026-05-07 — Eğitim run v6: VecNormalize wrapper (autonomous loop)
 ================================================================
 

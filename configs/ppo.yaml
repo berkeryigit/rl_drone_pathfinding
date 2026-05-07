@@ -10,6 +10,13 @@ env:
 ppo:
   policy: MlpPolicy
   learning_rate: 3.0e-4
+  # v7: linear lr decay 3e-4 -> 3e-5 across the run. v6 reached the
+  # highest peak so far (+110 raw reward at 150k) but still drifted to
+  # +85 by 235k. Constant lr keeps making large updates after the policy
+  # has converged on a near-optimum, eroding it. Linear decay shrinks
+  # the per-step shift as we approach the end so peak is preserved.
+  lr_schedule: linear
+  lr_final: 3.0e-5
   n_steps: 2048
   batch_size: 256       # v5: 64->256. Larger minibatch -> lower-variance gradient estimate -> more stable updates. v4 reward had +30/+85 oscillation post-peak; this kills the noise.
   n_epochs: 5           # v5: 10->5. Half the gradient passes per rollout, less per-rollout overfit, smoother trajectory.
@@ -29,17 +36,16 @@ train:
   # from its loaded num_timesteps). Otherwise it's the from-scratch budget.
   total_timesteps: 2000000
   save_freq: 10000
-  # v6 = v5 PPO mechanics + VecNormalize wrapper for obs+reward. v5 plot
-  # showed clip_range/epochs/batch/gae changes did NOT help — same fast
-  # peak (~+85 at 80k) then high-frequency oscillation (+25/+80) thru
-  # 180k. Root cause: reward magnitude variance across episodes (kat +200
-  # nadir, çoğu +50 oda veya idle) → value targets ekstrem → policy
-  # gradient stabil olamıyor. VecNormalize running mean/std + clip_reward=10
-  # makes value loss unit-scale and caps single-step outliers.
-  # v1 ppo, v2 explore, v3 floors, v4 low_ent, v5 stable, v6 normalized.
-  log_dir: ./runs/ppo_v6_normalized
-  ckpt_dir: ./runs/ppo_v6_normalized/checkpoints
-  tb_log: ./runs/ppo_v6_normalized/tb
+  # v7 = v6 + linear lr decay. v6 VecNormalize çalıştı (smooth eğri,
+  # peak +110 = v3-v5'in 2x'i) ama hâlâ peak-then-regress var (235k'da
+  # +85'e düştü). Constant lr 3e-4 policy converge ettikten sonra hâlâ
+  # büyük güncelleme yapıyor → en iyi politikayı kemiriyor. Linear decay
+  # 3e-4 -> 3e-5 ile peak korunur.
+  # v1 ppo, v2 explore, v3 floors, v4 low_ent, v5 stable, v6 normalized,
+  # v7 lrdecay.
+  log_dir: ./runs/ppo_v7_lrdecay
+  ckpt_dir: ./runs/ppo_v7_lrdecay/checkpoints
+  tb_log: ./runs/ppo_v7_lrdecay/tb
   resume_from: null     # fresh: VecNormalize running stats start at 0; resuming would mismatch reward scale.
   vec_normalize:
     enabled: true

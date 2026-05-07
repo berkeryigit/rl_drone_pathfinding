@@ -457,3 +457,40 @@ yine durup v7 kararı verecek. Beklenti: reward smooth-ish bir trajectory
 izler, peak'ten sonra sürekli oscillation yerine daha düz bir öğrenme
 eğrisi. ep_rew_mean'in mutlak değeri normalize edildiği için BAŞKA
 ölçek ama trend net görünür.
+
+### v6 → v7 pivot: linear lr decay (saat 06:36, autonomous loop)
+
+#### Veri (v6 @ 235k step)
+
+**v6 BÜYÜK BAŞARI**: VecNormalize çalıştı.
+- Smooth reward eğrisi (v3-v5'teki yüksek-frekans osilasyon yok)
+- Peak **+110** (~150k civarı) — tüm versiyonlar arasında en yüksek
+- v3-v5 ortalama ~+45 idi, v6 ~+95 (2x improvement)
+- Entropy sağlıklı (std ~0.7, entropy_loss -4 sabit)
+
+#### Sebep teşhisi
+
+İyileşme var ama hâlâ **peak-then-regress** paterni: 150k +110 → 235k
++85 düşüş. Klasik "policy converges to greedy then breaks down" — sabit
+lr=3e-4 ile policy converge ettikten sonra hâlâ büyük güncelleme
+yapılıyor, en iyi politikayı kemiriyor.
+
+#### v7 müdahaleleri
+
+| Param | v6 | v7 | Neden |
+|---|---|---|---|
+| `learning_rate` | 3.0e-4 sabit | **linear: 3e-4 → 3e-5** | Peak'i koru, fine-tune yap |
+| `lr_schedule` | yok | **linear** | Yeni yaml field |
+| `lr_final` | yok | **3.0e-5** | 10x küçük end-of-training lr |
+| Diğer | aynı | aynı | VecNormalize aktif, ent 0.001, clip 0.1 vs |
+| Çıktı | runs/ppo_v6_normalized | **runs/ppo_v7_lrdecay** | v6 sonuçları korundu |
+
+train_ppo.py'de yeni `_build_lr()` helper, `lr_schedule: linear` +
+`lr_final` yaml'dan okur, callable döner. SB3 PPO callable lr_schedule
+olarak kabul eder, her training step'te `progress_remaining` ile çağırır.
+
+#### v7 run plan'ı
+
+Saat 06:38'de başladı, fresh start. Beklenti: peak v6 seviyesinde veya
+biraz altında ulaşır ama sonrası DÜŞÜŞSÜZ — ya plateau ya da yavaş
+yukarı. lr decay'in tipik faydası "peak'i bozmadan koruma."
