@@ -17,7 +17,10 @@ ppo:
   # the per-step shift as we approach the end so peak is preserved.
   lr_schedule: linear
   lr_final: 3.0e-5
-  n_steps: 2048
+  # n_steps scaled so total data per update = n_steps * n_envs = 512 * 4 = 2048
+  # (same as single-env n_steps=2048). Keeps gradient-steps/update ≈ 40, avoids
+  # overfit to single rollout that caused reward collapse with n_steps=2048, n_envs=4.
+  n_steps: 512
   batch_size: 256       # v5: 64->256. Larger minibatch -> lower-variance gradient estimate -> more stable updates. v4 reward had +30/+85 oscillation post-peak; this kills the noise.
   n_epochs: 5           # v5: 10->5. Half the gradient passes per rollout, less per-rollout overfit, smoother trajectory.
   gamma: 0.99
@@ -43,8 +46,12 @@ train:
   log_dir: ./runs/ppo_v8_frontier
   ckpt_dir: ./runs/ppo_v8_frontier/checkpoints
   tb_log: ./runs/ppo_v8_frontier/tb
-  n_envs: 2
-  resume_from: ./runs/ppo_v8_frontier/checkpoints/ppo_drone_interrupted.zip
+  # n_envs=4: 4 paralel Gazebo instance → ~125 FPS (eski 37'den 3.4x).
+  # n_steps=512 ile total rollout = 512*4 = 2048 (n_envs=1, n_steps=2048 ile eşdeğer).
+  # Böylece gradient-steps/update = 2048/256 * n_epochs = 40 (sabit kalıyor).
+  # Resume n_envs=1→4 geçişinde gradient dağılım uyuşmazlığı oldu → fresh start.
+  n_envs: 4
+  resume_from: null
   vec_normalize:
     enabled: true
     norm_obs: true

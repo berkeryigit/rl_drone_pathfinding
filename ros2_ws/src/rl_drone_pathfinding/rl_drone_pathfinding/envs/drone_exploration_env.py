@@ -89,9 +89,12 @@ VZ_MAX = 0.4               # m/s vertical
 W_MAX = 1.5                # rad/s yaw
 COLLISION_DIST = 0.25
 NEAR_COLLISION_DIST = 0.5
-STEP_DT = 0.005           # wall-clock sleep per env step. Sim RTF≈7.6x means
-                          # lidar fires every ~2.6ms wall-time; 5ms sleep ensures
-                          # at least 1 fresh scan per step while staying tight.
+STEP_DT = 0.02            # wall-clock sleep per env step. RTF≈7.6 → 0.152 sim-sec
+                          # per step; drone at 0.6 m/s covers 0.091m per step which
+                          # is a natural resolution for 0.5m voxels. Reducing STEP_DT
+                          # below 0.01 shrinks per-update sim-experience faster than
+                          # it gains gradient updates → net loss. Keep at 0.02.
+IDLE_THRESHOLD = 30       # steps without a new voxel before idle penalty escalates.
 
 # Spawn pose candidates: 5 on floor 0 + 2 on floor 1 + 1 on floor 2 = 8.
 # Upper-floor spawns added at v3: with floor-0-only spawns the agent never
@@ -405,10 +408,10 @@ class DroneExplorationEnv(gym.Env):
             reward += 3.0
             self._steps_since_new_voxel = 0
         else:
-            if self._steps_since_new_voxel < 30:
+            if self._steps_since_new_voxel < IDLE_THRESHOLD:  # <30 mild search
                 reward += -0.1
             else:
-                reward += -0.5
+                reward += -0.5                                 # ≥30 room exhausted
             self._steps_since_new_voxel += 1
 
         if new_room:
