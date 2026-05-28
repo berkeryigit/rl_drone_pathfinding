@@ -3,13 +3,9 @@
 #   ./scripts/train.sh                            # default config (configs/ppo.yaml)
 #   ./scripts/train.sh configs/ppo_quick.yaml     # alt config
 #
-# Ne yapar:
-#   1) ROS + colcon install + venv'i source eder
-#   2) sim_launch.py'yi background'a alır, /scan ve /odom mesajını bekler
-#   3) train_ppo'yu ön planda koşturur (loglar terminale)
-#   4) Eğitim biter / Ctrl-C basılınca sim'i temiz şekilde indirir
-# `set -u` would fire on unbound vars inside ROS's setup.bash (e.g.
-# AMENT_TRACE_SETUP_FILES); we keep -e and pipefail but drop -u.
+# n_envs > 1 ise N Gazebo instance açılır. Her biri farklı ROS_DOMAIN_ID ve
+# GZ_PARTITION ile izole edilir (domain i → sim isimlendirmesi: sim<i>).
+# `set -u` would fire on unbound vars inside ROS's setup.bash; drop it.
 set -eo pipefail
 
 cd "$(dirname "$0")/.."
@@ -34,39 +30,53 @@ source ros2_ws/install/setup.bash
 }
 source .venv/bin/activate
 
-# --- bring up sim ------------------------------------------------------------
-SIM_LOG="/tmp/rl_drone_sim.log"
-pgrep -f "ros2 launch rl_drone_pathfinding sim_launch.py" >/dev/null && {
-    echo "[train.sh] sim zaten calisiyor; mevcut sim'e bagliyorum"
-    SIM_PID=""
-} || {
-    echo "[train.sh] sim_launch.py baslatiliyor..."
-    nohup ros2 launch rl_drone_pathfinding sim_launch.py > "$SIM_LOG" 2>&1 &
-    SIM_PID=$!
-    # /scan'i bekle (60s timeout)
-    echo "[train.sh] /scan'in publish edilmesi bekleniyor..."
-    for i in $(seq 1 30); do
-        if timeout 2 ros2 topic echo /scan --once --qos-reliability best_effort >/dev/null 2>&1; then
-            echo "[train.sh] sim hazir (${i}. denemede)"
+# --- read n_envs from config -------------------------------------------------
+N_ENVS=$(python3 -c "
+import yaml, sys
+c = yaml.safe_load(open('$CONFIG'))
+print(int(c.get('train', {}).get('n_envs', 1)))
+")
+echo "[train.sh] n_envs=$N_ENVS"
+
+# --- bring up N sim instances ------------------------------------------------
+declare -a SIM_PIDS=()
+
+for i in $(seq 0 $((N_ENVS-1))); do
+    SIM_LOG="/tmp/rl_drone_sim_${i}.log"
+    echo "[train.sh] sim $i baslatiliyor (ROS_DOMAIN_ID=$i GZ_PARTITION=sim$i)..."
+    ROS_DOMAIN_ID=$i GZ_PARTITION=sim$i \
+        nohup ros2 launch rl_drone_pathfinding sim_launch.py \
+        > "$SIM_LOG" 2>&1 &
+    SIM_PIDS+=($!)
+done
+
+# --- wait for all sims to be ready -------------------------------------------
+for i in $(seq 0 $((N_ENVS-1))); do
+    echo "[train.sh] sim $i icin /scan bekleniyor..."
+    ready=0
+    for j in $(seq 1 30); do
+        if ROS_DOMAIN_ID=$i timeout 2 ros2 topic echo /scan \
+               --once --qos-reliability best_effort >/dev/null 2>&1; then
+            echo "[train.sh] sim $i hazir (${j}. denemede)"
+            ready=1
             break
         fi
         sleep 2
-        if [[ $i -eq 30 ]]; then
-            echo "[train.sh] sim 60s'de hazir olmadi, log: $SIM_LOG" >&2
-            kill "$SIM_PID" 2>/dev/null || true
-            exit 1
-        fi
     done
-}
+    if [[ $ready -eq 0 ]]; then
+        echo "[train.sh] sim $i 60s'de hazir olmadi, log: /tmp/rl_drone_sim_${i}.log" >&2
+        exit 1
+    fi
+done
 
 cleanup() {
     echo
     echo "[train.sh] cleanup..."
-    if [[ -n "$SIM_PID" ]] && kill -0 "$SIM_PID" 2>/dev/null; then
-        kill "$SIM_PID" 2>/dev/null || true
-        sleep 2
-        kill -9 "$SIM_PID" 2>/dev/null || true
-    fi
+    for pid in "${SIM_PIDS[@]}"; do
+        kill "$pid" 2>/dev/null || true
+        sleep 1
+        kill -9 "$pid" 2>/dev/null || true
+    done
     pkill -f "gz sim" 2>/dev/null || true
     pkill -f "parameter_bridge" 2>/dev/null || true
 }

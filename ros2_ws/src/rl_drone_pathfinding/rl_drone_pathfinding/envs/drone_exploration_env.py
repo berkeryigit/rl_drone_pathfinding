@@ -89,9 +89,9 @@ VZ_MAX = 0.4               # m/s vertical
 W_MAX = 1.5                # rad/s yaw
 COLLISION_DIST = 0.25
 NEAR_COLLISION_DIST = 0.5
-STEP_DT = 0.02            # wall-clock sleep per env step. With sim RTF=0 and
-                          # lidar @ 50 Hz, sim_time advances >> wall_time so
-                          # one wall-step still gives plenty of new sensor data.
+STEP_DT = 0.005           # wall-clock sleep per env step. Sim RTF≈7.6x means
+                          # lidar fires every ~2.6ms wall-time; 5ms sleep ensures
+                          # at least 1 fresh scan per step while staying tight.
 
 # Spawn pose candidates: 5 on floor 0 + 2 on floor 1 + 1 on floor 2 = 8.
 # Upper-floor spawns added at v3: with floor-0-only spawns the agent never
@@ -224,6 +224,7 @@ class DroneExplorationEnv(gym.Env):
         drone_name: str = DEFAULT_DRONE_NAME,
         max_episode_steps: int = 1000,
         seed: Optional[int] = None,
+        env_id: int = 0,
     ):
         super().__init__()
         self.world_name = world_name
@@ -239,6 +240,12 @@ class DroneExplorationEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=-1.0, high=1.0, shape=(46,), dtype=np.float32
         )
+
+        # Isolate ROS2 domain and gz-transport partition per env instance so
+        # multiple parallel Gazebo sims on the same machine don't cross-talk.
+        import os as _os
+        _os.environ['ROS_DOMAIN_ID'] = str(env_id)
+        _os.environ['GZ_PARTITION'] = f'sim{env_id}'
 
         if not rclpy.ok():
             rclpy.init(args=None)

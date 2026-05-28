@@ -36,18 +36,19 @@ train:
   # from its loaded num_timesteps). Otherwise it's the from-scratch budget.
   total_timesteps: 2000000
   save_freq: 10000
-  # v8 = v7 + frontier shaping. Obs space genişledi 45→46 (max lidar yönü eklendi).
-  # Yeni ödüller: forward-openness frontier (+0..+0.4/step), turn-toward-far
-  # (+0..+0.1/step), vertical pull (+0..+0.15/step). Obs değiştiği için
-  # v7 checkpoint'i incompatible → fresh start.
-  # v1 ppo, v2 explore, v3 floors, v4 low_ent, v5 stable, v6 normalized,
-  # v7 lrdecay, v8 frontier.
+  # v8 = v7 + frontier shaping + STEP_DT 0.02→0.005 + n_envs=2 SubprocVecEnv.
+  # Sim RTF≈7.6x → lidar her 2.6ms'de üretiyor; 20ms bekleme 7.7 frame israf.
+  # 5ms bekleme + 2 paralel env → ~4x hız artışı bekleniyor (37→150 FPS).
+  # v8 100k checkpoint'inden devam (VecNormalize pkl da kaydedildi).
   log_dir: ./runs/ppo_v8_frontier
   ckpt_dir: ./runs/ppo_v8_frontier/checkpoints
   tb_log: ./runs/ppo_v8_frontier/tb
-  resume_from: null
+  n_envs: 2
+  resume_from: ./runs/ppo_v8_frontier/checkpoints/ppo_drone_interrupted.zip
   vec_normalize:
     enabled: true
     norm_obs: true
     norm_reward: true
     clip_reward: 10.0
+    # Resume: load running stats from saved pkl (same dir, vec_normalize.pkl).
+    # train_ppo.py picks this up automatically when resuming + use_vn=True.
