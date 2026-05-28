@@ -36,23 +36,18 @@ train:
   # from its loaded num_timesteps). Otherwise it's the from-scratch budget.
   total_timesteps: 2000000
   save_freq: 10000
-  # v7 = v6 + linear lr decay. v6 VecNormalize çalıştı (smooth eğri,
-  # peak +110 = v3-v5'in 2x'i) ama hâlâ peak-then-regress var (235k'da
-  # +85'e düştü). Constant lr 3e-4 policy converge ettikten sonra hâlâ
-  # büyük güncelleme yapıyor → en iyi politikayı kemiriyor. Linear decay
-  # 3e-4 -> 3e-5 ile peak korunur.
+  # v8 = v7 + frontier shaping. Obs space genişledi 45→46 (max lidar yönü eklendi).
+  # Yeni ödüller: forward-openness frontier (+0..+0.4/step), turn-toward-far
+  # (+0..+0.1/step), vertical pull (+0..+0.15/step). Obs değiştiği için
+  # v7 checkpoint'i incompatible → fresh start.
   # v1 ppo, v2 explore, v3 floors, v4 low_ent, v5 stable, v6 normalized,
-  # v7 lrdecay.
-  log_dir: ./runs/ppo_v7_lrdecay
-  ckpt_dir: ./runs/ppo_v7_lrdecay/checkpoints
-  tb_log: ./runs/ppo_v7_lrdecay/tb
-  # Default: resume v7 from where the autonomous loop stopped (221k step,
-  # 2026-05-07 sabah). `./scripts/train.sh` direkt çalıştırırsan v7 kaldığı
-  # yerden 2M'e devam eder. Diğer seçenekler için configs/ppo.yaml'i edit
-  # et (eval için: scripts/eval.sh runs/ppo_v6_normalized/checkpoints/ppo_drone_220000_steps.zip).
-  resume_from: ./runs/ppo_v7_lrdecay/checkpoints/ppo_drone_interrupted.zip
+  # v7 lrdecay, v8 frontier.
+  log_dir: ./runs/ppo_v8_frontier
+  ckpt_dir: ./runs/ppo_v8_frontier/checkpoints
+  tb_log: ./runs/ppo_v8_frontier/tb
+  resume_from: null
   vec_normalize:
     enabled: true
     norm_obs: true
     norm_reward: true
-    clip_reward: 10.0   # normalized reward clipped to ±10 (most signal preserved, only outlier kat +200 spikes get clipped)
+    clip_reward: 10.0

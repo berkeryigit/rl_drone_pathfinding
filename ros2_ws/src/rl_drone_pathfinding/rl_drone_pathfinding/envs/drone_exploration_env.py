@@ -7,15 +7,18 @@ World layout (built by ros2_ws/.../worlds/multi_room.sdf):
     * Floor 0 -> 1 hole: NE quadrant (x in [3.5, 6.5], y in [3.5, 6.5]).
     * Floor 1 -> 2 hole: SW quadrant (x in [-6.5, -3.5], y in [-6.5, -3.5]).
     * The drone has a horizontal 360 lidar plus 1-ray up/down lidars.
+    * Rooms 0-3: floor 0 (NE/NW/SW/SE), rooms 4-7: floor 1, rooms 8-11: floor 2.
 
-Observation (45-d, normalized to [-1, 1] / [0, 1]):
+Observation (46-d, normalized to [-1, 1] / [0, 1]):
     [0:32]  : 32-bin horizontal lidar (sector min / max_range)
+              Lidar starts at -π (backward), so bin 16 ≈ forward (+X body frame).
     [32:34] : (cos(yaw), sin(yaw))
     [34:37] : (vx_body / v_max, vz_body / vz_max, wz / w_max)
     [37:39] : explored_progress, room_scalar (rooms-1)/11
     [39:41] : min_horiz_lidar / max_range, idle_counter
     [41:43] : z / total_height, floor_id / 2
     [43:45] : scan_up / max_range, scan_down / max_range
+    [45]    : max_lidar_bin / LIDAR_BINS  (direction of furthest open space, 0..1)
 
 Action (3-d, continuous):
     a[0] in [-1, 1] -> linear x velocity in [-0.3*v_max, v_max]   (forward bias)
@@ -25,14 +28,19 @@ Action (3-d, continuous):
 Reward (per-step):
     +3.0 * (#new explored voxels this step)
     +50  on entering a new room (12 rooms total: 4 per floor)
-    +200 on entering a new floor (3 floors) -- bumped from +100 because
-         at 140k step the agent was happily exploring floor 0 but never
-         climbing through the holes.
+    +200 on entering a new floor (3 floors)
     -10  on collision (terminates)
     -0.5 if any directional clearance < 0.5 m (near-collision, horiz/up/down)
     -0.1 if no new voxel for <30 steps (mild — searching for direction)
     -0.5 if no new voxel for >=30 steps (room exhausted — GET OUT)
     -0.001 per step (time)
+    --- v8 frontier shaping ---
+    +0..+0.4 frontier bonus: reward moving forward when forward sector is open
+             = 0.4 * lidar_obs[FORWARD_BIN] * clip(a[0], 0, 1)
+    +0..+0.1 turn-toward-far bonus: reward turning toward the furthest lidar sector
+             only when max sector is significantly more open than forward
+    +0..+0.15 vertical pull: reward climbing (a[1]>0) when open space above on
+              lower floors (scan_up > 1.5 m and floor < top)
 
 Episode ends:
     terminated: min(horiz lidar, scan_up, scan_down) < `collision_dist`
@@ -72,6 +80,10 @@ GRID_NZ = N_FLOORS                                # 3
 
 LIDAR_BINS = 32
 LIDAR_MAX = 10.0
+# Lidar starts at angle_min=-π (backward) and sweeps CCW with 360 samples.
+# Ray at index 180 → angle 0 → body-forward (+X). Bin = floor(ray_idx/11).
+# Bin 0=backward, Bin 8=right, Bin 16=forward, Bin 24=left.
+FORWARD_BIN = 16
 V_MAX = 0.6                # m/s forward
 VZ_MAX = 0.4               # m/s vertical
 W_MAX = 1.5                # rad/s yaw
@@ -223,9 +235,9 @@ class DroneExplorationEnv(gym.Env):
             high=np.array([ 1.0,  1.0,  1.0], dtype=np.float32),
             dtype=np.float32,
         )
-        # 32 + 2 + 3 + 2 + 2 + 2 + 2 = 45
+        # 32 + 2 + 3 + 2 + 2 + 2 + 2 + 1 = 46
         self.observation_space = spaces.Box(
-            low=-1.0, high=1.0, shape=(45,), dtype=np.float32
+            low=-1.0, high=1.0, shape=(46,), dtype=np.float32
         )
 
         if not rclpy.ok():
@@ -281,6 +293,8 @@ class DroneExplorationEnv(gym.Env):
         progress = self._explored.sum() / float(GRID_NXY * GRID_NXY * GRID_NZ)
         rooms_scalar = (max(1, len(self._visited_global_rooms)) - 1) / 11.0
 
+        max_lidar_bin = int(np.argmax(lidar_obs))
+
         obs = np.concatenate([
             lidar_obs,                                                       # 32
             np.array([math.cos(yaw), math.sin(yaw)], dtype=np.float32),       # 2
@@ -295,8 +309,9 @@ class DroneExplorationEnv(gym.Env):
                       _floor_id(z) / float(max(1, N_FLOORS - 1))], dtype=np.float32),
             np.array([np.clip(scan_up   / LIDAR_MAX, 0, 1),                   # 2
                       np.clip(scan_down / LIDAR_MAX, 0, 1)], dtype=np.float32),
+            np.array([max_lidar_bin / float(LIDAR_BINS)], dtype=np.float32),  # 1
         ])
-        return obs.astype(np.float32), scan_min, scan_up, scan_down, (x, y, z, yaw)
+        return obs.astype(np.float32), scan_min, scan_up, scan_down, (x, y, z, yaw), lidar_obs
 
     def _mark_voxel(self, x: float, y: float, z: float) -> bool:
         gx = int((x + WORLD_HALF) / GRID_CELL_XY)
@@ -348,7 +363,7 @@ class DroneExplorationEnv(gym.Env):
         time.sleep(0.2)
         self._wait_for_first_msgs(timeout_s=5.0)
 
-        obs, _, _, _, (x, y, z, _) = self._make_obs()
+        obs, _, _, _, (x, y, z, _), _ = self._make_obs()
         self._mark_voxel(x, y, z)
         self._visited_global_rooms.add(_global_room_id(x, y, z))
         self._visited_floors.add(_floor_id(z))
@@ -366,7 +381,7 @@ class DroneExplorationEnv(gym.Env):
         time.sleep(STEP_DT)
         self._step_count += 1
 
-        obs, scan_min, scan_up, scan_down, (x, y, z, _) = self._make_obs()
+        obs, scan_min, scan_up, scan_down, (x, y, z, _), lidar_obs = self._make_obs()
 
         new_voxel = self._mark_voxel(x, y, z)
         groom = _global_room_id(x, y, z)
@@ -383,10 +398,6 @@ class DroneExplorationEnv(gym.Env):
             reward += 3.0
             self._steps_since_new_voxel = 0
         else:
-            # v4: time-decaying idle penalty. Lingering in an exhausted
-            # room (no new voxel for >=30 steps) becomes 5x more painful,
-            # forcing the policy out of the "explore one room then hover"
-            # local optimum that v3 evals revealed (rooms=1 in 10/11 eps).
             if self._steps_since_new_voxel < 30:
                 reward += -0.1
             else:
@@ -406,6 +417,32 @@ class DroneExplorationEnv(gym.Env):
         if clearance < COLLISION_DIST:
             reward += -10.0
             terminated = True
+
+        # --- v8 frontier shaping ---
+        # 1. Frontier bonus: reward moving forward when forward sector is open.
+        #    FORWARD_BIN=16 because lidar min_angle=-π and the 17th bin (0-indexed)
+        #    covers angle ≈0 (body +X). Up to +0.4/step.
+        forward_openness = float(lidar_obs[FORWARD_BIN])
+        fwd_action = float(np.clip(a[0], 0.0, 1.0))
+        reward += 0.4 * forward_openness * fwd_action
+
+        # 2. Turn-toward-far bonus: when the furthest sector is significantly more
+        #    open than forward, reward rotating toward it. Up to +0.1/step.
+        #    Bins < FORWARD_BIN are on the right (−Y), bins > are on the left (+Y).
+        #    Positive wz = CCW = turning left, so sign(max_bin - FORWARD_BIN) matches.
+        max_bin = int(np.argmax(lidar_obs))
+        max_val = float(lidar_obs[max_bin])
+        if max_val > 0.5 and max_val - forward_openness > 0.2 and max_bin != FORWARD_BIN:
+            dir_sign = 1.0 if max_bin > FORWARD_BIN else -1.0
+            turn_align = float(dir_sign * a[2])   # a[2] in [-1,1] (raw angular action)
+            if turn_align > 0.0:
+                reward += 0.1 * max_val * turn_align
+
+        # 3. Vertical pull: encourage climbing when open space is above on lower floors.
+        #    Up to +0.15/step.
+        if _floor_id(z) < N_FLOORS - 1 and scan_up > 1.5:
+            up_action = float(np.clip(a[1], 0.0, 1.0))
+            reward += 0.15 * up_action * float(np.clip(scan_up / LIDAR_MAX, 0.0, 1.0))
 
         truncated = self._step_count >= self.max_episode_steps
 
