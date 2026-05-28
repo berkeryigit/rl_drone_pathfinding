@@ -1,0 +1,90 @@
+[train.sh] sim_launch.py baslatiliyor...
+[train.sh] /scan'in publish edilmesi bekleniyor...
+[train.sh] sim hazir (3. denemede)
+[train.sh] PPO egitimi basliyor (config=configs/ppo.yaml)...
+[train_ppo] resuming from ./runs/ppo/checkpoints/ppo_drone_290k_pre_eval.zip
+[train_ppo] override ent_coef 0.005 -> 0.02
+[train_ppo] target=2000000, current=292337, training 1707663 more steps
+Logging to runs/ppo/tb/PPO_4
+---------------------------------
+| rollout/           |          |
+|    ep_len_mean     | 492      |
+|    ep_rew_mean     | -23.3    |
+| time/              |          |
+|    fps             | 37       |
+|    iterations      | 1        |
+|    time_elapsed    | 54       |
+|    total_timesteps | 294385   |
+---------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 491         |
+|    ep_rew_mean          | -21.5       |
+| time/                   |             |
+|    fps                  | 36          |
+|    iterations           | 2           |
+|    time_elapsed         | 113         |
+|    total_timesteps      | 296433      |
+| train/                  |             |
+|    approx_kl            | 0.010420777 |
+|    clip_fraction        | 0.0999      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -3.53       |
+|    explained_variance   | 0.353       |
+|    learning_rate        | 0.0003      |
+|    loss                 | 1.41        |
+|    n_updates            | 1425        |
+|    policy_gradient_loss | -0.00709    |
+|    std                  | 0.789       |
+|    value_loss           | 9.41        |
+-----------------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 491         |
+|    ep_rew_mean          | -18.7       |
+| time/                   |             |
+|    fps                  | 35          |
+|    iterations           | 3           |
+|    time_elapsed         | 170         |
+|    total_timesteps      | 298481      |
+| train/                  |             |
+|    approx_kl            | 0.010668693 |
+|    clip_fraction        | 0.0843      |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -3.53       |
+|    explained_variance   | 0.763       |
+|    learning_rate        | 0.0003      |
+|    loss                 | 1.29        |
+|    n_updates            | 1435        |
+|    policy_gradient_loss | -0.0103     |
+|    std                  | 0.79        |
+|    value_loss           | 11.4        |
+-----------------------------------------
+-----------------------------------------
+| rollout/                |             |
+|    ep_len_mean          | 490         |
+|    ep_rew_mean          | -15.7       |
+| time/                   |             |
+|    fps                  | 35          |
+|    iterations           | 4           |
+|    time_elapsed         | 229         |
+|    total_timesteps      | 300529      |
+| train/                  |             |
+|    approx_kl            | 0.009506332 |
+|    clip_fraction        | 0.114       |
+|    clip_range           | 0.2         |
+|    entropy_loss         | -3.53       |
+|    explained_variance   | 0.62        |
+|    learning_rate        | 0.0003      |
+|    loss                 | 0.903       |
+|    n_updates            | 1445        |
+|    policy_gradient_loss | -0.00549    |
+|    std                  | 0.792       |
+|    value_loss           | 2.64        |
+-----------------------------------------
+
+[train_ppo] interrupted -> saving current policy to runs/ppo/checkpoints/ppo_drone_interrupted.zip
+[train_ppo] saved model to runs/ppo/checkpoints/ppo_drone_interrupted.zip
+   0%                          8,466/1,707,663  [ 0:04:00 < 14:23:22 , 33 it/s ]
+
+[train.sh] cleanup...

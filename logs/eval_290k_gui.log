@@ -1,0 +1,27 @@
+[eval.sh] sim baslatiliyor...
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/berkerygt/Desktop/RLProje/rl_drone_pathfinding/ros2_ws/build/rl_drone_pathfinding/rl_drone_pathfinding/agents/eval_ppo.py", line 56, in <module>
+    main()
+  File "/home/berkerygt/Desktop/RLProje/rl_drone_pathfinding/ros2_ws/build/rl_drone_pathfinding/rl_drone_pathfinding/agents/eval_ppo.py", line 41, in main
+    obs, r, term, trunc, info = env.step(action)
+                                ^^^^^^^^^^^^^^^^
+  File "/home/berkerygt/Desktop/RLProje/rl_drone_pathfinding/ros2_ws/build/rl_drone_pathfinding/rl_drone_pathfinding/envs/drone_exploration_env.py", line 354, in step
+    time.sleep(STEP_DT)
+KeyboardInterrupt
+ep 00  return=-64.70  cells=None  rooms=1
+ep 01  return=-59.20  cells=None  rooms=1
+ep 02  return=-62.50  cells=None  rooms=1
+ep 03  return=-63.60  cells=None  rooms=1
+ep 04  return=-13.78  cells=None  rooms=2
+ep 05  return=-64.70  cells=None  rooms=1
+ep 06  return=-63.60  cells=None  rooms=1
+ep 07  return=-11.79  cells=None  rooms=2
+ep 08  return=-12.67  cells=None  rooms=2
+ep 09  return=-58.10  cells=None  rooms=1
+ep 10  return=+5.49  cells=None  rooms=2
+ep 11  return=-64.70  cells=None  rooms=1
+ep 12  return=-15.68  cells=None  rooms=2
+ep 13  return=-59.20  cells=None  rooms=1
+ep 14  return=+5.39  cells=None  rooms=2
