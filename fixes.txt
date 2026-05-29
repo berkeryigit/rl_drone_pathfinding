@@ -288,3 +288,21 @@ HATA   : `gz service` set_pose timeout (Gazebo açık değil)
          sonra train script'i başlat.
 NEDEN  : Env Gazebo'yu spawn etmiyor; ayrı süreç olarak konuşuyor.
          (İleride: training script gz'yi de subprocess'le başlatsın.)
+
+================================================================
+2026-05-29 — Otonom Ajan Log (v8 fresh start, n_envs=4)
+================================================================
+
+---
+2026-05-29 14:15 | otonom-ajan iterasyon 1
+DURUM  : step=94k, ep_rew_mean=-10.6, fps=119, eğitim çalışıyor
+KARAR  : D — Erken aşama (step<100k, random policy'den çıkış). Dokunma.
+TREND  : 55k'da -48 → 94k'da -10.6, düzenli yükseliş var.
+
+---
+2026-05-29 03:13 | otonom-ajan iterasyon 2
+DURUM  : step=223k, peak=+43.3 (192k), son_5_ort=+24, düşüş=%44
+KARAR  : C — PEAK-THEN-REGRESS DETECTED
+EYLEM  : SIGINT ile eğitim durduruldu (VecNormalize pkl güncellendi).
+         240k checkpoint kaydedildi. resume_from=200k (peak yakını) ayarlandı.
+         Yeniden başlatıldı: 92 FPS, ep_rew=+29.1.
