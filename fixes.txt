@@ -370,3 +370,36 @@ KARAR  : D — Dokunma! Zirvedeyiz.
 TREND  : 1040k resume → 1048k=+86 → 1056k=+93 → 1070k=+108 → 1072k=+112
          V6 ALL-TIME RECORD (+110) KIRILDI! V8 yeni rekor = +112.
 NOT    : Kalan ~928k step, ~2.5 saat → tahmini bitiş ~08:10.
+
+---
+2026-05-29 06:03 | otonom-ajan iterasyon 11
+DURUM  : step=1209k (60%), ep_rew_mean=+88.3, fps=106, çalışıyor
+KARAR  : D — Normal ilerleme. 85-98 bandında stabil.
+TREND  : 1203k=+98.7 (peak), şu an 88.3. Düşüş sadece %10, eşik altında.
+NOT    : Kalan ~791k step, ~2.1 saat → tahmini bitiş 08:07.
+         All-time rekor +112 (1072k) hâlâ duruyor.
+
+---
+2026-05-29 06:25 | otonom-ajan iterasyon 12
+DURUM  : step=1351k (67.6%), ep_rew_mean=+91.1, fps=107, çalışıyor
+KARAR  : D — Normal ilerleme. 90+ bandında stabil.
+TREND  : 1320k=+64→1322k=+82→1347k=+95 (peak)→1351k=+91. Güçlü seyir.
+NOT    : Kalan ~649k step, ~1.7 saat → tahmini bitiş 08:07.
+         All-time rekor +112 (1072k). Şu an yaklaşık +91.
+
+---
+2026-05-29 06:47 | otonom-ajan iterasyon 13
+DURUM  : step=1496k (74.8%), ep_rew_mean=+57.3, fps=108, çalışıyor
+KARAR  : D — Normal ilerleme. Toparlanma fazında.
+TREND  : 1461k=+36.6 (dip) → 1486k=+72.3 (peak) → 1496k=+57.3 (mini çekilme).
+         30-rollout pencere %20.7 düşüş, eşik (%30) altında.
+NOT    : Kalan ~504k step, ~1.3 saat → tahmini bitiş 08:05. Son 2 kontrol.
+
+---
+2026-05-29 07:09 | otonom-ajan iterasyon 14
+DURUM  : step=1638k (81.9%), peak=+111 (1615k), son=+63.2, düşüş=%43.1
+KARAR  : C — PEAK-THEN-REGRESS (eşik %30 aşıldı)
+EYLEM  : SIGINT → VecNormalize pkl güncellendi. 1640k checkpoint kaydedildi.
+         resume_from=1600k (pre-peak +82). Yeniden başlatıldı: +83.4.
+NOT    : Kalan ~400k step, ~1.3 saat. Tahmini bitiş ~08:20.
+         Bugünkü rekorlar: 112 (1072k), 111 (1615k, bu run).
