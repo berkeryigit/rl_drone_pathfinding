@@ -411,3 +411,17 @@ KARAR  : D — Dokunma! Yeni all-time record kırıldı.
 TREND  : 1600k resume → 1628k=+113 (YENİ TÜM ZAMANLAR REKORU! önceki +112)
          Şu an 1632k=+103, 100+ bandında stabil.
 NOT    : Kalan ~368k step, ~62dk → tahmini bitiş 08:18. E tetiklenecek.
+
+---
+2026-05-29 07:38 | otonom-ajan iterasyon 16
+DURUM  : step=1776k (88.8%), ep_rew_mean=+89.5, fps=106, çalışıyor
+KARAR  : D — Normal ilerleme. Rekor tekrar ziyaret edildi.
+TREND  : 1755k=+112, 1757k=+113 (rekor eşitlendi!), şu an 83-105 bandı.
+NOT    : Kalan ~224k step, ~35 dakika → bitiş ~08:13. E (eval) hazırlık aşaması.
+
+---
+2026-05-29 07:43 | otonom-ajan iterasyon 17
+DURUM  : step=1808k (90.4%), peak=+106 (1788k), son=+60.2, düşüş=%43.2
+KARAR  : C — PEAK-THEN-REGRESS. Son 30dk olsa da müdahale yapıldı.
+EYLEM  : SIGINT → pkl güncellendi. resume_from=1760k (+113 yakını). +99 ile başladı.
+NOT    : Kalan ~240k step, ~42dk → tahmini bitiş ~08:25. E çok yakın.

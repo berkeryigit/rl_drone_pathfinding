@@ -53,9 +53,9 @@ train:
   n_envs: 4
   # AUTO [03:13 peak-then-regress]: peak +43 at 192k, declined to +24 at 223k (44% drop).
   # Resume from 200k (closest checkpoint to peak). VecNormalize pkl refreshed at stop.
-  # AUTO [07:09 peak-then-regress]: peak +111 at 1615k, dropped to +63 at 1638k (43%).
-  # Resume from 1600k (pre-peak inflection, ep_rew ~82). VecNormalize pkl refreshed.
-  resume_from: ./runs/ppo_v8_frontier/checkpoints/ppo_drone_1600000_steps.zip
+  # AUTO [07:43 peak-then-regress]: peak +106 at 1788k, dropped to +60 at 1808k (43%).
+  # Resume from 1760k (near +113 peak zone). VecNormalize pkl refreshed at stop.
+  resume_from: ./runs/ppo_v8_frontier/checkpoints/ppo_drone_1760000_steps.zip
   vec_normalize:
     enabled: true
     norm_obs: true
