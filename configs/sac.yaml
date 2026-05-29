@@ -1,0 +1,31 @@
+env:
+  world_name: multi_room
+  drone_name: rl_drone
+  max_episode_steps: 1000
+  seed: 42
+
+sac:
+  policy: MlpPolicy
+  learning_rate: 3.0e-4
+  buffer_size: 200000
+  learning_starts: 10000
+  batch_size: 256
+  tau: 0.005
+  gamma: 0.99
+  train_freq: [1, step]
+  gradient_steps: 1
+  ent_coef: auto         # SAC'in ana ozelligi: entropi otomatik ayarlanir, action noise gerekmez
+  target_entropy: auto   # -dim(action) = -3 (otomatik hesaplar)
+  use_sde: false
+  policy_kwargs:
+    net_arch: [256, 256]
+
+train:
+  total_timesteps: 300000
+  save_freq: 10000       # her 10k step'te checkpoint
+  eval_freq: 20000       # her 20k step'te en iyi model kontrolu
+  n_eval_episodes: 5     # her evalda 5 episode calistir
+  log_dir: ./runs/sac
+  ckpt_dir: ./runs/sac/checkpoints
+  tb_log: ./runs/sac/tb
+  resume_from: null   # devam etmek icin: ./runs/sac/checkpoints/sac_drone_XXXX_steps.zip

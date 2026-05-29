@@ -397,7 +397,7 @@ class DroneExplorationEnv(gym.Env):
             "min_lidar": float(scan_min),
             "scan_up": float(scan_up),
             "scan_down": float(scan_down),
-            "z": float(z),
+            "x": float(x), "y": float(y), "z": float(z),
             "vx_cmd": vx, "vz_cmd": vz, "wz_cmd": wz,
         }
         return obs, float(reward), terminated, truncated, info
