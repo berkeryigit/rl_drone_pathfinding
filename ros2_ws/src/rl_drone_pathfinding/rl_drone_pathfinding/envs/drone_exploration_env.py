@@ -261,6 +261,7 @@ class DroneExplorationEnv(gym.Env):
         self._visited_global_rooms: set[int] = set()
         self._visited_floors: set[int] = set()
         self._steps_since_new_voxel = 0
+        self._forced_spawn_idx: Optional[int] = None  # set externally to force a spawn
 
         self._np_random, _ = gym.utils.seeding.np_random(seed)
 
@@ -361,7 +362,10 @@ class DroneExplorationEnv(gym.Env):
         self._node.send_cmd(0.0, 0.0, 0.0)
         time.sleep(0.05)
 
-        spawn = SPAWN_CANDIDATES[int(self._np_random.integers(len(SPAWN_CANDIDATES)))]
+        if self._forced_spawn_idx is not None:
+            spawn = SPAWN_CANDIDATES[self._forced_spawn_idx % len(SPAWN_CANDIDATES)]
+        else:
+            spawn = SPAWN_CANDIDATES[int(self._np_random.integers(len(SPAWN_CANDIDATES)))]
         self._gz_set_pose(*spawn)
 
         self._step_count = 0
