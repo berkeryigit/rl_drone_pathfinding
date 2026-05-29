@@ -403,3 +403,11 @@ EYLEM  : SIGINT → VecNormalize pkl güncellendi. 1640k checkpoint kaydedildi.
          resume_from=1600k (pre-peak +82). Yeniden başlatıldı: +83.4.
 NOT    : Kalan ~400k step, ~1.3 saat. Tahmini bitiş ~08:20.
          Bugünkü rekorlar: 112 (1072k), 111 (1615k, bu run).
+
+---
+2026-05-29 07:16 | otonom-ajan iterasyon 15 — YENİ REKOR
+DURUM  : step=1632k (81.6%), ep_rew_mean=+103, fps=101, çalışıyor
+KARAR  : D — Dokunma! Yeni all-time record kırıldı.
+TREND  : 1600k resume → 1628k=+113 (YENİ TÜM ZAMANLAR REKORU! önceki +112)
+         Şu an 1632k=+103, 100+ bandında stabil.
+NOT    : Kalan ~368k step, ~62dk → tahmini bitiş 08:18. E tetiklenecek.
