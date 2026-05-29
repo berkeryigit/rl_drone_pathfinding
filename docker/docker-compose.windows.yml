@@ -1,8 +1,5 @@
-# Windows (WSL2 + Docker Desktop) için docker-compose.
-# Farklılıklar:
-#   - network_mode: bridge (Windows'ta host modu çalışmaz)
-#   - X11: host.docker.internal üzerinden VcXsrv'e bağlanır
-#   - GPU bloğu opsiyonel bırakıldı (NVIDIA yoksa aşağıdaki deploy bloğunu sil)
+# Windows 11 (WSL2 + Docker Desktop + WSLg) icin docker-compose.
+# WSLg sayesinde VcXsrv gerekmez — WSL2'nin X11 soketi dogrudan baglanir.
 services:
   rl_drone:
     build:
@@ -17,19 +14,19 @@ services:
     ipc: host
     privileged: true
     environment:
-      # VcXsrv çalışıyorsa host.docker.internal:0.0 gerekir
-      - DISPLAY=host.docker.internal:0.0
+      - DISPLAY=${DISPLAY:-:0}        # WSLg ile otomatik :0 olur
+      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-}
       - QT_X11_NO_MITSHM=1
+      - LIBGL_ALWAYS_SOFTWARE=0
       - XDG_RUNTIME_DIR=/tmp/runtime-dev
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
       - ROS_DOMAIN_ID=42
       - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-      # Gazebo headless modu (GUI istemiyorsan): aşağıyı uncomment et
-      # - GZ_HEADLESS=1
     volumes:
       - ../:/workspace:rw
-    # NVIDIA GPU varsa bu bloğu bırak, yoksa sil:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw   # WSLg X11 soketi
+    # NVIDIA GPU varsa bu blogu birak, yoksa sil:
     deploy:
       resources:
         reservations:
