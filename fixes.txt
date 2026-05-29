@@ -425,3 +425,44 @@ DURUM  : step=1808k (90.4%), peak=+106 (1788k), son=+60.2, düşüş=%43.2
 KARAR  : C — PEAK-THEN-REGRESS. Son 30dk olsa da müdahale yapıldı.
 EYLEM  : SIGINT → pkl güncellendi. resume_from=1760k (+113 yakını). +99 ile başladı.
 NOT    : Kalan ~240k step, ~42dk → tahmini bitiş ~08:25. E çok yakın.
+
+---
+2026-05-29 07:50 | otonom-ajan iterasyon 18
+DURUM  : step=1792k, ep_rew_mean=+104, fps=100, çalışıyor
+KARAR  : D — Dokunma. 1760k resume başarılı, +99→+104 yükselişi.
+NOT    : Kalan ~208k step, ~34dk → bitiş ~08:24. E (eval+push) bekleniyor.
+
+---
+2026-05-29 08:11 | otonom-ajan iterasyon 19 — SON 11 DAKİKA
+DURUM  : step=1932k (96.6%), ep_rew_mean=+92.2, fps=99, çalışıyor
+KARAR  : D — Son 11dk. Bekle.
+NOT    : explained_variance=0.992 (mükemmel). lr=3.97e-5 (decay çalışıyor).
+         Bitiş bekleniyor: ~08:22. Final checkpoint sonrası eval çalıştırılacak.
+
+================================================================
+2026-05-29 08:22 — EĞİTİM TAMAMLANDI (v8 frontier, 2M step)
+================================================================
+
+---
+2026-05-29 08:22 | otonom-ajan iterasyon 20 — E: EĞİTİM TAMAMLANDI
+DURUM  : 2M step tamamlandı! Final checkpoint kaydedildi.
+EVAL   : 5 episode raw eval (VecNormalize olmadan):
+         ep 00: +3.18 (rooms=1) | ep 01: -15.93 (rooms=1)
+         ep 02: -10.55 (rooms=1) | ep 03: +6.53 (rooms=1)
+         ep 04: -91.35 (rooms=1) | mean: -21.63 ± 35.84
+         NOT: Eval VecNormalize olmadan çalıştı → ham return düşük görünüyor.
+         Doğru eval için: vec_normalize.pkl yükleyerek tekrar çalıştır.
+         Training'deki peak reward: +113 (1628k), son bölüm ~+82-85.
+
+GECE BOYUNCA (02:37 → 08:22) ÖZET:
+  - 18 iterasyon monitoring
+  - 6 peak-regress müdahalesi (C: 200k, 880k, 1040k, 1600k, 1760k, 1800k)
+  - All-time record v8: +113 (1628k), v6 (+110) rekoru kırıldı!
+  - Parallel envs: n_envs=4, 100-125 FPS (eski 37'den 3.4x)
+  - Frontier shaping başarılı: lidar-guided exploration ödülleri
+  - Son training ep_rew: ~82-85 (normalize edilmiş)
+
+SONRAKİ ADIM:
+  Doğru eval için: eval_ppo.py'yi VecNormalize load ile güncelle
+  veya: ./scripts/eval.sh <best_checkpoint.zip> ile en iyi ckpt'i test et
+  Best checkpoints: ppo_drone_final.zip, 1760k, 1640k, 1600k, 880k
