@@ -346,3 +346,19 @@ EYLEM  : SIGINT → VecNormalize pkl güncellendi. resume_from=880k (peak yakın
          Yeniden başlatıldı: 95 FPS, ep_rew=+76.4.
 NOT    : v8 new ALL-TIME RECORD: +98 (865k adımda). V6 rekoru +110 yaklaşıldı.
          Kalan ~1.12M step, ~3.3 saat → tahmini bitiş ~08:20.
+
+---
+2026-05-29 05:14 | otonom-ajan iterasyon 8 (müdahale sonrası kontrol)
+DURUM  : step=912k, ep_rew_mean=+108 (YENİ REKOR), fps=103, çalışıyor
+KARAR  : D — Mükemmel! 880k resume başarılı. +108 = v6 all-time +110'a 2 puan kaldı.
+TREND  : 882k=+76 → 902k=+70 → 904k=+86 → 906k=+94 → 912k=+108. Yükseliş sürüyor.
+NOT    : Kalan ~1.09M step, ~2.9 saat → tahmini bitiş ~08:05.
+
+---
+2026-05-29 05:35 | otonom-ajan iterasyon 9
+DURUM  : step=1045k (1M geçildi!), peak=+104 (1023k), son=+56.1, düşüş=%46
+KARAR  : C — PEAK-THEN-REGRESS DETECTED (eşik %30 aşıldı)
+EYLEM  : SIGINT → VecNormalize pkl güncellendi. resume_from=1040k (+83.7 bandı).
+         Yeniden başlatıldı: 102 FPS, ep_rew=+74.5.
+NOT    : Kalan ~960k step, ~2.6 saat → tahmini bitiş ~08:10.
+         ALL-TIME REKORLAR: v8=+108 (912k), bu run'da peak=+104 (1023k).
