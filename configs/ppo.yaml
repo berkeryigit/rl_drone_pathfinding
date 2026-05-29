@@ -1,5 +1,7 @@
-# PPO hyperparameters for the rl_drone exploration env.
-# Values follow SB3 defaults tuned for low-dim continuous control.
+# PPO hyperparameters — v9 newmap (tek katli 6-odali bina, hareketli engeller)
+# SAC branch'ten alinan yeni harita ve env icin fresh start.
+# Obs space degisti: 46-d (3-katli) -> 41-d (tek katli, floor features kaldirildi).
+# v8'in en iyi parametreleri korundu (VecNormalize, linear lr decay, clip 0.1).
 
 env:
   world_name: multi_room
@@ -10,23 +12,20 @@ env:
 ppo:
   policy: MlpPolicy
   learning_rate: 3.0e-4
-  # v7: linear lr decay 3e-4 -> 3e-5 across the run. v6 reached the
-  # highest peak so far (+110 raw reward at 150k) but still drifted to
-  # +85 by 235k. Constant lr keeps making large updates after the policy
-  # has converged on a near-optimum, eroding it. Linear decay shrinks
-  # the per-step shift as we approach the end so peak is preserved.
+  # Linear lr decay: yeni harita icin kesif suresi uzun olabilir.
   lr_schedule: linear
   lr_final: 3.0e-5
-  # n_steps scaled so total data per update = n_steps * n_envs = 512 * 4 = 2048
-  # (same as single-env n_steps=2048). Keeps gradient-steps/update ≈ 40, avoids
-  # overfit to single rollout that caused reward collapse with n_steps=2048, n_envs=4.
+  # n_steps=512 * n_envs=4 = 2048 total rollout (v8 ile ayni)
   n_steps: 512
-  batch_size: 256       # v5: 64->256. Larger minibatch -> lower-variance gradient estimate -> more stable updates. v4 reward had +30/+85 oscillation post-peak; this kills the noise.
-  n_epochs: 5           # v5: 10->5. Half the gradient passes per rollout, less per-rollout overfit, smoother trajectory.
+  batch_size: 256
+  n_epochs: 5
   gamma: 0.99
-  gae_lambda: 0.9       # v5: 0.95->0.9. Slightly more bias for less variance in advantage estimates (fits high-magnitude reward env better).
-  clip_range: 0.1       # v5: 0.2->0.1. Tighter PPO clip -> smaller per-step policy shift -> stops the "overshoot then regress" pattern in v3/v4.
-  ent_coef: 0.001       # v4 fix: kept at 0.001 (was 0.02 -> entropy EXPLOSION std 1->14). v5 keeps this stable level.
+  gae_lambda: 0.9
+  clip_range: 0.1
+  # 0.003: v8'in 0.001'inden biraz yuksek; yeni haritada 6 oda varsa
+  # daha fazla kesif gerekiyor. Entropy explosion tehlikesi yok cunku
+  # VecNormalize reward magnitude'i normalize ediyor.
+  ent_coef: 0.003
   vf_coef: 0.5
   max_grad_norm: 0.5
   policy_kwargs:
@@ -35,31 +34,17 @@ ppo:
       vf: [128, 128]
 
 train:
-  # When resuming, this is the absolute target step count (model continues
-  # from its loaded num_timesteps). Otherwise it's the from-scratch budget.
-  total_timesteps: 2000000
+  total_timesteps: 2500000
   save_freq: 10000
-  # v8 = v7 + frontier shaping + STEP_DT 0.02→0.005 + n_envs=2 SubprocVecEnv.
-  # Sim RTF≈7.6x → lidar her 2.6ms'de üretiyor; 20ms bekleme 7.7 frame israf.
-  # 5ms bekleme + 2 paralel env → ~4x hız artışı bekleniyor (37→150 FPS).
-  # v8 100k checkpoint'inden devam (VecNormalize pkl da kaydedildi).
-  log_dir: ./runs/ppo_v8_frontier
-  ckpt_dir: ./runs/ppo_v8_frontier/checkpoints
-  tb_log: ./runs/ppo_v8_frontier/tb
-  # n_envs=4: 4 paralel Gazebo instance → ~125 FPS (eski 37'den 3.4x).
-  # n_steps=512 ile total rollout = 512*4 = 2048 (n_envs=1, n_steps=2048 ile eşdeğer).
-  # Böylece gradient-steps/update = 2048/256 * n_epochs = 40 (sabit kalıyor).
-  # Resume n_envs=1→4 geçişinde gradient dağılım uyuşmazlığı oldu → fresh start.
+  log_dir: ./runs/ppo_v9_newmap
+  ckpt_dir: ./runs/ppo_v9_newmap/checkpoints
+  tb_log: ./runs/ppo_v9_newmap/tb
+  # n_envs=4: v8'de kanitlandi, 4x paralel Gazebo -> ~120 FPS
   n_envs: 4
-  # AUTO [03:13 peak-then-regress]: peak +43 at 192k, declined to +24 at 223k (44% drop).
-  # Resume from 200k (closest checkpoint to peak). VecNormalize pkl refreshed at stop.
-  # AUTO [07:43 peak-then-regress]: peak +106 at 1788k, dropped to +60 at 1808k (43%).
-  # Resume from 1760k (near +113 peak zone). VecNormalize pkl refreshed at stop.
-  resume_from: ./runs/ppo_v8_frontier/checkpoints/ppo_drone_1760000_steps.zip
+  # Fresh start: obs space degisti (46->41), eski checkpoint kullanilamaz.
+  resume_from: null
   vec_normalize:
     enabled: true
     norm_obs: true
     norm_reward: true
     clip_reward: 10.0
-    # Resume: load running stats from saved pkl (same dir, vec_normalize.pkl).
-    # train_ppo.py picks this up automatically when resuming + use_vn=True.
