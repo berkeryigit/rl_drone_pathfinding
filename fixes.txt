@@ -306,3 +306,43 @@ KARAR  : C — PEAK-THEN-REGRESS DETECTED
 EYLEM  : SIGINT ile eğitim durduruldu (VecNormalize pkl güncellendi).
          240k checkpoint kaydedildi. resume_from=200k (peak yakını) ayarlandı.
          Yeniden başlatıldı: 92 FPS, ep_rew=+29.1.
+
+---
+2026-05-29 03:39 | otonom-ajan iterasyon 3
+DURUM  : step=324k, ep_rew_mean=+70.5 (YENİ REKOR v8), fps=98, çalışıyor
+KARAR  : D — Normal ilerleme. Müdahale yok.
+TREND  : 200k resume sonrası: 202k=+29→283k dip +21→300k=+39→324k=+70.5
+         Peak-then-regress müdahalesi işe yaradı. V8 new high = +70.5.
+         V6 rekoru +110 hâlâ erişilmedi ama hızla yükseliyor.
+
+---
+2026-05-29 04:01 | otonom-ajan iterasyon 4
+DURUM  : step=464k, ep_rew_mean=+56.5, fps=101, çalışıyor
+KARAR  : D — Normal ilerleme. Osilasyon var ama kriterlerin hiçbiri yok.
+TREND  : 70.5 peak (324k) → 10.3 dip (382k) → 60.9 topar (396k) → 11.6 dip (417k)
+         → 56.5 topar (464k). Osilasyon genliği azalmıyor ama negatife düşmüyor.
+NOT    : Kalan ~1.54M step, ~4.2 saat → tahmini bitiş 08:13.
+
+---
+2026-05-29 04:24 | otonom-ajan iterasyon 5
+DURUM  : step=615k, ep_rew_mean=+62.2 (ve tırmanıyor), fps=104, çalışıyor
+KARAR  : D — Normal ilerleme. Dokunma.
+TREND  : 576k dip +1.2 → 615k'da +62.2 yükseliş. All-time peak 70.5 yaklaşılıyor.
+NOT    : Kalan ~1.385M step, ~3.7 saat → tahmini bitiş 08:06.
+
+---
+2026-05-29 04:45 | otonom-ajan iterasyon 6
+DURUM  : step=750k, ep_rew_mean=+84.5, fps=104, çalışıyor
+KARAR  : D — Mükemmel ilerleme! Yeni v8 all-time rekor: +86.5 (at 705k).
+TREND  : 80+ bandında stabil: 80.6→86.5 peak→50s dip→84+ sürekli yükseliş.
+         V6 rekoru +110 hâlâ erişilmedi ama hızla yaklaşıyor.
+NOT    : Kalan ~1.25M step, ~3.3 saat → tahmini bitiş 08:03.
+
+---
+2026-05-29 05:07 | otonom-ajan iterasyon 7
+DURUM  : step=892k, peak=+98 (865k), son=+62, düşüş=%36.7
+KARAR  : C — PEAK-THEN-REGRESS DETECTED (eşik %30 aşıldı)
+EYLEM  : SIGINT → VecNormalize pkl güncellendi. resume_from=880k (peak yakını, +80-83 bandı).
+         Yeniden başlatıldı: 95 FPS, ep_rew=+76.4.
+NOT    : v8 new ALL-TIME RECORD: +98 (865k adımda). V6 rekoru +110 yaklaşıldı.
+         Kalan ~1.12M step, ~3.3 saat → tahmini bitiş ~08:20.
