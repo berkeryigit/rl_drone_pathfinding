@@ -5,7 +5,7 @@ env:
   seed: 42
 ppo:
   policy: MlpPolicy
-  learning_rate: 5.0e-05
+  learning_rate: 7.5e-05
   lr_schedule: constant
   lr_final: 3.0e-05
   n_steps: 512
@@ -28,9 +28,9 @@ ppo:
 train:
   total_timesteps: 2500000
   save_freq: 10000
-  log_dir: ./runs/ppo_v9_newmap
-  ckpt_dir: ./runs/ppo_v9_newmap/checkpoints
-  tb_log: ./runs/ppo_v9_newmap/tb
+  log_dir: ./runs/ppo_v10
+  ckpt_dir: ./runs/ppo_v10/checkpoints
+  tb_log: ./runs/ppo_v10/tb
   n_envs: 2
   resume_from: null
   vec_normalize:

@@ -17,6 +17,21 @@ if [[ ! -f "$CONFIG" ]]; then
     exit 1
 fi
 
+# --- duplicate process guard -------------------------------------------------
+LOCK_FILE="/tmp/rl_drone_train.lock"
+if [[ -f "$LOCK_FILE" ]]; then
+    OLD_PID=$(cat "$LOCK_FILE")
+    if kill -0 "$OLD_PID" 2>/dev/null; then
+        echo "[train.sh] HATA: Egitim zaten calisiyor (pid=$OLD_PID, lock=$LOCK_FILE)" >&2
+        echo "[train.sh] Onceki sureci durdurmak icin: kill $OLD_PID" >&2
+        exit 1
+    fi
+    echo "[train.sh] Eski lock temizleniyor (pid=$OLD_PID artik yok)"
+    rm -f "$LOCK_FILE"
+fi
+echo $$ > "$LOCK_FILE"
+echo "[train.sh] Lock olusturuldu: $LOCK_FILE (pid=$$)"
+
 # --- env setup ---------------------------------------------------------------
 source /opt/ros/jazzy/setup.bash
 [[ -f ros2_ws/install/setup.bash ]] || {
@@ -72,6 +87,7 @@ done
 cleanup() {
     echo
     echo "[train.sh] cleanup..."
+    rm -f "$LOCK_FILE"
     for pid in "${SIM_PIDS[@]}"; do
         kill "$pid" 2>/dev/null || true
         sleep 1
