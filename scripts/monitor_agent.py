@@ -299,10 +299,12 @@ def v10_transition(metrics: dict) -> None:
     new_lr = 1e-4
     new_lr_final = 1e-5
 
-    # v9'un en iyi checkpoint'ini bul
+    # v9'un son checkpoint'inden resume et.
+    # Tek katlı 6-odalı ortam v8'den (3 kat, 12 oda) farklı; agent v9'da bu
+    # haritanın dinamiklerini öğrendi. v10'da (hareketli engeller aktif olabilir)
+    # bu bilgiyi sıfırlamak yerine fine-tune etmek daha verimli.
     ckpt = latest_checkpoint()
-    # v10 için fresh start (yeni TB, temiz değer normalization)
-    resume_val = None
+    resume_val = str(ckpt.relative_to(PROJ_ROOT)) if ckpt else None
 
     changes = {
         "ent_coef": {"old": old_ent, "new": new_ent, "reason": ent_reason},
@@ -337,7 +339,9 @@ def v10_transition(metrics: dict) -> None:
         f.write(f"  v9 final: step={step}, ep_rew_mean={ep_rew}\n")
         f.write(f"  ent_coef: {old_ent} → {new_ent} ({ent_reason})\n")
         f.write(f"  learning_rate: {old_lr} → {new_lr}\n")
-        f.write(f"  resume: fresh start\n")
+        f.write(f"  resume: {ckpt.name if ckpt else 'fresh (checkpoint yok)'}\n")
+        f.write(f"  Neden resume: v9 harita dinamiklerini öğrendi (tek kat, 6 oda);\n")
+        f.write(f"    v10'da hareketli engeller aktif olabilir, fine-tune fresh'ten iyidir.\n")
 
     # Mevcut eğitimi durdur (v9 tamamlandı)
     log("v9 tamamlandı, process durduruluyor...")
