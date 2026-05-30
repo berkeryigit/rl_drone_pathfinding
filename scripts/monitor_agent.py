@@ -81,9 +81,10 @@ def is_healthy() -> bool:
 
 def latest_checkpoint() -> Path | None:
     _, ckpt_dir, _ = run_dirs()
-    zips = sorted(ckpt_dir.glob("ppo_drone_*_steps.zip"))
+    zips = list(ckpt_dir.glob("ppo_drone_*_steps.zip"))
     if zips:
-        return zips[-1]
+        # Sayısal sıralama — string sıralama "120000" < "80000" verir
+        return max(zips, key=ckpt_step)
     interrupted = ckpt_dir / "ppo_drone_interrupted.zip"
     return interrupted if interrupted.exists() else None
 
