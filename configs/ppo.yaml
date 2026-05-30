@@ -5,7 +5,7 @@ env:
   seed: 42
 ppo:
   policy: MlpPolicy
-  learning_rate: 7.5e-05
+  learning_rate: 5.0e-05
   lr_schedule: constant
   lr_final: 3.0e-05
   n_steps: 512
