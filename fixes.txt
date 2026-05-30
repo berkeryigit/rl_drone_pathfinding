@@ -548,3 +548,5 @@ Karar: reduce_lr
 [2026-05-30 20:55:12] RESTART — step=80000, resume=ppo_drone_80000_steps.zip
 
 [2026-05-30 21:00:01] RESTART — step=120000, resume=ppo_drone_120000_steps.zip
+
+[2026-05-30 21:20:09] RESTART — step=140000, resume=ppo_drone_140000_steps.zip
