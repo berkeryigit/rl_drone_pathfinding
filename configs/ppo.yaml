@@ -39,8 +39,10 @@ train:
   log_dir: ./runs/ppo_v9_newmap
   ckpt_dir: ./runs/ppo_v9_newmap/checkpoints
   tb_log: ./runs/ppo_v9_newmap/tb
-  # n_envs=4: v8'de kanitlandi, 4x paralel Gazebo -> ~120 FPS
-  n_envs: 4
+  # n_envs=2: 4 iken SubprocVecEnv deadlock (unix_stream_read_generic) yasandi.
+  # Kök neden: worker içi subprocess.Popen pipe'ı bozuyordu; düzeltildi.
+  # 2 env: daha az pipe karmaşıklığı, ~80 FPS yeterli.
+  n_envs: 2
   # Fresh start: obs space degisti (46->41), eski checkpoint kullanilamaz.
   resume_from: null
   vec_normalize:

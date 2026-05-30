@@ -322,9 +322,10 @@ class DroneExplorationEnv(gym.Env):
         self._node.send_cmd(vx, vz, wz)
         time.sleep(STEP_DT)
         self._step_count += 1
-
-        if self._step_count % OBS_UPDATE_FREQ == 0:
-            self._update_obstacles()
+        # _update_obstacles devre disi: SubprocVecEnv worker'lari icerisinde
+        # subprocess.Popen cagrilari worker<->main pipe'ini bozuyordu (deadlock).
+        # Engeller SDF'de static=true olarak duruyor; animasyon sonraki versiyonda
+        # DummyVecEnv ile ya da ana process'ten ayri bir thread ile yapilabilir.
 
         obs, scan_min, scan_up, scan_down, (x, y, z, _), lidar_obs = self._make_obs()
 

@@ -66,10 +66,27 @@ def save_config(cfg: dict):
         yaml.dump(cfg, f, default_flow_style=False, sort_keys=False)
 
 
+STUCK_TIMEOUT_MIN = 15   # log 15 dk guncellenmemisse takili kalmis say
+
 def is_training_running() -> bool:
     r = subprocess.run(["pgrep", "-f", "train_ppo --config"],
                        capture_output=True)
     return r.returncode == 0
+
+
+def is_training_stuck() -> bool:
+    """train_ppo sureci var ama log N dakikadir guncellenmiyorsa takili."""
+    if not is_training_running():
+        return False
+    try:
+        mtime = Path("/tmp/train_ppo.log").stat().st_mtime
+        age_min = (time.time() - mtime) / 60.0
+        if age_min > STUCK_TIMEOUT_MIN:
+            log(f"UYARI: train log {age_min:.1f} dk'dir guncellenmedi — TAKILI KALMIS")
+            return True
+    except FileNotFoundError:
+        pass
+    return False
 
 
 def kill_training():
@@ -378,6 +395,13 @@ def main():
                 f"reward={metrics['current_reward']:.2f}, "
                 f"peak={metrics['peak_reward']:.2f}@{metrics['peak_step']}, "
                 f"std20={metrics['std_last20']:.2f}")
+
+        # Takili kalma tespiti: process var ama log guncellenmiyorsa oldur ve yeniden baslt
+        if training_alive and is_training_stuck():
+            log("Takili kalmis egitim tespit edildi — kill + restart")
+            kill_training()
+            time.sleep(10)
+            training_alive = False
 
         # Crash recovery
         if not training_alive:
