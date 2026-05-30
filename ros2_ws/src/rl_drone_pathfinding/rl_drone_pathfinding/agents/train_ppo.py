@@ -2,7 +2,11 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
+import subprocess
+import threading
+import time
 from pathlib import Path
 
 import yaml
@@ -12,6 +16,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
 from rl_drone_pathfinding.envs import DroneExplorationEnv
+from rl_drone_pathfinding.envs.drone_exploration_env import MOVING_OBS
 
 
 def _load_config(path: str) -> dict:
@@ -46,6 +51,49 @@ def _make_env(env_cfg: dict, env_id: int = 0):
         )
         return Monitor(env)
     return _factory
+
+
+def _obstacle_updater(world_name: str, env_id: int, stop_event: threading.Event) -> None:
+    """Main-process daemon thread: updates moving obstacles in sim{env_id} at 10 Hz.
+
+    Runs in the MAIN process (not a SubprocVecEnv worker), so subprocess.run
+    here cannot corrupt the worker↔main IPC pipe. Each thread owns one
+    GZ_PARTITION so multiple sims stay independent.
+    """
+    env = {**os.environ, "GZ_PARTITION": f"sim{env_id}"}
+    t0 = time.time()
+    interval = 0.1  # 10 Hz — smooth enough for T≥5s periods
+
+    while not stop_event.is_set():
+        t = time.time() - t0
+        for obs in MOVING_OBS:
+            phase = 2.0 * math.pi * t / obs["T"]
+            x = obs["x0"] + (obs["amp"] * math.sin(phase) if obs["axis"] == "x" else 0.0)
+            y = obs["y0"] + (obs["amp"] * math.sin(phase) if obs["axis"] == "y" else 0.0)
+            req = (f"name: '{obs['name']}', "
+                   f"position: {{x: {x:.4f}, y: {y:.4f}, z: {obs['z']:.4f}}}, "
+                   f"orientation: {{x: 0, y: 0, z: 0, w: 1}}")
+            subprocess.run(
+                ["gz", "service", "-s", f"/world/{world_name}/set_pose",
+                 "--reqtype", "gz.msgs.Pose", "--reptype", "gz.msgs.Boolean",
+                 "--timeout", "80", "--req", req],
+                env=env,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        stop_event.wait(interval)
+
+
+def _start_obstacle_updaters(world_name: str, n_envs: int) -> tuple[list[threading.Thread], threading.Event]:
+    stop = threading.Event()
+    threads = []
+    for i in range(n_envs):
+        t = threading.Thread(
+            target=_obstacle_updater, args=(world_name, i, stop), daemon=True
+        )
+        t.start()
+        threads.append(t)
+    print(f"[train_ppo] obstacle updater başlatıldı: {n_envs} sim × {len(MOVING_OBS)} engel")
+    return threads, stop
 
 
 def main(argv=None):
@@ -155,6 +203,8 @@ def main(argv=None):
     else:
         learn_steps = target
 
+    obs_threads, obs_stop = _start_obstacle_updaters(env_cfg["world_name"], n_envs)
+
     try:
         model.learn(total_timesteps=learn_steps,
                     callback=ckpt_cb,
@@ -165,6 +215,9 @@ def main(argv=None):
         # Save the live policy so no walltime is lost.
         final = ckpt_dir / "ppo_drone_interrupted.zip"
         print(f"\n[train_ppo] interrupted -> saving current policy to {final}")
+    finally:
+        obs_stop.set()
+
     model.save(str(final))
     print(f"[train_ppo] saved model to {final}")
     if use_vn:
