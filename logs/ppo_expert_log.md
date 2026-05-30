@@ -79,3 +79,37 @@ v9_newmap erken fazda; v6 aynı step'te +60 iken v9 -290 gösteriyor. Bu fark a�
 ### Müdahale
 Yok — %80 güven eşiği aşılmadı. Metrikler: entropy=-3.886 (>-4.0 ✓), std=0.888 (>0.7 ✓), fps=83 (sabit ✓), trend pozitif ✓. v6 ile performans farkı büyük ama LR/n_envs/harita farkıyla açıklanabilir; v9'a müdahale edilmedi.
 ---
+
+## [2026-05-30 14:55 UTC]
+**Step:** 100480 (v10 run, crash-loop sonrası) | **ep_rew_mean:** -47.11 | **entropy:** -4.247 | **std:** 0.996
+
+### Durum
+v9 run (~599k step'te) derin platoda kaldıktan sonra v10 başlatıldı; v10 hızlı öğreniyor (-25 @ ~84k) ama SubprocVecEnv deadlock nedeniyle 14:22-14:53 arasında 3 crash loop yaşandı. **n_envs=4 → 2 müdahalesi yapıldı** (KICKOFF.md'de belgelenmiş bilinen deadlock çözümü).
+
+### Detay
+- **İki ayrı run tespit edildi (CSV'de net görülüyor):**
+  - **Run 1 / v9 (11:02-12:32):** Step 142k→599k, ep_len=1000 her zaman (max-out), ep_rew_mean: -290→-272→-270→-270. Tam plato. Hiçbir oda sıçraması yok. Drone hayatta ama keşif yok.
+  - **Run 2 / v10 (13:02-14:53):** Step sıfırlanıp 49k→84k→100k, ep_len: 245→95→168. ep_rew_mean: -102→-25→-47. Çok daha hızlı öğrenme ama crash-loop nedeniyle step counter gerilemeler yapıyor (83968→106624→98432→100480 — monoton değil).
+- **v9 run'ın platoya giriş analizi:**
+  - ep_len=1000 her ölçümde: drone hiç terminale gitmiyor, ama reward -270'de sabit. "Hayatta kal, hareketsiz kal" yerel optimumu.
+  - Entropy 11:02→12:32: -3.885→-3.617→-3.440→-3.324. Her 30dk'da ~+0.18 artış (daha az negatif = entropi düşüyor = deterministikleşme). Henüz -4.0 altında değil ama trend tehlikeli yöndeydi.
+  - Std: 0.888→0.813→0.771→0.745. 0.7 eşiğine çok yaklaştı; bir sonraki 30dk'da büyük ihtimalle altına düşerdi.
+  - LR: configs'de o an lr=0.00015 (1.5e-4) ile linear schedule vardı (KICKOFF.md'nin söylediği 7.5e-5 sabit değil). Ama run uzun süre 1000-step episodlarla devam ettiğinden gradient sinyali çok zayıftı.
+- **v10 run'ının pozitif göstergeleri:**
+  - 84k step'te ep_rew_mean=-25: Bu v9'un 600k step'te ulaştığı -270'den kat kat iyi. v10 çok daha kısa episodlarda öğreniyor (95-168 step) → terminallere gidiyor → daha güçlü reward sinyali.
+  - Entropy -4.247 (>-4.0 ✓), std~0.997 (çok sağlıklı keşif). Fresh start + yüksek LR etkisi.
+  - FPS: 61-101 (yeni run'da değişken, Gazebo yeniden başlatma maliyeti var).
+- **ACIL SORUN — Crash loop (14:22, 14:33, 14:53 / hepsi step=80000):**
+  - interventions.jsonl: üç ardışık crash_recovery, hepsi `resume_from=ppo_drone_80000_steps.zip` ile. Sürekli step=80000'e dönüp yeniden başlıyor.
+  - KICKOFF.md'de net belgelenmiş: "Kök neden: SubprocVecEnv worker'ları içinde IPC pipe deadlock. Düzeltme: n_envs=4→2." Ama mevcut ppo.yaml'da n_envs=4 olarak bırakılmıştı — bu deadlock'un tetikleyicisi.
+  - Gazebo 4 instance'ı SubprocVecEnv altında paralel başlatıldığında unix_stream_read_generic deadlock'a giriyor; 2 instance'ta bu sorun yok (v9 run'da 83→84 FPS ile stabil çalıştığı görüldü).
+
+### v10 Önerisi
+1. **n_envs=4→2 [UYGULANDIR]:** Zaten yapıldı. Bu değişiklik crash loop'u durdurmalı. FPS ~80'e düşer ama stabil çalışır; 4 env ile 60-100 arası gidip gelen unstable FPS'ten daha iyi.
+2. **Checkpoint doğrulama:** Eğer crash loop n_envs=2 ile de devam ederse `resume_from: null` yaparak fresh start düşünülebilir (80k checkpoint bozuk olabilir). Ama öncelikle n_envs=2 fix'ini ver.
+
+### Müdahale
+**YAPILDI — configs/ppo.yaml:** `n_envs: 4 → 2`
+- Sebep: KICKOFF.md'de belgelenmiş SubprocVecEnv IPC deadlock. n_envs=4 bilinçli olarak 2'ye çekilmişti; sonradan yanlışlıkla 4'e dönmüş. Crash loop (3x, step=80000) bunun direkt kanıtı.
+- Beklenti: Bir sonraki resume'da training stabil çalışmalı, ep_rew_mean -25 civarından devam etmeli.
+---
