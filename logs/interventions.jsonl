@@ -1,2 +1,3 @@
 {"type": "crash_recovery", "step": 0, "resume_from": null, "reason": "Process ölü, log stale; checkpoint=yok", "ts": "2026-05-30 13:21:53"}
 {"type": "crash_recovery", "step": 80000, "resume_from": "ppo_drone_80000_steps.zip", "reason": "Process ölü, log stale; checkpoint=ppo_drone_80000_steps.zip", "ts": "2026-05-30 14:22:02"}
+{"type": "crash_recovery", "step": 80000, "resume_from": "ppo_drone_80000_steps.zip", "reason": "process ölü veya log stale", "ts": "2026-05-30 14:33:11"}
