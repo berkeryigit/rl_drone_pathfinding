@@ -160,3 +160,49 @@ v10 crash-loop (3× ardışık, 14:22-14:53) n_envs=4→2 düzeltmesiyle sonland
 ### Müdahale
 Yok — mevcut config (lr=1.5e-4→1.5e-5 linear, n_envs=2, ent_coef=0.0015) optimum aralıkta. Entropy=-4.247 (>-4.0 ✓), std=0.997 (>0.7 ✓), reward hızlı iyileşiyor. %80 güven eşiğine ulaşan sorun tespit edilmedi.
 ---
+
+## [2026-05-30 14:06 UTC]
+**Step:** 100,480 / 2,500,000 (4.0% — v10, son veri 11:53 UTC) | **ep_rew_mean:** -47.11 | **entropy:** -4.247 | **std:** 0.996
+
+### Durum
+v10 crash-loop (n_envs=4, 3× ardışık 11:22-11:53 UTC) önceki oturumda n_envs=4→2 ile sonlandırıldı. Fix'ten bu yana (~12:07 UTC) git repo'ya yeni metrik commit edilmemiş — 2+ saatlik veri boşluğu mevcut; monitor_agent sağlığı belirsiz. Hyperparameter'larda sorun yok, acil müdahale gerektiren yeni bir şey tespit edilmedi.
+
+### Detay
+
+**a) Reward eğrisi: Plato mu, kırılım mı?**
+- İki ayrı run net biçimde ayrışıyor:
+  - **v9 run (08:02-09:32 UTC):** step 142k→599k boyunca ep_len=1000 (sabit max), ep_rew_mean: -290→-272→-270→-270. ~457k adımlık ağır plato. "Hayatta kal, hareket etme" yerel optimumu. Entropy 11:02→12:32: -3.886→-3.324 (deterministikleşme trendi, 0.7 eşiğine yaklaşıyordu).
+  - **v10 run (10:02-11:53 UTC):** 49k→84k→100k (crash-loop gürültüsüyle non-monoton), ep_rew_mean: -102→-25→-40→-55→-47. İlk 35k adımda +77 rew artışı. Görsel regresyon (-25→-47) gerçek öğrenme kaybı değil; crash her seferinde 80k checkpoint'e dönüyor, o adımdaki -47 seviyesinden yeniden başlıyor.
+- **Mevcut değerlendirme:** n_envs=2 fix sonrası eğer training stabillendiyse, ep_rew_mean crash-loop temizlenince -25 ile -40 arasında resume edecek. Kırılım devam ediyor, plato yok.
+
+**b) lr=1.5e-4→1.5e-5 linear: Doğru mu?**
+- Evet, kesinlikle. step=100k'da LR ≈ 1.44e-4 (2.5M adımlık linear decay'in %4'ü geçti, LR hâlâ yüksek — erken öğrenme fazı için ideal).
+- v9'un sabit 7.5e-5 ile karşılaştırması: v9 @ 600k = -270, v10 @ 84k = -25. Başlangıç LR'inin 2× yüksek olması kritik fark.
+- v8 şeması (3e-4→3e-5) 3-katlı büyük haritada +113 verdi; v10'un 1.5e-4→1.5e-5'i daha konservatif ama 6-oda harita için doğru kalibre.
+
+**c) Entropy/std keşif için yeterli mi?**
+- Entropy: -4.247. v9 plato döneminde -3.32'ye kadar düşmüştü (tehlikeli); v10'da -4.24 ile stabil. -4.0 eşiği güvenli aşılıyor ✓
+- std: 0.996. v9 crash öncesi 0.745'e kadar inmişti; v10'da 1.0 bandında. 0.7 alarm eşiğinden çok uzakta ✓
+- Keşif kapasitesi tam sağlıklı. Ent_coef tetik koşulları (ep_len <100 VE plateau) şu an oluşmadı.
+
+**d) Oda geçişi için ne kadar step daha?**
+- n_envs=2 fix sonrası stabil run varsayımıyla: ep_rew_mean'in şu anki -47 seviyesinden sıfıra çıkışı ~160-200k step. İlk +15 oda sıçraması: **220-350k step toplam**.
+- v10 hızı 1.1 rew/1k step (crash-loop döneminde ölçülen konservatif tahmin); stabil run'da bu oran artabilir.
+- Eşik: 350k step'e kadar +15 görülmezse ent_coef 0.0015→0.003 tetik.
+
+**e) v10 için en kritik 2 öneri:**
+1. **Monitor_agent canlılık kontrolü:** Son CSV girişi 11:53 UTC (~2h önce). Sonraki beklenen giriş 12:23 UTC'ydi ama gelmedi. Ya monitor_agent durdu, ya training crashed ve recovery gerçekleşmedi, ya da sadece git push eksik. Öncelikle: `pgrep -fa "monitor_agent"` ve `tail -20 /tmp/monitor.log` ile kontrol et.
+2. **resume_from kademeli güncelleme:** Her crash yeniden 80k'ya dönüyor çünkü monitor latest checkpoint'i seçmiyor (ya v10 klasörünü yanlış tarıyor, ya da checkpoint pattern uyuşmuyor). Manuel olarak: `ls -lt runs/ppo_v10/checkpoints/` ile mevcut en son .zip'i bul ve `ppo.yaml`'daki `resume_from`'u güncelle. Bu değişiklik ile sonraki her crash 20k yerine daha az adım kaybettirir.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- n_envs=4→2 fix: **YAPILDI** ✓ (commit 12:07 UTC)
+- 2h veri boşluğu: Monitor sağlığını doğrula — rutin izleme, acil değil.
+- Hyperparameter: Hiçbiri alarm vermiyor.
+
+### v10 Önerisi
+1. **resume_from güncelle (manuel, tek seferlik):** `ls -lt runs/ppo_v10/checkpoints/*.zip | head -3` çalıştır; en son .zip'i ppo.yaml'a yaz ve push et. Crash loop'ta her seferinde 80k'ya düşmek yerine en son milestone'dan başla. Bu 1 satır yaml değişikliği en yüksek ROI'li aksiyon.
+2. **350k milestone alarm:** ep_rew_mean hâlâ 0'ın altında VE oda sıçraması yoksa 350k step'te `ent_coef: 0.003` uygula. Şu an tetik yok.
+
+### Müdahale
+**Yok** — configs/ppo.yaml'daki tüm hyperparameter'lar (lr schedule, ent_coef, n_envs, clip_range) mevcut metriklere göre optimal aralıkta. resume_from güncellemesi için mevcut checkpoint dosyalarına erişim gerekiyor (git repo'da yok, .gitignore'da); manuel doğrulama kullanıcıya bırakıldı. %80 güven eşiğini aşan, config üzerinden çözülebilecek net bir sorun tespit edilmedi.
+---
