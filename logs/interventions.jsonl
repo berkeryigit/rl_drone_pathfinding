@@ -9,3 +9,4 @@
 {"type": "crash_recovery", "step": 80000, "resume_from": "ppo_drone_80000_steps.zip", "reason": "process ölü veya log stale", "ts": "2026-05-30 16:33:49"}
 {"type": "crash_recovery", "step": 80000, "resume_from": "ppo_drone_80000_steps.zip", "reason": "process ölü veya log stale", "ts": "2026-05-30 16:53:55"}
 {"type": "crash_recovery", "step": 80000, "resume_from": "ppo_drone_80000_steps.zip", "reason": "process ölü veya log stale", "ts": "2026-05-30 17:14:01"}
+{"type": "crash_recovery", "step": 80000, "resume_from": "ppo_drone_80000_steps.zip", "reason": "process ölü veya log stale", "ts": "2026-05-30 17:34:07"}
