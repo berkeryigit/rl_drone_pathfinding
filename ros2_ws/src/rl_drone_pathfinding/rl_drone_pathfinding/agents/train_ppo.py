@@ -159,6 +159,10 @@ def main(argv=None):
         if abs(model.ent_coef - new_ent) > 1e-9:
             print(f"[train_ppo] override ent_coef {model.ent_coef} -> {new_ent}")
             model.ent_coef = new_ent
+        new_lr = _build_lr(ppo_cfg)
+        model.learning_rate = new_lr
+        model.policy.optimizer.param_groups[0]["lr"] = float(ppo_cfg["learning_rate"])
+        print(f"[train_ppo] override learning_rate -> {ppo_cfg['learning_rate']} ({ppo_cfg.get('lr_schedule','constant')})")
     else:
         model = PPO(
             policy=ppo_cfg["policy"],
