@@ -17,7 +17,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-jazzy-ros-gz-bridge \
         ros-jazzy-ros-gz-sim \
         ros-jazzy-rmw-cyclonedds-cpp \
-        gz-harmonic \
         mesa-utils libglu1-mesa libgl1-mesa-dri \
     && rm -rf /var/lib/apt/lists/*
 
@@ -28,7 +27,8 @@ RUN pip3 install --no-cache-dir --break-system-packages \
         -r /tmp/requirements.txt
 
 # --- non-root user matching host UID/GID --------------------------------------
-RUN groupadd --gid ${USER_GID} ${USERNAME} \
+RUN if getent passwd ubuntu > /dev/null 2>&1; then userdel -r ubuntu; fi \
+    && groupadd --gid ${USER_GID} ${USERNAME} \
     && useradd --uid ${USER_UID} --gid ${USER_GID} -m -s /bin/bash ${USERNAME} \
     && echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
     && mkdir -p /workspace && chown ${USER_UID}:${USER_GID} /workspace

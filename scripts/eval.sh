@@ -8,7 +8,14 @@ cd "$(dirname "$0")/.."
 
 MODEL="${1:?usage: eval.sh <model.zip> [n_eps]}"
 N_EPS="${2:-5}"
-CONFIG="configs/ppo.yaml"
+
+if [[ "$MODEL" == *"dqn"* ]]; then
+    AGENT_MODULE="eval_dqn"
+    CONFIG="configs/dqn.yaml"
+else
+    AGENT_MODULE="eval_ppo"
+    CONFIG="configs/ppo.yaml"
+fi
 
 source /opt/ros/jazzy/setup.bash
 source ros2_ws/install/setup.bash
@@ -28,7 +35,7 @@ pgrep -f "ros2 launch rl_drone_pathfinding sim_launch.py" >/dev/null || {
     trap "kill $SIM_PID 2>/dev/null; pkill -f 'gz sim' 2>/dev/null; pkill -f parameter_bridge 2>/dev/null" EXIT INT TERM
 }
 
-python3 -m rl_drone_pathfinding.agents.eval_ppo \
+python3 -m rl_drone_pathfinding.agents.$AGENT_MODULE \
     --config "$CONFIG" \
     --model "$MODEL" \
     --episodes "$N_EPS" \
