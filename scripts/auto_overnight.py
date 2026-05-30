@@ -32,7 +32,7 @@ from pathlib import Path
 # ============================================================
 PROJ = Path("/home/berkerygt/Desktop/RLProje/rl_drone_pathfinding")
 CONFIG = PROJ / "configs/ppo.yaml"
-STOP_HOUR, STOP_MIN = 7, 30          # sabah 07:30'da dur
+STOP_HOUR, STOP_MIN = 23, 0           # 23:00'da dur (gece bitir)
 CHECK_INTERVAL_MIN = 20              # her 20 dakikada bir kontrol
 COMMIT_STEPS_INTERVAL = 400_000     # her 400k step'te commit
 PEAK_REGRESS_RATIO = 0.60           # peak'in %60'ina dusunce mudahale

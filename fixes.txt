@@ -466,3 +466,11 @@ SONRAKİ ADIM:
   Doğru eval için: eval_ppo.py'yi VecNormalize load ile güncelle
   veya: ./scripts/eval.sh <best_checkpoint.zip> ile en iyi ckpt'i test et
   Best checkpoints: ppo_drone_final.zip, 1760k, 1640k, 1600k, 880k
+
+
+--- 2026-05-30 10:33 AUTO INTERVENTION: reduce_ent_coef ---
+Step: 10240
+Peak: -39.2 @ 1024
+Current: -239.5
+Karar: reduce_ent_coef
+
