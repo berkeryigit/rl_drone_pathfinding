@@ -113,3 +113,50 @@ v9 run (~599k step'te) derin platoda kaldıktan sonra v10 başlatıldı; v10 hı
 - Sebep: KICKOFF.md'de belgelenmiş SubprocVecEnv IPC deadlock. n_envs=4 bilinçli olarak 2'ye çekilmişti; sonradan yanlışlıkla 4'e dönmüş. Crash loop (3x, step=80000) bunun direkt kanıtı.
 - Beklenti: Bir sonraki resume'da training stabil çalışmalı, ep_rew_mean -25 civarından devam etmeli.
 ---
+
+## [2026-05-30 15:10 UTC]
+**Step:** 100,480 / 2,500,000 (4.0% — v10, post-crashloop) | **ep_rew_mean:** -47.11 | **entropy:** -4.247 | **std:** 0.997
+
+### Durum
+v10 crash-loop (3× ardışık, 14:22-14:53) n_envs=4→2 düzeltmesiyle sonlandırıldı (önceki oturum). Reward eğrisi v9'un -270 platosuna kıyasla dramatik biçimde iyileşti: v10'da 50k adımda -102→-47 (v9 600k adımda yalnızca -290→-270). Ent_coef ve LR mevcut aşamada uygun; ek müdahale yok.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- v10 aktif kırılım fazında: -102 @ 49k → -47 @ 100k. 50k adımda +55 rew = 1.1 rew/1k step. v9'da 457k adımda yalnızca +20 rew vardı (294k→599k); v10 9× daha hızlı ilerliyor.
+- ep_len: 246 @ 49k → 95 @ 84k → 169 @ 106k → 151 @ 100k. Non-monoton (crash loop gürültüsü); stable run'da 150-200 step bant bekleniyor. Bu aralık "drone öğreniyor, zaman zaman terminal geliyor" için sağlıklı.
+- Plato değil. Kırılım devam ediyor. Sıfır geçişi (ep_rew_mean=0) tahminen 143-180k step.
+- İlk oda sıçraması (+15): 0 geçişinden sonra ep_len uzadıkça voxel birikimi artacak; ilk +15 bonus ~200-320k step aralığında bekleniyor. Eğer 350k'ya kadar gelmezse: oda kapısı discovery için frontier/explore bonusu yetersiz kalmış olabilir.
+
+**b) lr=1.5e-4 → 1.5e-5 linear: bu aşamada doğru mu?**
+- Evet. v9'un sabit 7.5e-5'i ile kıyaslanınca: başlangıç LR 2× daha yüksek olduğundan politika güncellemeleri daha etkili; decay ile fine-tune fazına hazırlık.
+- v8: 3e-4 → 3e-5 (decay oranı 10×). v10: 1.5e-4 → 1.5e-5 (aynı 10× oran, daha düşük başlangıç). v8 3-katlı büyük haritada +113'e çıkmıştı; v10'un 6-oda tek katlı haritası için bu LR aralığı optimum görünüyor.
+- 2.5M step'te son LR = 1.5e-5 → 750k step'ten sonra LR 3e-5'in altına düşer. Bu v8'in peak'inin (1.6M step) altında kaldığından fine-tune aşaması doğal örtüşecek.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Entropy: -4.247. Eşik -4.0 (üzerinde = sağlıklı). ✓
+- Std: 0.997. Eşik <0.70 (alarm). Mevcut değer kritik eşikten çok uzakta. ✓
+- v9'un tehlikeli trendi karşılaştırması: 11:02-12:32 arası entropy -3.89→-3.32 (her 30dk +0.18 deterministikleşme), std 0.888→0.745. Bir sonraki ölçümde 0.70 altına düşerdi. v10'da bu trend yok: fresh restart std=1.0'a sıfırlandı, yüksek LR sayesinde entropy stable.
+- Sonuç: Şu an keşif kapasitesi tam. En erken alarm step 400-500k'da beklenilebilir.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 hızıyla (1.1 rew/1k step): ep_rew_mean=0 → ~143k step. Oda kapısı keşfi için drone'un komşu odayı "görüp" geçmesi gerekiyor. Kapı genişliği 2m, lidar range 12m → frontier bonus devreye girdiğinde kapı yönüne yönlenme başlar.
+- Tahmin: ilk +15 bonus **200-320k step** arasında görünür. Bu, toplam bütçenin %8-13'üne karşılık geliyor. v8 analoğu: v8 ~400k step civarında ikinci odaya geçti (farklı harita, yavaş LR dönemiydi). v10 daha erken bekleniyor.
+- 350k'ya kadar oda geçişi gelmezse: ent_coef artışı düşünülebilir.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **ep_len izleme + ent_coef tetik:** Bir sonraki 3 ölçümde ep_len <100 VE ep_rew_mean iyileşmesi <0.5 rew/1k step'e düşerse → `ent_coef: 0.0015 → 0.003`. Drone idle cezasından kaçınmak için kasıtlı çarpışmaya başlayabilir (ep_len kısalır, rew stagnate). Bu senaryoda entropy artışı çözüm.
+2. **Checkpoint senkronizasyonu:** `resume_from: runs/ppo_v10/checkpoints/ppo_drone_80000_steps.zip` hâlâ 80k'ya sabit. Monitor başarılı step'lerde bunu güncellemeli; aksi halde bir sonraki crash yeniden 80k'ya döner ve v10 tekrar crash-loop'a girebilir. Monitor agent'ın `resume_from`'u son checkpoint'e çekmesi kritik.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- n_envs=4→2 düzeltmesi önceki oturumda yapıldı (ppo.yaml güncel, n_envs=2). ✓
+- Crash-loop sebebi ortadan kalktı (IPC deadlock fix). ✓
+- Acil müdahale yok. Tek risk: monitor `resume_from` güncellemezse yeni crash döngüsü.
+
+### v10 Önerisi
+1. **Watchdog tetik (ent_coef):** 300-400k step aralığında ep_len <100 VE plateau (rew artışı <0.5/1k) → `ent_coef: 0.003`. Şu an tetik koşulları oluşmadı.
+2. **resume_from güncelleme:** Monitor agent, her başarılı 10k checkpoint'ten sonra `resume_from` alanını otomatik güncellemelidir — aksi halde bir sonraki crash yeniden 80k'ya sıfırlanır ve ilerleme kaybolur.
+
+### Müdahale
+Yok — mevcut config (lr=1.5e-4→1.5e-5 linear, n_envs=2, ent_coef=0.0015) optimum aralıkta. Entropy=-4.247 (>-4.0 ✓), std=0.997 (>0.7 ✓), reward hızlı iyileşiyor. %80 güven eşiğine ulaşan sorun tespit edilmedi.
+---
