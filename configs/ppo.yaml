@@ -9,9 +9,9 @@ ppo:
   ent_coef: 0.0015
   gae_lambda: 0.9
   gamma: 0.99
-  learning_rate: 7.5e-05
-  lr_final: 3.0e-05
-  lr_schedule: constant
+  learning_rate: 1.5e-04
+  lr_final: 1.5e-05
+  lr_schedule: linear
   max_grad_norm: 0.5
   n_epochs: 5
   n_steps: 512
@@ -28,8 +28,8 @@ ppo:
 train:
   ckpt_dir: ./runs/ppo_v10/checkpoints
   log_dir: ./runs/ppo_v10
-  n_envs: 2
-  resume_from: null
+  n_envs: 4
+  resume_from: runs/ppo_v10/checkpoints/ppo_drone_80000_steps.zip
   save_freq: 10000
   tb_log: ./runs/ppo_v10/tb
   total_timesteps: 2500000
