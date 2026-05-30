@@ -443,6 +443,9 @@ def main() -> None:
             pid = find_train_pid()
             log(f"Eğitim sağlıklı (pid={pid}), müdahale yok")
 
+        # Her kontrolde CSV + JSONL'i commit et — remote PPO uzman ajanı okuyabilsin
+        git_commit(f"auto: metrics step={step}")
+
         log(f"--- Kontrol bitti, {CHECK_INTERVAL_SEC // 60} dk bekleniyor ---\n")
         time.sleep(CHECK_INTERVAL_SEC)
 
