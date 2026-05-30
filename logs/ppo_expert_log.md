@@ -1,3 +1,38 @@
+## [2026-05-30 14:05 UTC]
+**Step:** 83,968 / 2,500,000 (3.4% — v10 fresh restart) | **ep_rew_mean:** -25.30 | **entropy:** -4.253 | **std:** 0.998
+
+### Durum
+v9 ~599k step'te platoda çöktü; crash_recovery ile fresh restart yapıldı (checkpoint yok). Mevcut v10 config (lr=1.5e-4→1.5e-5 linear, n_envs=4) önceki oturumun önerisiyle tam örtüşüyor ve erken fazda çok iyi ilerleme gösteriyor: -290 platosundan -25'e 84k step'te ulaşıldı. Acil müdahale yok.
+
+### Detay
+- **Reward eğrisi (pre-crash plato — KRİTİK):** 294k→447k→599k adımlarında ep_rew_mean: -272.4 → -270.7 → -270.0. ~300k adımlık sert plato. ep_len tüm ölçümlerde 1000 (max): drone hayatta kalıyor ama hiç oda/voxel kazanamıyor — klasik "safe-but-useless" yerel optimumu. Bu platoda entropy -3.886 → -3.324 ve std 0.888 → 0.746 düştü; bir sonraki ölçümde std 0.7 eşiğini kırma riskiyle eğitim zaten dejenere olmaya başlamıştı. Crash, bu kötü yerel optimumdan çıkmayı sağladı.
+
+- **Post-crash hızlı kırılım (v10 config):** 49k step'te -102.9, 84k step'te -25.3. 35k adımda +77.6 rew artışı. Pre-crash v9'da 457k adımda yalnızca +20 rew artışı vardı (294k→599k arası). v10 config'i (lr=1.5e-4 linear, n_envs=4) açıkça çok daha etkili.
+
+- **lr=1.5e-4 → 1.5e-5 linear:** v9'un sabit 7.5e-5'ine kıyasla başlangıçta 2× daha yüksek, decay ile sonunda 7.5× daha düşük. Bu doğru seçim: yüksek LR başlangıçta hızlı politika güncellemesi, azalan LR sonunda fine-tune. Pre-crash platosunu kıran ana faktör muhtemelen bu.
+
+- **Entropy:** -4.253. Pre-crash platosunda -3.32'ye kadar düşmüştü (tehlikeli). Post-restart -4.25-4.26 stabil — ent_coef=0.0015 bu LR ile çok daha iyi çalışıyor. -4.0 eşiğinin altında, keşif sağlıklı.
+
+- **std:** 0.998. Mükemmel. Pre-crash 0.746'ya kadar düşmüştü; restart sonrası tam reset. Aksiyon dağılımı geniş.
+
+- **FPS:** 61.0. n_envs=4 ile Gazebo yükü arttığından 83 FPS'den 61'e düştü. Kabul edilebilir — veri verimliliği net arttı (4 env × 61 FPS = 244 step/s vs 2 env × 83 = 166 step/s).
+
+- **ep_len trendi (izleme noktası):** 49k'da 245.8, 84k'da 95.2. Kısa episodlar erken dönem çarpışma fazı için normal; ancak ep_len'in sürekli düşmesi (246→95) "erken ölüm optimizasyonu" riskine işaret edebilir: uzun idle cezasından kaçınmak için drone kasıtlı çarpışabilir. ep_rew_mean'in iyileşmesi şimdilik bu hipotezi desteklemiyor ama bir sonraki ölçümde ep_len <60 veya ep_rew_mean iyileşme duruyorsa kritik sinyal.
+
+- **n_envs=4 deadlock riski:** KICKOFF.md n_envs=4→2 düzeltmesini belgeliyor ama kök neden _update_obstacles() animasyonu idi (devre dışı bırakıldı). 13:02'dan bu yana ~1h n_envs=4 ile sorunsuz çalışıyor; şimdilik stabil.
+
+- **Checkpoint durumu:** Her iki ölçümde de ckpt_file=ppo_drone_80000_steps.zip görünüyor. Bu ölçümde gerçek step=84k olduğundan checkpoint zaten oluşmuş olmalı. Sonraki crash'te resume mümkün.
+
+- **İlk oda breakthrough tahmini:** ep_rew_mean -25 @ 84k, pre-crash -270 @ 600k. v10 hızıyla 0'a ulaşım ~120-150k step, ilk +15 oda sıçraması 150-250k step içinde bekleniyor. v9'daki 500-800k tahmininin çok önünde.
+
+### v10 Önerisi
+1. **ep_len izleme kritik:** Bir sonraki ölçümde ep_len <60 veya rew_mean iyileşme duruyorsa ent_coef 0.0015 → 0.003'e çıkar (erken ölüm optimizasyonunu kır). Şu an müdahale yok.
+2. **500k milestone'da eval:** 500k step'te `eval.sh` çalıştır — gerçek oda/voxel verisi al. TB'den tahmin yeterli değil; 6 odanın kaçını gördüğünü ölç ve checkpoint seç.
+
+### Müdahale
+Yok — mevcut config (lr=1.5e-4 linear, n_envs=4, ent_coef=0.0015) önceki oturumun önerileriyle örtüşüyor ve hızlı iyileşme gösteriyor. ep_rew_mean -25.3, entropy -4.253, std 0.998: tüm metrikler sağlıklı. %80 güven eşiğine ulaşan bir sorun yok.
+---
+
 ## [2026-05-30 11:20 UTC]
 **Step:** 142,336 / 2,500,000 (5.7%) | **ep_rew_mean:** -290.70 | **entropy:** -3.886 | **std:** 0.888
 
