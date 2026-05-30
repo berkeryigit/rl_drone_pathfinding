@@ -5,8 +5,8 @@ env:
   seed: 42
 ppo:
   policy: MlpPolicy
-  learning_rate: 0.0003
-  lr_schedule: linear
+  learning_rate: 0.00015
+  lr_schedule: constant
   lr_final: 3.0e-05
   n_steps: 512
   batch_size: 256

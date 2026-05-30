@@ -474,3 +474,11 @@ Peak: -39.2 @ 1024
 Current: -239.5
 Karar: reduce_ent_coef
 
+
+
+--- 2026-05-30 12:38 AUTO INTERVENTION: reduce_lr ---
+Step: 631808
+Peak: -39.2 @ 1024
+Current: -269.9
+Karar: reduce_lr
+
