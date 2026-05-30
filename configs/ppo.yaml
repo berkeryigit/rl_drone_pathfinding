@@ -1,22 +1,21 @@
 env:
-  world_name: multi_room
   drone_name: rl_drone
   max_episode_steps: 1000
   seed: 42
+  world_name: multi_room
 ppo:
-  policy: MlpPolicy
-  learning_rate: 7.5e-05
-  lr_schedule: constant
-  lr_final: 3.0e-05
-  n_steps: 512
   batch_size: 256
-  n_epochs: 5
-  gamma: 0.99
-  gae_lambda: 0.9
   clip_range: 0.1
   ent_coef: 0.0015
-  vf_coef: 0.5
+  gae_lambda: 0.9
+  gamma: 0.99
+  learning_rate: 7.5e-05
+  lr_final: 3.0e-05
+  lr_schedule: constant
   max_grad_norm: 0.5
+  n_epochs: 5
+  n_steps: 512
+  policy: MlpPolicy
   policy_kwargs:
     net_arch:
       pi:
@@ -25,16 +24,17 @@ ppo:
       vf:
       - 128
       - 128
+  vf_coef: 0.5
 train:
-  total_timesteps: 2500000
-  save_freq: 10000
-  log_dir: ./runs/ppo_v10
   ckpt_dir: ./runs/ppo_v10/checkpoints
-  tb_log: ./runs/ppo_v10/tb
+  log_dir: ./runs/ppo_v10
   n_envs: 2
   resume_from: null
+  save_freq: 10000
+  tb_log: ./runs/ppo_v10/tb
+  total_timesteps: 2500000
   vec_normalize:
+    clip_reward: 10.0
     enabled: true
     norm_obs: true
     norm_reward: true
-    clip_reward: 10.0

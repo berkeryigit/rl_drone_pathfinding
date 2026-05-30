@@ -498,3 +498,7 @@ Peak: -39.2 @ 1024
 Current: -269.9
 Karar: reduce_lr
 
+
+[2026-05-30 13:21:53] CRASH RECOVERY
+  Sebep: Process ölü, log stale; checkpoint=yok
+  Resume: fresh
