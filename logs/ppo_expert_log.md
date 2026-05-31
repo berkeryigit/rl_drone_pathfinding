@@ -206,3 +206,43 @@ v10 crash-loop (n_envs=4, 3× ardışık 11:22-11:53 UTC) önceki oturumda n_env
 ### Müdahale
 **Yok** — configs/ppo.yaml'daki tüm hyperparameter'lar (lr schedule, ent_coef, n_envs, clip_range) mevcut metriklere göre optimal aralıkta. resume_from güncellemesi için mevcut checkpoint dosyalarına erişim gerekiyor (git repo'da yok, .gitignore'da); manuel doğrulama kullanıcıya bırakıldı. %80 güven eşiğini aşan, config üzerinden çözülebilecek net bir sorun tespit edilmedi.
 ---
+
+## [2026-05-31 10:06 UTC]
+**Step:** 193,248 (CSV son kayıt — v9/v10 era, STALE) | **Gerçek son durum:** v2.1 @ 120k → ep_rew_mean: +92.6 | **entropy:** -4.212 (son CSV) / -4.75 (v2.1 @ 137k) | **std:** 0.985 (son CSV) / 1.19 (v2.1 @ 137k)
+
+### Durum
+**EĞİTİM PROCESS'İ ÇALIŞMIYOR.** `pgrep train_ppo` boş döndü. training_metrics.csv 2026-05-30 22:00'dan beri adım=193248 ile DONMUŞ (12+ özdeş satır, v9 kalıntısı). Gerçek güncel run ppo.yaml v2.1 (n_envs=1, lr=3e-4→1e-5 linear, ent_coef=0.005, total=700k) olup versions.jsonl'e göre 120k step'te ep_rew_mean=+92.6'ya ulaşmıştı ve daha sonra process kesildi.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV'deki son veriler GEÇERSIZ: bunlar v9/v10 crash-loop sürecinin donmuş kalıntısı (step 80k→180k arası tekrarlayan crash_recovery'ler).
+- Gerçek v2.1 eğitim çizgisi: v2.0 redesign → v2.1 @ 11:18 UTC → 120k'da +92.6 (rooms_max=2, yükselen). Train_v2_2m_fresh.log @ 137k'da ep_rew_mean=+40-41 görünüyor (farklı run, v2_explore), bu da küçük bir plato sinyali. Ancak versions.jsonl "hâlâ yükseliyor" notunu v2.1 @ 120k için veriyor. Kırılım devam ediyordu, plato yok — kesme noktasında momentum vardı.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Artık geçersiz: ppo.yaml v2.1'e yeniden yazıldı → lr=3e-4→1e-5 linear decay. Bu v8'in 3e-4→3e-5 şemasıyla yapısal olarak aynı, tek fark final LR daha düşük (1e-5 vs 3e-5). 6-oda 16×16m harita için doğru kalibrasyon. Sabit lr=7.5e-5 kullanımı terk edildi, DOĞRU KARAR.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Son güvenilir v2.1 verisi (train_v2_2m_fresh @ 137k): entropy=-4.75, std=1.19 → MÜKEMMEL, alarm eşiğinin çok uzağında.
+- DİKKAT SİNYALİ: train_v4_fresh.log @ 307k adımda entropy=-3.11, std=0.679 (0.7 ALTINA DÜŞÜŞ). Bu v4 konfigürasyonu için geçerliydi, fakat v2.1'deki ent_coef=0.005 (v4'ten yüksek) bu riski düşürüyor. Bununla birlikte, 300-400k band geçilirken std izlenmeli — v4 aynı bandda alarm vermişti.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v2.1 @ 120k'da zaten rooms_max=2 ulaşıldı (+92.6 return ≈ 2 oda × 15 + voxel seyahati). Kalan 580k step ile (total 700k) tam saat oda keşfi yapılabilir.
+- Referans: eval_v2_140k.log en iyi ep'de +172 (3 oda) — politika sporadik 3-oda geçişi yapabiliyordu.
+- Beklenti: 200-350k step'te tutarlı 3-oda geçişi; 500k+ sonunda 4-5 oda mümkün.
+
+**e) v10/v2.2 için şu an en kritik 1-2 öneri:**
+1. **std izleme tetik:** 300-400k bandında std < 0.7 görülürse ent_coef 0.005 → 0.010'a çek. train_v4 bu bandda kesildi (std=0.679); v2.1'de ent_coef yüksek ancak deterministikleşme yine de gelebilir.
+2. **v2.2 trigger (600k+):** ep_rew_mean plateau (son 100k'da <5 artış) veya collision rate yeniden yükselirse → direction-aware lidar penalty'yi artır (mevcut 0.3→0.5) ve siyırma cezası eşiğini 0.5m→0.7m'ye genişlet. eval_v2_140k log'da 20 ep'in 15'i tek odada kaldı → duvar sıkışma kalıbı hâlâ var.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **EVET — EĞİTİM ÇALIŞMIYOR.** Process kesilmiş, son checkpoint belirsiz (runs/ dizini remota push edilmemiş, yerel olarak da yok). v2.1 700k hedefinin 120k'dan sonrasına ait hiç checkpoint yok. Kullanıcının lokalde `./scripts/train.sh configs/ppo.yaml` ile yeniden başlatması gerekiyor. Fresh start mı, son ckpt'den mi resume edilecek bilgisi ppo.yaml'daki `resume_from: null` değerinden anlaşılıyor → FRESH restart demek.
+- ppo.yaml hyperparameter'larında %80+ güven eşiğini aşan bir sorun yok → config değiştirilmedi.
+
+### v10 Önerisi
+1. **300-400k bandında std < 0.7 → ent_coef 0.005→0.010 tetik:** train_v4_fresh bu bandda deterministikleşti (std=0.679). v2.1 ent_coef=0.005 ile bu riski düşürdü ancak eşiği geçince agresif artırım yapılmalı.
+2. **v2.2'de direction-aware ceza sıkılaştırması:** 20-ep eval'de 15 ep tek odada bitti — siyırma eşiği 0.5→0.7m ve ön-arc ceza katsayısı 0.3→0.5 olarak güçlendirilmeli. Bu değişiklik keşif oranını doğrudan artırır, reward şekillendirilmesini gerektirmez.
+
+### Müdahale
+**Yok** — configs/ppo.yaml v2.1 (n_envs=1, lr=3e-4→1e-5 linear, ent_coef=0.005, total=700k) mevcut veriye göre optimal. Training process dead olması operasyonel sorun; hyperparameter müdahalesi %80 güven eşiğini aşmıyor. Kullanıcının lokalde `./scripts/train.sh configs/ppo.yaml` ile süreci yeniden başlatması gerekiyor.
+---
