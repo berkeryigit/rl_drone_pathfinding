@@ -30,7 +30,15 @@ A3C **discrete** kullanır. Bu sayede "continuous vs discrete" karşılaştırma
 ---
 
 ## 1. Ortam (tek seferlik kurulum)
-Gereken: **Ubuntu + ROS 2 Jazzy + Gazebo Harmonic + NVIDIA GPU (opsiyonel ama tavsiye)**.
+Gereken: **Ubuntu 24.04 + ROS 2 Jazzy + Gazebo Harmonic** (+ varsa NVIDIA GPU).
+
+> 💻 **MacBook + Ubuntu 24.04 VM kullanıyorsan (bu ekip):** NVIDIA GPU YOK → torch **CPU**,
+> Gazebo **yazılım render**, fps düşük (~5–15) olur (normal). Kurulum + Docker (CPU/VM) için
+> **`docker/README.md`**'yi oku. Özet: ya VM'de native kur (aşağısı), ya da
+> `docker compose -f docker/docker-compose.cpu.yml up -d --build`. Her terminalde ekle:
+> `export LIBGL_ALWAYS_SOFTWARE=1 GZ_IP=127.0.0.1 SIM_HEADLESS=1`
+> GPU'suzken yavaşsa `configs/a2c.yaml`'de `total_timesteps`'i önce 300k yapıp baseline al.
+> Ayrıca: Claude'u bu branch'te açtığında **`CLAUDE.md`** otomatik yüklenir (tam bağlam + to-do).
 
 ```bash
 cd ~/Desktop/RLProje/rl_drone_pathfinding   # algo/a3c checkout'lu

@@ -1,0 +1,35 @@
+# GPU'SUZ / MacBook+Ubuntu-VM Docker calistirmasi:
+#   cd <repo>
+#   UID=$(id -u) GID=$(id -g) docker compose -f docker/docker-compose.cpu.yml up -d --build
+#   docker exec -it rl_drone_cpu bash
+# Icerde:
+#   cd /workspace && cd ros2_ws && colcon build --symlink-install && cd ..
+#   python3 -m venv .venv --system-site-packages && source .venv/bin/activate && pip install -r requirements.txt
+#   ./scripts/train_a2c.sh configs/a2c.yaml     # headless, yazilim render (yavas ama calisir)
+#
+# NVIDIA YOK: runtime:nvidia ve GPU device'lari KASITLI olarak yok. X11 yok (headless).
+services:
+  rl_drone_cpu:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.cpu
+      args:
+        USER_UID: "${UID:-1000}"
+        USER_GID: "${GID:-1000}"
+    image: rl_drone_pathfinding:cpu
+    container_name: rl_drone_cpu
+    network_mode: host
+    ipc: host
+    environment:
+      - LIBGL_ALWAYS_SOFTWARE=1
+      - GALLIUM_DRIVER=llvmpipe
+      - SIM_HEADLESS=1
+      - GZ_IP=127.0.0.1
+      - IGN_IP=127.0.0.1
+      - ROS_DOMAIN_ID=42
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    volumes:
+      - ../:/workspace:rw
+    stdin_open: true
+    tty: true
+    command: ["sleep", "infinity"]
