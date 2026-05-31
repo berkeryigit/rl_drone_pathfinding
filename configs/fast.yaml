@@ -1,0 +1,44 @@
+# ============================================================================
+# HIZLI numpy/Gymnasium sim — PPO config (Gazebo'suz, ROS'suz)
+#   * Aynı ortam (harita/ödül/obs/action), v2.0 ödülü (üçlü eval'de en iyi).
+#   * n_envs=8 SERBEST (çoklu-env sorunu Gazebo'ya özeldi).
+#   * UZUN episode 2500, net [256,256], FRESH 1.5M.
+#   * Gazebo sonuçlarını (runs/ppo_v2_*, ppo_v3_best) ETKİLEMEZ — ayrı run.
+# ============================================================================
+env:
+  max_episode_steps: 2500
+  seed: 42
+
+ppo:
+  policy: MlpPolicy
+  learning_rate: 0.0003
+  lr_schedule: linear
+  lr_final: 1.0e-05
+  n_steps: 1024              # per env; n_envs=8 -> rollout 8192
+  batch_size: 512
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.008
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+
+train:
+  version: fast_v1
+  n_envs: 8
+  total_timesteps: 1500000
+  save_freq: 50000
+  resume_from: null
+  log_dir: ./runs/fast_v1
+  ckpt_dir: ./runs/fast_v1/checkpoints
+  tb_log: ./runs/fast_v1/tb
+  vec_normalize:
+    enabled: true
+    norm_obs: false
+    norm_reward: true
+    clip_reward: 10.0
