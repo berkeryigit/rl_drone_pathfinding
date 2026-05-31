@@ -45,7 +45,7 @@ def generate_launch_description():
         }.items(),
     )
 
-    # Spawn drone at the center of the SE quadrant (avoids walls).
+    # Spawn drone at the FIXED start: R0 (sol-alt kose), env reset ile birebir.
     spawn_drone = Node(
         package='ros_gz_sim',
         executable='create',
@@ -54,8 +54,8 @@ def generate_launch_description():
         arguments=[
             '-name', 'rl_drone',
             '-file', drone_sdf,
-            '-x', '4.0', '-y', '-4.0', '-z', '0.6',
-            '-Y', '1.57',
+            '-x', '-5.0', '-y', '-5.0', '-z', '0.6',
+            '-Y', '0.0',
         ],
     )
 

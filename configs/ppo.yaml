@@ -1,40 +1,48 @@
+# ============================================================================
+# PPO config — v2.0 TEMIZ BASELINE (2026-05-31, sifirdan yeniden tasarlandi)
+#
+#   * Tek sim, tek env (n_envs=1). Coklu env/gazebo YOK — gecmiste surekli bozdu.
+#   * Sabit harita (multi_room), sabit baslangic (R0), 2D action [v, w].
+#   * Temiz odul: return ~= kesfedilen voxel sayisi.
+#   * Versiyon ilerlemesi: operator agent v2.1, v2.2 ... olarak gunceller,
+#     her seferinde log_dir/ckpt_dir/tb_log degisir, 'version' alani guncellenir.
+# ============================================================================
 env:
   drone_name: rl_drone
   max_episode_steps: 1000
   seed: 42
   world_name: multi_room
+
 ppo:
-  batch_size: 256
-  clip_range: 0.1
-  ent_coef: 0.0015
-  gae_lambda: 0.9
-  gamma: 0.99
-  learning_rate: 0.00015
-  lr_final: 1.5e-05
-  lr_schedule: linear
-  max_grad_norm: 0.5
-  n_epochs: 5
-  n_steps: 512
   policy: MlpPolicy
+  learning_rate: 0.0003
+  lr_schedule: linear        # 3e-4 -> lr_final boyunca dogrusal azalir
+  lr_final: 1.0e-05
+  n_steps: 2048              # n_envs=1 -> rollout = 2048
+  batch_size: 256
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.005            # kesfi tesvik et (drone gezsin)
+  vf_coef: 0.5
+  max_grad_norm: 0.5
   policy_kwargs:
     net_arch:
-      pi:
-      - 128
-      - 128
-      vf:
-      - 128
-      - 128
-  vf_coef: 0.5
+      pi: [128, 128]
+      vf: [128, 128]
+
 train:
-  ckpt_dir: ./runs/ppo_v10/checkpoints
-  log_dir: ./runs/ppo_v10
-  n_envs: 2
-  resume_from: runs/ppo_v10/checkpoints/ppo_drone_180000_steps.zip
-  save_freq: 10000
-  tb_log: ./runs/ppo_v10/tb
-  total_timesteps: 2500000
+  version: v2.0
+  n_envs: 1
+  total_timesteps: 2000000
+  save_freq: 20000
+  resume_from: null          # fresh start
+  log_dir: ./runs/ppo_v2_0
+  ckpt_dir: ./runs/ppo_v2_0/checkpoints
+  tb_log: ./runs/ppo_v2_0/tb
   vec_normalize:
-    clip_reward: 10.0
     enabled: true
-    norm_obs: true
-    norm_reward: true
+    norm_obs: false          # obs zaten [-1,1]/[0,1] -> restart'a dayanikli
+    norm_reward: true        # value-fonksiyon olceklemesi icin
+    clip_reward: 10.0

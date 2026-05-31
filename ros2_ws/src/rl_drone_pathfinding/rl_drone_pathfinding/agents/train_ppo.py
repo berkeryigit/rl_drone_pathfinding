@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import csv
+import datetime
 import math
 import os
 import subprocess
@@ -9,9 +11,10 @@ import threading
 import time
 from pathlib import Path
 
+import numpy as np
 import yaml
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.callbacks import BaseCallback, CallbackList, CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecNormalize
 
@@ -49,8 +52,73 @@ def _make_env(env_cfg: dict, env_id: int = 0):
             seed=env_cfg.get("seed"),
             env_id=env_id,
         )
-        return Monitor(env)
+        # info_keywords -> bu anahtarlar episode sonunda ep_info_buffer'a tasinir,
+        # boylece ExplorationLogger keşif metriklerini TB + CSV'ye yazabilir.
+        return Monitor(env, info_keywords=("explored_voxels", "visited_rooms"))
     return _factory
+
+
+class ExplorationLogger(BaseCallback):
+    """Her rollout sonunda kesif metriklerini TB'ye kaydeder ve <log_dir>/progress.csv'ye ekler.
+
+    Rapor grafikleri (voxel kapsami, oda sayisi, reward) bu verilerden uretilir.
+    """
+
+    def __init__(self, log_dir: Path, version: str, ckpt_dir: Path = None, verbose: int = 0):
+        super().__init__(verbose)
+        self.csv_path = Path(log_dir) / "progress.csv"
+        self.version = version
+        # Restart dayanikliligi: vec_normalize.pkl'i her rollout sonunda taze tut,
+        # boylece crash sonrasi resume'da reward istatistikleri checkpoint'le uyumlu.
+        self.vn_path = Path(ckpt_dir) / "vec_normalize.pkl" if ckpt_dir else None
+        self._header_written = self.csv_path.exists()
+
+    def _safe_mean(self, key):
+        buf = self.model.ep_info_buffer
+        vals = [ep[key] for ep in buf if key in ep]
+        return (float(np.mean(vals)), float(np.max(vals))) if vals else (0.0, 0.0)
+
+    def _on_step(self) -> bool:  # gerekli ama is rollout sonunda yapilir
+        return True
+
+    def _on_rollout_end(self) -> None:
+        buf = self.model.ep_info_buffer
+        if not buf:
+            return
+        rew_mean = float(np.mean([ep["r"] for ep in buf]))
+        len_mean = float(np.mean([ep["l"] for ep in buf]))
+        vox_mean, vox_max = self._safe_mean("explored_voxels")
+        room_mean, room_max = self._safe_mean("visited_rooms")
+
+        # TensorBoard
+        self.logger.record("explore/voxels_mean", vox_mean)
+        self.logger.record("explore/voxels_max", vox_max)
+        self.logger.record("explore/rooms_mean", room_mean)
+        self.logger.record("explore/rooms_max", room_max)
+
+        # CSV (rapor icin)
+        write_header = not self._header_written
+        with open(self.csv_path, "a", newline="") as f:
+            w = csv.writer(f)
+            if write_header:
+                w.writerow(["timestamp", "version", "step", "ep_rew_mean",
+                            "ep_len_mean", "voxels_mean", "voxels_max",
+                            "rooms_mean", "rooms_max"])
+                self._header_written = True
+            w.writerow([datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        self.version, int(self.num_timesteps),
+                        round(rew_mean, 3), round(len_mean, 1),
+                        round(vox_mean, 2), int(vox_max),
+                        round(room_mean, 3), int(room_max)])
+
+        # VecNormalize istatistiklerini taze tut (varsa)
+        if self.vn_path is not None:
+            vn = self.model.get_vec_normalize_env()
+            if vn is not None:
+                try:
+                    vn.save(str(self.vn_path))
+                except Exception:
+                    pass
 
 
 def _obstacle_updater(world_name: str, env_id: int, stop_event: threading.Event) -> None:
@@ -188,6 +256,12 @@ def main(argv=None):
         save_path=str(ckpt_dir),
         name_prefix="ppo_drone",
     )
+    explo_cb = ExplorationLogger(
+        log_dir=log_dir,
+        version=str(tr_cfg.get("version", "v?")),
+        ckpt_dir=ckpt_dir if use_vn else None,
+    )
+    callbacks = CallbackList([ckpt_cb, explo_cb])
 
     final = ckpt_dir / "ppo_drone_final.zip"
     target = int(tr_cfg["total_timesteps"])
@@ -211,7 +285,7 @@ def main(argv=None):
 
     try:
         model.learn(total_timesteps=learn_steps,
-                    callback=ckpt_cb,
+                    callback=callbacks,
                     progress_bar=True,
                     reset_num_timesteps=not resuming)
     except KeyboardInterrupt:

@@ -518,3 +518,45 @@ v6'ya göre daha smooth ama büyük bir sıçrama yok.
 
 GitHub'da tüm grafikler güncel: `docs/figures/`. README için "v1→v7
 ablation table" zaten hazır (PROGRESS.md, fixes.txt).
+
+---
+
+## 2026-05-31 — v2 TEMİZ YENİDEN TASARIM (sıfırdan ödül + otonom Claude operatör)
+
+Berker yeni kuralları netleştirdi ve süreci sıfırdan kurmamızı istedi (eski koddan
+miras alma — clean slate). Önceki gece v10 (n_envs=2) **crash-loop**'a girmişti:
+`monitor_agent.py` her 20 dk 180k checkpoint'ten restart atıyordu ama step 193248'de
+donuyor, reward -173'e çakılıyordu. Kök neden: **çoklu env / çoklu Gazebo** süreci
+sürekli bozuyor (Berker bunu zaten biliyordu).
+
+### Yapılan değişiklikler
+- **Tek sim, tek env** (`n_envs=1`). Çoklu env/gazebo tamamen kaldırıldı.
+- **2D action** `[v, ω]` — irtifa sabit (vz=0, gravity=false hover). Ödev tanımıyla
+  (lineer hız + açısal hız) birebir; tek-kat 2D voxel kapsamı için en uygun.
+- **Sabit başlangıç**: drone hep **R0 (-5,-5)** sol-alt köşeden başlar (eski rastgele
+  6-spawn kaldırıldı). `sim_launch.py` spawn'ı da R0'a alındı.
+- **Harita sabit**: `multi_room.sdf` (tek katlı 6 oda) değişmiyor. 3 hareketli engel kalıyor.
+- **40-d temiz obs**: 32 lidar + cos/sin yaw + (v,ω) + (kesif_oranı,oda_oranı) +
+  (min_lidar, idle). Up/down lidar bağımlılığı kaldırıldı.
+- **Ödül sıfırdan (v2.0)**: `return ≈ keşfedilen voxel sayısı`.
+  `-0.01` zaman, `+1.0` yeni voxel, `+10` yeni oda, idle `-0.05` (>40 adım),
+  progresif duvar cezası `-0.5·(1-d/1m)`, ileri-açık bootstrap `+0.05`,
+  çarpışma `-10` (terminal, d<0.30m).
+- **Config v2.0**: `runs/ppo_v2_0`, 2M step, VecNormalize(norm_obs=false, norm_reward=true),
+  lr 3e-4→1e-5 linear, ent 0.005, clip 0.2, n_steps 2048, batch 256, epochs 10.
+- **Metrik loglama**: `ExplorationLogger` callback → TB (`explore/voxels_*`, `rooms_*`) +
+  `runs/ppo_v2_0/progress.csv` (rapor grafikleri için). `vec_normalize.pkl` her rollout
+  tazelenir (restart dayanıklılığı).
+- **Smoke test** (sim ile, 80 adım): obs (40,), R0'dan başladı, voxel 1→14, toplam ödül
+  14.47 ≈ voxel sayısı, çarpışma yok. ✓
+
+### Otonom kontrol — `auto_overnight.py` DEĞİL, gerçek Claude agent
+Berker "aptal" Python babysitter istemiyor (geçen sefer rezalet çalıştı). Yerine:
+- `scripts/deprecated/`'a taşındı: `auto_overnight.py`, `monitor_agent.py`.
+- **`.claude/agents/rl-train-operator.md`** — tüm kontrolü alan Claude operatör agent:
+  crash/freeze kurtarma, dengeli RL müdahaleleri (resume/lr/ent), v2.1→v2.2 versiyon
+  atlama, log + `algo/ppo` push. Bir heartbeat loop her ~20 dk onu tetikliyor.
+- Yardımcılar: `scripts/ensure_training.sh`, `scripts/restart_training.sh`,
+  `scripts/tb_metrics.py` (operatörün gözü), `scripts/report.py` (figür+REPORT.md).
+
+Eğitim ve geliştirme Berker "dur" diyene kadar sürekli çalışacak.
