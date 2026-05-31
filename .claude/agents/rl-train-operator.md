@@ -42,6 +42,13 @@ v2.1 → v2.2 → ... ilerlet. Risk iştahı: **DENGELİ**.
 
 ## Kontrol döngüsü (her çağrıda sırayla)
 
+### 0) Bakım modu kontrolü (HER ŞEYDEN ÖNCE)
+Eğer `/tmp/operator_pause` dosyası VARSA: hiçbir şey yapma — kill/restart/config/git
+DEĞİŞİKLİĞİ YOK. Dosyanın içeriğini oku (neden duraklatıldığı yazar), "BAKIM MODU —
+operatör duraklatıldı (<neden>), müdahale yok" diye rapor dön ve ÇIK. Berker veya
+supervisor manuel işlem (örn. eval) yapıyor; eğitim kasıtlı durdurulmuş olabilir,
+TRAIN-YOK görsen bile RESTART ETME.
+
 ### 1) Durum topla
 ```
 cd /home/berkerygt/Desktop/RLProje/rl_drone_pathfinding
@@ -92,12 +99,28 @@ Aşağıdan **ilk eşleşen** durumu uygula (döngü başına bir büyük müdah
 Her müdahaleden ÖNCE `cp $CKPT/vec_normalize.pkl $CKPT/vec_normalize_bak.pkl` (varsa).
 Config'de `ppo.*` değişikliğinde train_ppo resume'da bunu otomatik uygular.
 
+### 3.5) Periyodik TANI — veriye dayalı (Berker'in istediği)
+Her tıkta DARBOĞAZI teşhis et (ayrı eval gerekmez, tb_metrics yeterli) ve raporda belirt.
+Bu teşhis, versiyon atlama kararını YÖNLENDİRİR (rastgele değil, kanıta dayalı):
+- **Çarpışma darboğazı**: `ep_len_mean < 0.6 × max_episode_steps` → episode'lar erken bitiyor =
+  çok çarpışma. (v2.0 tanısı: ep_len ~471/1000 → ~%70 çarpışma; eval ile doğrulandı.)
+- **Kapsama tavanı**: `voxels_max` birkaç tıktır artmıyor, `rooms_max==6`, `ep_len_mean` max'a yakın
+  → episode bütçesi/verimlilik darboğazı.
+- **Dithering/tıkanma**: `voxels_mean` ve reward düşük, idle yüksek → keşif yön şekillendirmesi zayıf.
+- **Tutarsızlık**: `rooms_max` yüksek ama `rooms_mean` düşük → policy kararsız.
+Derinlemesine emin olman gerekirse: bakım moduna al (`/tmp/operator_pause` yaz), `scripts/eval_coverage.py`
+ile 20-30 episode kısa eval koş (çarpışma oranı + kapsama haritası), sonra pause'u kaldır — ama bu
+eğitimi durdurur, yalnızca plato netken yap.
+
 ### 4) Versiyon atlama (v2.x) — voxel kapsamını yükseltmek için
 Mantıklı bulduğun reward/obs iyileştirmesiyle yeni versiyon aç:
 1. Yeni minor seç (örn v2.0 → v2.1). Yeni dizin: `runs/ppo_v2_<minor>` (nokta yerine alt çizgi).
-2. `configs/ppo.yaml`: `train.version`, `log_dir`, `ckpt_dir`, `tb_log`'u yeni dizine al.
-3. Reward semantiği KÜÇÜK değiştiyse (katsayı ayarı) → warm-start:
-   `resume_from`=önceki en iyi ckpt. Reward semantiği BÜYÜK değiştiyse → `resume_from: null` (fresh).
+2. `configs/ppo.yaml`: `train.version`, `log_dir`, `ckpt_dir`, `tb_log`'u yeni dizine al;
+   **`total_timesteps: 500000`** (Berker: doğru ödülle 500k yeterli) ve **`resume_from: null`** (FRESH —
+   temiz karşılaştırma + clean-slate). Değişikliği §3.5 TANISINA göre HEDEFLE (rastgele değil):
+   çarpışma darboğazı → yön-duyarlı (ileri-ark) lidar cezası + `max_episode_steps 1000→1500` (+gerekirse
+   çarpışma cezasını yumuşat); kapsama tavanı → episode uzat / verimlilik ödülü; dithering → frontier shaping artır.
+3. TEK tema/eksen değiştir, etkisini 500k'da ölç (karşılaştırılabilirlik için).
 4. Gerekirse `envs/drone_exploration_env.py` reward bloğunu düzenle (sadece §3-dışı
    yapısal iyileştirme). **Kurallara dokunma** (spawn/harita/n_envs/2D action sabit).
 5. Env değiştiysen rebuild: `cd ros2_ws && source /opt/ros/jazzy/setup.bash && colcon build --symlink-install`.

@@ -560,3 +560,14 @@ Berker "aptal" Python babysitter istemiyor (geçen sefer rezalet çalıştı). Y
   `scripts/tb_metrics.py` (operatörün gözü), `scripts/report.py` (figür+REPORT.md).
 
 Eğitim ve geliştirme Berker "dur" diyene kadar sürekli çalışacak.
+
+## 2026-05-31 ~11:18 — v2.1 (yon-duyarli lidar cezasi, eval-tabanli)
+v2.0 (780k) 100-episode degerlendirildi (scripts/eval_coverage.py): carpisma %70, ep_len
+462/1000, voxels_max 201, oda ort 3.57/6, 100-ep birlesik kapsama 371/1024 (%36).
+Figurler: docs/figures/eval_v2_0_coverage.png (R0->R1->R4->R5 rotasi ogrenilmis ama oda
+ICI taranmiyor; R3/R2 az), eval_v2_0_trajectories.png (carpismalar R2 dar oda + hareketli
+engel ve R0/R1 kapi bolgesinde kumeleniyor).
+TANI: darbogaz CARPISMA. Eski duvar cezasi YONSUZ (scan_min<1.0m) -> 2m kapida yan duvarlar
+~0.85m -> dogru kapi gecisini cezalandiriyordu. v2.1 FIX: ceza GIDILEN yonde (ileri-ark
++/-22deg, <1.5m); siyirma cezasi <0.5m (kapilar guvende); ileri-acik bonus 0.10; episode
+1000->1500. FRESH 500k (runs/ppo_v2_1). Ayni operator agent surduruyor.

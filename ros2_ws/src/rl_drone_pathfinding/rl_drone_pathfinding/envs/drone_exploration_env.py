@@ -22,18 +22,21 @@ Gozlem (40-d, hepsi normalize [-1,1] / [0,1]):
     [36:38] : (kesif_orani, ziyaret_edilen_oda_orani)              -> [0,1]
     [38:40] : (min_lidar/LIDAR_MAX, idle_orani)                    -> [0,1]
 
-Odul (v2.0 — temiz, olcekli, yorumlanabilir):
+Odul (v2.1 — YON-DUYARLI ceza; v2.0 eval'inde %70 carpisma -> kapi/engel-bilincli):
     bir adimda toplam r =
         -0.01                          her adim zaman cezasi
         +1.0   * yeni_voxel            yeni zemin hucresi kesfi (ANA sinyal)
         +10.0  * yeni_oda              yeni odaya gecis (kilometre tasi)
         -0.05  (idle)                  IDLE_GRACE adimdir yeni voxel yoksa
-        -0.5 * (1 - d/WALL_DIST)       duvara/engele yaklasma (d<WALL_DIST)
-        +0.05 * acik_on * ileri        ileri-acik bootstrap sekillendirmesi
+        -0.6 * (1 - fwd/1.5)           ILERI-ARK engel yakin (gidilen yon) -> kapi-bilincli
+        -0.3 * (1 - d/0.5)             her yon cok yakin (siyirma; kapi 0.85m -> guvende)
+        +0.10 * acik_on * ileri        ileri-acik bonus (acikliklardan gec)
         -10.0  (terminal)              CARPISMA (d < COLLISION_DIST) -> episode biter
 
-    Episodik getiri ~= kesfedilen voxel sayisi (+ oda bonuslari - cezalar).
-    Yani "return'u maksimize et" dogrudan "voxel'i maksimize et" demek.
+    v2.0 -> v2.1 farki: duvar cezasi YONSUZ (scan_min) idi -> 2m kapilarda yan
+    duvarlar ~0.85m'de oldugu icin dogru kapi gecisini cezalandiriyordu. v2.1'de
+    ceza GIDILEN yondeki (ileri-ark) engele bagli; ayrica episode 1000->1500.
+    Episodik getiri ~= kesfedilen voxel sayisi. "return'u maksimize et" = "voxel'i maksimize et".
 
 NOT: Engelleri bu env TASIMAZ. SubprocVecEnv/worker icinden gz service
 cagrisi IPC pipe'ini bozabiliyordu; bu yuzden hareket train_ppo'daki
@@ -78,7 +81,15 @@ HOVER_Z      = 0.6          # sabit irtifa
 V_REVERSE    = -0.25        # izin verilen kucuk geri hiz (duvardan kurtulma)
 
 COLLISION_DIST    = 0.30    # bu mesafenin altinda carpisma kabul (episode biter)
-WALL_PENALTY_DIST = 1.0     # bu mesafeden yakinsa progresif duvar cezasi
+# --- v2.1: YON-DUYARLI (kapi-bilincli) lidar cezasi ---
+# Kapilar 2m genis, drone 0.3m -> kapi ortasinda yan duvarlar ~0.85m'de.
+# Eski yonsuz ceza (scan_min<1.0) dogru kapi gecisini cezalandiriyordu.
+# v2.1: cezayi GIDILEN yondeki (ileri-ark) engele bagla; yanlar yakin ama
+# on acik (=kapidan geciyor) ise cezalandirma.
+FWD_ARC_HALF      = 2       # ileri-ark = FORWARD_BIN +/- 2 bin (~+/-22 derece)
+FWD_PENALTY_DIST  = 1.5     # ileri yonde bu mesafeden yakin engel/duvar -> progresif ceza
+SCRAPE_DIST       = 0.5     # her yonde siyirma cezasi (kapi 0.85m'nin altinda -> kapilar guvende)
+FWD_OPEN_BONUS    = 0.10    # ileri acikken ileri gitme bonusu (acikliklardan gecmeyi tesvik)
 STEP_DT           = 0.02    # her adim wall-clock bekleme
 IDLE_GRACE        = 40      # bu kadar adim yeni voxel yoksa idle cezasi
 
@@ -295,7 +306,7 @@ class DroneExplorationEnv(gym.Env):
         if new_room:
             self._visited_rooms.add(groom)
 
-        # ----- ODUL (v2.0 temiz) -----
+        # ----- ODUL (v2.1: yon-duyarli ceza) -----
         reward = -0.01                                   # zaman
 
         if new_voxel:
@@ -309,16 +320,25 @@ class DroneExplorationEnv(gym.Env):
         if new_room:
             reward += 10.0                               # oda kilometre tasi
 
-        # Progresif duvar/engel yaklasma cezasi
-        if scan_min < WALL_PENALTY_DIST:
-            reward -= 0.5 * (WALL_PENALTY_DIST - scan_min) / WALL_PENALTY_DIST
+        # v2.1 YON-DUYARLI ceza: sadece GIDILEN yondeki (ileri-ark) engel yakinsa
+        # cezalandir (=duvara/engele daliyor). Yanlar yakin ama on acik (=kapidan
+        # geciyor) ise CEZA YOK -> 2m kapilardan rahat gecsin.
+        lo = max(0, FORWARD_BIN - FWD_ARC_HALF)
+        hi = min(LIDAR_BINS, FORWARD_BIN + FWD_ARC_HALF + 1)
+        fwd_clear = float(lidar_obs[lo:hi].min()) * LIDAR_MAX
+        if fwd_clear < FWD_PENALTY_DIST:
+            reward -= 0.6 * (FWD_PENALTY_DIST - fwd_clear) / FWD_PENALTY_DIST
 
-        # Ileri-acik bootstrap: on lidar acikken ileri gitmeyi hafifce odullendir
+        # Siyirma cezasi: her yonde COK yakin (kapi genisliginin altinda) -> kucuk ceza
+        if scan_min < SCRAPE_DIST:
+            reward -= 0.3 * (SCRAPE_DIST - scan_min) / SCRAPE_DIST
+
+        # Ileri-acik bonus: on acikken ileri gitmeyi odullendir (acikliklardan gec)
         forward_open = float(lidar_obs[FORWARD_BIN])
         forward_act  = float(np.clip(a[0], 0.0, 1.0))
-        reward += 0.05 * forward_open * forward_act
+        reward += FWD_OPEN_BONUS * forward_open * forward_act
 
-        # Carpisma -> terminal
+        # Carpisma -> terminal (her yon, fiziksel temas)
         terminated = False
         if scan_min < COLLISION_DIST:
             reward -= 10.0

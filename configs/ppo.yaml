@@ -9,7 +9,7 @@
 # ============================================================================
 env:
   drone_name: rl_drone
-  max_episode_steps: 1000
+  max_episode_steps: 1500    # v2.1: 1000->1500, carpismazsa daha cok gezsin
   seed: 42
   world_name: multi_room
 
@@ -33,14 +33,14 @@ ppo:
       vf: [128, 128]
 
 train:
-  version: v2.0
+  version: v2.1
   n_envs: 1
-  total_timesteps: 2000000
+  total_timesteps: 500000    # Berker: dogru odulle 500k yeterli (hizli iterasyon)
   save_freq: 20000
-  resume_from: null          # fresh start
-  log_dir: ./runs/ppo_v2_0
-  ckpt_dir: ./runs/ppo_v2_0/checkpoints
-  tb_log: ./runs/ppo_v2_0/tb
+  resume_from: null          # FRESH — temiz v2.0 vs v2.1 karsilastirmasi
+  log_dir: ./runs/ppo_v2_1
+  ckpt_dir: ./runs/ppo_v2_1/checkpoints
+  tb_log: ./runs/ppo_v2_1/tb
   vec_normalize:
     enabled: true
     norm_obs: false          # obs zaten [-1,1]/[0,1] -> restart'a dayanikli
