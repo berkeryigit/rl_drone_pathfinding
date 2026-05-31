@@ -38,11 +38,11 @@ ppo:
       vf: [128, 128]
 
 train:
-  version: v2.2-resume700k  # 500k tamamlandi (peak=133.35), 700k'ya uzatildi (2026-05-31 14:54)
+  version: v2.2
   n_envs: 1
   total_timesteps: 700000    # v2.2 700k (Berker onayi); 500k bitince operator resume eder
   save_freq: 20000
-  resume_from: ./runs/ppo_v2_2/checkpoints/ppo_drone_final.zip   # 500k final ckpt
+  resume_from: runs/ppo_v2_2/checkpoints/ppo_drone_200000_steps.zip   # 198k crash sonrasi gecerli son ckpt (bozuk final.zip yerine)
   log_dir: ./runs/ppo_v2_2
   ckpt_dir: ./runs/ppo_v2_2/checkpoints
   tb_log: ./runs/ppo_v2_2/tb
