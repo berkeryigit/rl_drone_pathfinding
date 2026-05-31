@@ -349,3 +349,52 @@ v2.1 run, v8 all-time peak'ini (+113 @ 1.6M step) çoktan geride bıraktı: step
 - **Etki:** Step 248k→291k'da ep_rew_mean -12.7→-25.5 regresyonu bu yüksek LR'nin sonucu. 500k+ fine-tune için 5e-5 başlangıcı daha stabil; policy'i bozmadan gerçek improvement için zemin yaratır.
 - **Kapsam:** Bir sonraki restart'ta (crash veya 700k tamamlanınca) devreye girer. Mevcut çalışan process etkilenmez.
 ---
+
+## [2026-05-31 15:10 UTC]
+**Step:** 501,760 (v2.1 — 500k tamamlandı, 700k'ya devam @ 14:54 UTC) | **ep_rew_mean:** +123.25 | **peak:** +133.35 | **entropy:** ~−3.5 (son güvenilir: −4.76 @ 139k, decay beklenen) | **std:** ~0.75–0.90 (son güvenilir: 1.20 @ 139k)
+
+### Durum
+v2.1 eğitimi 500k step'i tamamlayıp final.zip kaydetti; 14:54 UTC itibarıyla kalan 198,240 adım için yeniden başlatıldı (total_timesteps=700k, resume_from=ppo_drone_final.zip). Peak reward +133.35 — v8 all-time best'i (+113 @1.6M step) yalnızca 500k adımda geride bırakıldı; bu mevcut v2.x tasarımının doğru olduğunu kanıtlıyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif kırılım devam ediyor: +92.6 @120k → +123.25 @501k = +30.65 artış.
+- Eğim yavaşladı (~0.26 ünite/k step vs başta daha hızlı) — plato değil, olgunlaşma fazı.
+- ep_len_mean bilinemez (v2.1 TB verisi bu container'da yok) ama eval@140k'da rooms=2-3 sporadik mevcut; 500k'da tutarlı 3-4 oda bekleniyor.
+- **+15'lik oda sıçraması:** +123.25 = muhtemelen 4-5 oda keşfi eğitim sırasında (4×15=60 rooms + ~63 voxel/frontier/zaman).
+
+**b) lr=5e-5 linear→1e-5 (v2.1 mevcut) bu aşamada doğru mu?**
+- EVET, uygun. 500k resume'da SB3, progress_remaining'i 1.0'dan başlatır; bu yüzden lr=3e-4 yerine 5e-5 ile başlangıç zorunluydu (train_resume_500k.log'da 291k'da lr=0.0003 gözlemlenmiş — bu eski BAD resume'un kanıtı; ep_rew_mean −25.5'e regresyon yaşandı).
+- Mevcut v2.1 config bunu doğru handle ediyor: 5e-5 başlangıç, linear decay, 700k'ya yayılmış → kalan 198k'da lr ~3.8e-5'ten 1e-5'e iniyor. Fine-tune fazı için optimal aralık.
+- Kıyaslama: v8 3e-4→3e-5 (10× azalma); v2.1 5e-5→1e-5 (5× azalma, daha muhafazakâr). Yeni haritanın daha basit olduğu göz önüne alındığında bu makul.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Son güvenilir v2.1 değerleri: entropy=−4.76, std=1.20 @139k. 500k'da bu değerlerin düşmesi beklenir (std→0.7-0.9, entropy→−3.5 ila −4.5 arası).
+- ent_coef=0.005 ile kolaps riski düşük. Karşılaştırma: train_v4_fresh.log @309k std=0.679 (0.7 eşiği altı!) ama o config'de ent_coef daha düşüktü.
+- CSV'deki eski v9 verisindeki entropy=−4.21, std=0.985 DEĞERLERİ GEÇERSİZ — 14+ saattir frozen (step=193248 sabit).
+- **Endişe yok ama izleme gerekli:** 600-700k bandında std<0.7 olası. Bu bandda eval performansının da iyileşmesi beklenir (daha düşük std = daha deterministik pol = eval-train gap kapanır).
+
+**d) Oda geçişi için ne kadar step daha bekleniyor?**
+- v2.1 zaten 120k'da rooms_max=2, 500k'da tahminen 4-5 oda (training stochastic).
+- eval@140k: mean=+13.15, yalnızca 1 ep 3 oda (@20 ep). Deterministic eval-train gap büyük.
+- **Son 198k adımda (500k→700k):** std düştükçe deterministic policy de güçlenecek. 700k sonunda eval'de consistent 3-4 oda bekleniyor.
+- 6/6 oda tutarlı keşfi: v2.1'de mümkün ama garantili değil. Asimetrik kapı düzeni (dar geçitler) en büyük engel.
+
+**e) v10/v2.2 için en kritik 1-2 öneri:**
+1. **ent_coef: 0.005→0.003 (v2.2/v10 fresh start):** eval-train gap'in kök sebebi aşırı stochastisite. Eğitim boyunca +92→+123 (training) ama eval@140k yalnızca +13.15 (10× fark). 0.003 hem yeterli keşif sağlar hem deterministic policy'yi güçlendirir. NOT: mevcut çalışan v2.1 process'i BU DEĞİŞİKLİKTEN ETKİLENMEZ — change yalnızca fresh/next-start için geçerli.
+2. **Eval @ 700k (v2.1 biter bitmez):** eval.sh çalıştır, 30+ ep. Metrik: rooms_mean, rooms_max, collision_rate. Eğer rooms_mean≥3.0 → v2.2'de moving obstacles aktif et (n_envs=1, SIGINT-safe). Eğer rooms_mean<2.0 → v2.2'de forward-arc lidar cezasını artır (0.3→0.5 katsayı).
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Eğitim süreci:** 14:54 UTC'de başlatıldı, 38 FPS @ n_envs=1 → ~87 dakika → ~16:21 UTC'de bitmesi beklenir. Container burada izleyemiyor, lokal makinede takip şart.
+- **SB3 progress_remaining reset riski (step counter):** resume_from=ppo_drone_final.zip ile SB3, adım sayacını 500k'dan değil sıfırdan başlatabilir. Bu durumda total_timesteps=700k, resume=500k → sadece 700k-500k=200k step yapılacak (DOĞRU). Ama `n_updates` sıfırlanacak ve LR decay yeniden 5e-5'ten başlayacak (zaten beklenen; config bunu handle ediyor).
+- **CSV monitoring:** interventions.jsonl'deki son "crash_recovery @step=180k" satırları (03:01 UTC'ye kadar) eski monitor_agent'ın v2.1'i değil v9 ckpt'yi takip ettiğini gösteriyor. CSV artık güncellenmiyor — kabul edilebilir, asıl kayıt TB'de.
+- **ACIL HYP. MÜDAHALESİ: HAYIR.** Config v2.1 son fazında sağlıklı. %80 güven eşiğini aşan bir sorun yok.
+
+### v10 Önerisi
+1. **ent_coef: 0.005→0.003:** eval-train gap kapatmak için. Training @500k +123 ama eval@140k +13 — bu 10× fark aşırı stochasticite. v2.2/v10 fresh start'ta bu değişikliği uygula.
+2. **Moving obstacles aktif (n_envs=1 ile güvenli):** v9'da SubprocVecEnv deadlock nedeniyle devre dışı bırakıldı. v2.x zaten n_envs=1 kullanıyor → obstacle animasyonunu güvenle açabilirsin. v10 curriculum zorluğu için kritik.
+
+### Müdahale
+**YOK** — v2.1 son fazı zaten çalışıyor (14:54 UTC resume). Mevcut process ppo.yaml'ı çalışma anında okumuyor; config değişikliği şu an etkisiz olur. Peak +133.35 ve aktif iyileşme trendi ile %80 güven eşiğini aşan bir hyperparameter sorunu tespit edilmedi. ent_coef=0.003 önerisi v2.2/v10 için NOT olarak bırakıldı.
+---
