@@ -1,3 +1,49 @@
+## [2026-05-31 11:07 UTC]
+**Step:** 193,248 (CSV SON KAYIT — STALE, v9/v10 kalıntısı) | **Gerçek run:** v2.1 @ ~120k-700k devam | **ep_rew_mean:** +92.6 @ 120k (en son güvenilir) | **entropy:** -4.76 @ 139k | **std:** 1.20 @ 139k
+
+### Durum
+CSV 2026-05-30 22:00'dan bu yana 13 özdeş satırla DONMUŞ (step=193248, ep_rew_mean=-173.85). Bu v9/v10 crash-loop kalıntısı; güncel run değil. Gerçek durum: v2.1 konfigürasyonu (n_envs=1, lr=3e-4→1e-5 linear, ent_coef=0.005) 120k step'te ep_rew_mean=+92.6 ve rooms_max=2 ile çalışıyor; Berker onayıyla 700k'ya uzatıldı. Eğitim büyük olasılıkla kullanıcının lokal makinesinde devam ediyor. Acil hyperparameter müdahalesi gerekmiyor; ancak 300-400k bandında std izleme kritik.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV'deki "son 20 satır" GEÇERSIZ: hepsi 22:00-03:01 arası aynı değeri yansıtıyor (donmuş TB eventi, process dead). Gerçek v2.1 run'ı ayrı.
+- **v2.1 gerçek eğri (versions.jsonl + train logs):**
+  - 139k @ train_v2_2m_fresh: entropy=-4.76, std=1.2, lr=3e-4, approx_kl=0.008, clip_fraction=0.127 — sağlıklı kırılım fazı.
+  - 120k @ versions.jsonl v2.1 entry: ep_rew_mean=+92.6, rooms_max=2, "hâlâ yükseliyor" — aktif kırılım, plato yok.
+- **eval @ 140k (eval_v2_140k.log, 20 ep):** mean=+13.15 (std=41.80). Dağılım: 15/20 ep rooms=1, 3/20 ep rooms=2, 1/20 ep rooms=3 (best=+172). Politika sporadik 2-3 oda keşfedebiliyor ama tutarlı değil — beklenen erken-orta faz davranışı.
+- **+15'lik oda sıçraması görüldü mü?** Evet — +92.6 = yaklaşık 6 oda bonusu (6×15=90) + voxel kazancı: training sinyali var. Ama eval ortalaması +13.15 gösteriyor ki deterministic policy henüz her episodda çıkartamıyor; stochastic policy eğitim sırasında çok daha iyi keşfediyor.
+
+**b) lr=7.5e-5 constant seçimi doğru mu?**
+- Geçersiz soru: ppo.yaml v2.1'e tamamen yeniden yazıldı. Mevcut schedule: lr=3e-4 → 1e-5 linear (700k üzerinde). Bu v8'in 3e-4→3e-5 şemasıyla yapısal olarak özdeş (aynı 10× azalma oranı, final LR 3× daha düşük). v9'un sabit 7.5e-5'i terk edildi — DOĞRU KARAR. 139k'da LR hâlâ ~2.95e-4 (decay yeni başladı), yüksek LR erken kırılımı sağlıyor.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- v2.1 @ 139k: entropy=-4.76 (eşik -4.0, güvenli ✓), std=1.20 (eşik <0.70, alarm uzak ✓).
+- UYARI — tarihsel referans: train_v4_fresh.log @ 309k adımda entropy=-3.1, std=0.679 → 0.7 ALTINA DÜŞÜŞ. Bu "v4_low_ent" config'iydi (ent_coef muhtemelen ~0.001 civarı). v2.1'de ent_coef=0.005 (5× yüksek), bu riski önemli ölçüde azaltıyor — ama yok etmiyor.
+- **300-400k bandı kritik izleme noktası:** v4 analogu bu bandda deterministikleşti. v2.1'deyse n_updates o bandda ~(300000/2048)×10≈1465 olacak, v4'ün 1500'üne çok yakın. ent_coef=0.005 koruma sağlasa da log monitörlemesi şart.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v2.1 zaten rooms_max=2'ye 120k step'te ulaştı — ilk oda geçişi TAMAMLANDI.
+- Tutarlı 3-oda: eval@140k'da 3/20 ep (=15%) 2+ oda, 1/20 ep 3 oda. Politika stochastic sırasında ama deterministic değerlendirmede tutarsız. Beklenti: 250-350k step'te tutarlı 3-oda, 450-550k'da 4-oda, 600-700k'da 5+ oda mümkün.
+- 6 odanın tamamı (hedef): Haritanın asimetrik yapısı (dar kapılar, farklı boyutlu odalar) nedeniyle 700k step'te tam keşif mümkün ama garantili değil. Eğer 500k'da hâlâ 4 oda altında kalınırsa v2.2'yi gündeme al.
+
+**e) v10/v2.2 için en kritik 1-2 öneri:**
+1. **300-400k bandında std < 0.7 tetik → ent_coef: 0.005→0.010:** v4 analogu bu bandda deterministikleşti. İzleme: `train/std` TB veya log'dan takip et; 300k step'ten itibaren her 20k'da bir kontrol. Tetik şartı: std<0.7 VE entropy>-3.5 (birlikte). Tek başına std<0.7 yetmez, her ikisi birden olmalı.
+2. **eval @ 350k (v2.1 bitmeden):** eval.sh @ 350k step'te çalıştır — 20 ep. Beklenti: rooms_mean≥2.0, en iyi ep 4+ oda. Eğer rooms_mean<1.5 ise yönlü lidar cezasını güçlendir (mevcut config'de wall penalty progression korunuyor). Bu veri olmadan v2.2 parametrelerini kör optimize etme.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Hyperparameter açısından: HAYIR.** v2.1 config'i (n_epochs=10, batch=256, n_steps=2048, ent_coef=0.005) 120k'da +92.6 üretmiş — %80 güven eşiği aşılacak bir sorun yok. approx_kl=0.008 (agresif güncelleme yok ✓), clip_fraction=0.127 (makul ✓).
+- **Monitor/CSV altyapısı açısından: EVET (düşük aciliyet).** CSV 13+ saattir donmuş, v2.1 TB dizinini okumaya ayarlanmamış. Kullanıcı lokalde çalışıyorsa v2.1 TB verisini doğrudan takip etmeli (`tensorboard --logdir runs/ppo_v2_1/tb`). Bu container'dan izleme mümkün değil.
+- **Eğitim sürekliliği:** Training çalışıyorsa iyi. Çalışmıyorsa: `./scripts/train.sh configs/ppo.yaml` ile resume (ppo.yaml'da `resume_from: null` → fresh start, ya da son ckpt yazılmalı).
+
+### v10/v2.2 Önerisi
+1. **std izleme tetik @ 300-400k:** std<0.7 VE entropy>-3.5 → `ent_coef: 0.005→0.010`. train_v4_fresh bu bandda kesildi; v2.1 yüksek ent_coef ile daha sağlam ama geçmişe dayalı alarm şart.
+2. **eval @ 350k + v2.2 kapı kararı:** rooms_mean<1.5 çıkarsa v2.2'de direction-aware penalty artışı (forward-arc katsayısı 0.3→0.5, grazing eşiği 0.5→0.7m). rooms_mean≥2.0 çıkarsa v2.2 başlatma; v2.1 tamamlansın.
+
+### Müdahale
+**YOK** — configs/ppo.yaml v2.1 formatında ve çalışıyor (+92.6 @ 120k kanıtlanmış). approx_kl, clip_fraction, entropy, std değerlerinin tamamı sağlıklı aralıkta. %80 güven eşiğini aşan config sorunu tespit edilmedi. CSV monitoring altyapısı stale ama bu hyperparameter meselesi değil.
+---
+
 ## [2026-05-30 14:05 UTC]
 **Step:** 83,968 / 2,500,000 (3.4% — v10 fresh restart) | **ep_rew_mean:** -25.30 | **entropy:** -4.253 | **std:** 0.998
 
