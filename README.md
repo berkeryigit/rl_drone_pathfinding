@@ -96,6 +96,41 @@ ros2 launch rl_drone_pathfinding sim_launch.py
 # konteyner içinde aynı: ./scripts/setup.sh && ./scripts/train.sh
 ```
 
+## En İyi Eval Turu — ep82 Replay
+
+100 episodluk eval'de en iyi tur **ep82** oldu: `return=+505, rooms=3, floors=3` (tüm 3 kat keşfedildi).
+
+```bash
+# ep82'yi Gazebo GUI ile tekrar izlemek için (spawn idx=1 sabit):
+SIM_HEADLESS=0 ./scripts/eval.sh \
+    runs/ppo_v8_frontier/checkpoints/ppo_drone_final.zip 1 \
+    --spawn-idx 1
+```
+
+**Spawn bilgisi:**
+- `spawn_idx = 1` → `(-4.0, -4.0, 0.6, yaw=0.0)` — Kat 0, SW köşe, +X yönü
+- `env seed = 42`, episode 82 için RNG bu indexi üretiyor
+- VecNormalize: `runs/ppo_v8_frontier/checkpoints/vec_normalize.pkl` otomatik yüklenir
+
+**100 tur istatistikleri (ppo_drone_final.zip):**
+- Mean return: **+88.52** (std 189)
+- Mean rooms: **1.6 / 12**
+- Mean floors: **1.4 / 3**
+- 3 kata ulaşan turlar: ep52 (+153, rooms=3), ep82 (+505, rooms=3, floors=3), ep86 (+269, rooms=3)
+
+---
+
+## Eğitim Sonuçları (v8 Frontier Shaping, 2026-05-29)
+
+- **Toplam step:** 2,000,000
+- **All-time peak:** **+113** (ep_rew_mean, 1628k adımda)
+- **v6 rekoru (+110) kırıldı!**
+- **Hız:** n_envs=4 SubprocVecEnv → 37 FPS → 122 FPS
+- **Checkpoint:** `runs/ppo_v8_frontier/checkpoints/ppo_drone_final.zip`
+- **Otonom müdahale:** 6× peak-regress intervention (gece boyunca otomatik)
+
+---
+
 ## Yol haritası
 
 * [x] ROS 2 paket iskeleti + Gazebo Harmonic dünyası + drone modeli

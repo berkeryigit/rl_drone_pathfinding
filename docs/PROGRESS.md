@@ -131,3 +131,443 @@ configs/ppo_quick.yaml diye `total_timesteps: 100000` olan bir varyant aç,
 4. PPO vs (TD3 / DQN / A3C) karşılaştırma — ekip arkadaşlarının kendi paketleri
    (ya ayrı klasör ya ayrı branch) hazır olunca aynı env üstünde koşturup
    reward/cells/rooms karşılaştır.
+
+---
+
+## 2026-05-06 — Berker — Eğitim run 2 (resume) → run 3 (exploration boost)
+
+### Run 2: 140k → 290k step (sabah)
+
+* `configs/ppo.yaml`: `total_timesteps: 500000`,
+  `resume_from: ppo_drone_140000_steps.zip`. `train_ppo.py`'a
+  `reset_num_timesteps=False` eklendi → checkpoint sayacı korunarak resume.
+* Saat 10:24'te checkpoint 288544'e ulaştı, eval için durduruldu.
+* Eval gözlemi (saat 10:30, GUI'li): drone spawn odasından çıkamıyor, hover +
+  duvardan kaçma loop'una sıkışmış. Local optimum.
+  - `ep_len_mean` 299 → 381 (yaşıyor)
+  - `ep_rew_mean` -12.7 → -19 (sadece -0.001 step + -0.1 idle topluyor)
+  - `entropy_loss` -3.62 (hâlâ keşif var ama yetmemiş)
+  - Sebep: door-crossing +15 ödülü gamma=0.99'la bu kadar uzaktayken value
+    fn göremiyor. Discovery sinyali zayıf.
+
+### Run 3: 290k → 2M step (saat 10:35'te başladı, ~10-12 saat)
+
+Yapılan müdahaleler:
+
+* `envs/drone_exploration_env.py` — discovery rewards 3x:
+  - yeni voxel: `+1.0 → +3.0`
+  - yeni oda:   `+15  → +50`
+  - yeni kat:   `+25  → +100`
+  Çarpışma/idle/step penaltyleri AYNI bırakıldı (keşif bonusunu artırmak amaç,
+  güvenlik sinyalini bozmamak için).
+* `configs/ppo.yaml` — `ent_coef: 0.005 → 0.02` (4x policy entropy bonusu).
+  Toplam: discovery × 3 + entropy × 4 = "bir tık daha cesur ol, bulduğunda da
+  daha çok kazan."
+* `agents/train_ppo.py`:
+  - **Bug fix**: SB3'te `reset_num_timesteps=False` iken `total_timesteps`
+    DELTA olarak yorumlanıyor (SB3 internally num_timesteps ekliyor). YAML
+    yorumu "absolute" diyordu ama davranış öyle değildi. Resume'de
+    target - current hesaplanıp delta olarak learn()'e geçildi → yaml
+    gerçekten absolute oldu.
+  - **Override eklendi**: `PPO.load()` kaydedilmiş hyperparametreleri geri
+    yüklediği için, resume'den sonra `model.ent_coef = yaml.ent_coef`
+    set ediliyor. Yoksa yaml'daki 0.02 etkisiz kalırdı.
+* Resume kaynağı: `ppo_drone_290k_pre_eval.zip` (interrupted.zip'in yedeği,
+  step=292337). Yeni interrupt'lar interrupted.zip'i overwrite etse de bu
+  yedek korunur.
+
+Beklenen: ilk 50-100k step'te reward DÜŞÜŞÜ olabilir (entropy yüksek + value
+fn yeni reward ölçeğine adapte olurken). Sonra ep_rew_mean'in net pozitife
+çıkması beklenir, çünkü bir tek door-crossing artık +50 (eskiden -19'luk bir
+episode'u tek başına +30'a çevirir).
+
+### Run 3 ↻ pivot: sıfırdan başlat + SDF deliklerini büyüt (saat 11:00)
+
+Run 3'ü ~5 dk sonra durdurduk. Sebep: yeni reward fonksiyonu eski value
+function'ı geçersiz kılıyor; over-converged 290k policy'den kurtulmak yerine
+**baştan başlamak daha temiz** (öğrenme zaten 290k harcandı, FAKAT o policy
+"hover" ezberlemişti — tablanın silinmesi 1.7M step'in büyük kısmını
+zaten yeniden yatırım sayılır, üstelik temiz bir öğrenme eğrisi raporlama
+için ÇOK daha güzel).
+
+#### Çıkarılan/Yeniden yapılan kararlar
+
+1. **FAST-LIO 2 fikri reddedildi.** Berker önerdi: arka planda lidar SLAM
+   koşturup map çıkaralım, observation'a ekleyelim. Reddedildim çünkü:
+   (a) sim'de zaten ground-truth pozisyon var (`/odom`), env de kendi
+   voxel grid'ini tutuyor; (b) SLAM pipeline sim FPS'i 39→~10'a düşürür;
+   (c) map'i observation yapmak için MLP yerine CNN gerek → mimari değişir,
+   1 günlük iş; (d) rapor için süslü ama task'a katkı yok.
+
+2. **SDF: Floor delikleri 2x2 → 3x3 büyütüldü.**
+   - Berker GUI'de floor 1→2 deliğini bulamadığını söyledi. Matematiksel
+     olarak vardı (SW quadrant, x∈[-6,-4], y∈[-6,-4]) ama 2x2 bir delik
+     16x16 binada drone'un random keşifle bulması zor.
+   - Yeni:
+     * Floor 0→1 hole: NE quadrant, x∈[3.5,6.5], y∈[3.5,6.5] (3x3)
+     * Floor 1→2 hole: SW quadrant, x∈[-6.5,-3.5], y∈[-6.5,-3.5] (3x3)
+   - Alan 2.25x büyüdü, tesadüfen üstünden geçme şansı ~2x.
+   - SDF link'ler yeniden boyutlandırıldı: floor*_left/right/mid_s/mid_n
+     panelleri tam delik etrafını saracak şekilde.
+   - Env docstring güncellendi.
+
+3. **Eski runs/ppo/ koruma kararı.** v1 (eski reward + 2x2 delik + ent_coef
+   0.005) sonuçları silinmedi:
+   * `runs/ppo/checkpoints/` → 140k, 248k, 268-288k step'ler hâlâ orada
+   * `runs/ppo/tb/` → TensorBoard logları
+   * Yeni v2 run yeni klasöre yazıyor: `runs/ppo_v2_explore/`
+   - Hocaya rapor gösterirken: "v1'i denedik, drone spawn'da takıldı (eval
+     videosu + TB grafiği). Reward fonksiyonunu rölelendirip + entropy
+     bumpladık + SDF delikleri büyüttük → v2'de şu sonuca ulaştık."
+     Bu iterasyonlu deney narratif raporda artı.
+
+4. **Yaml: `resume_from: null`**, output paths'ı `runs/ppo_v2_explore/`'a
+   çevirdik. `total_timesteps: 2000000` aynı (artık absolute target,
+   train_ppo.py fix'i sayesinde).
+
+#### v2 run plan'ı
+
+Saat 11:05 başladı: sıfırdan 2M step, ~12-14 saat (sıfırdan başlamak
++~%20 yavaş çünkü ilk 50k random eylemlerle çok episode terminate ediyor).
+Berker eve giderken çalışıyor olacak; checkpoint her 10k step'te,
+overwrite-safe.
+
+### v2 → v3 pivot: multi-floor spawn (saat 11:50)
+
+#### Gözlem (140k step eval)
+
+v2 başarılı kısmı: ep_rew_mean -33 (10k) → +3 (65k) → **+40 (140k)**.
+Discovery rewards + ent_coef bumpı tutmuş, drone artık spawn odasında
+takılı değil — çoklu oda dolaşıyor, kapıları geçiyor.
+
+v2'nin hâlâ eksik kısmı: drone **sadece floor 0'da** dolaşıyor. Berker
+eval'i 11:48-11:50 arasında izledi, drone hep aynı katta. Üst katlara
+hiç çıkmıyor.
+
+#### Sebep teşhisi
+
+1. **Spawn hep floor 0'da.** SPAWN_CANDIDATES'in 5 noktası da z=0.6'da
+   (zemin). PPO on-policy → drone training rollout'larında üst katları
+   asla deneyimlemiyor → value function "yukarı çıkma" eylemine değer
+   atfedemiyor.
+2. **Vertical hareket pahalı.** vz_max=0.4 m/s, 2.5m yüksekliğe çıkmak
+   ~6 saniye = forward exploration zaman kaybı. Anlık discovery reward
+   kaybı gamma=0.99 ile değerlendirildiğinde +100'lük gecikmiş floor
+   bonusundan değerli görünüyor.
+3. (4,4,0.6) NE spawn'ı tam delik altı ama yine de yukarı çıkmıyor —
+   çünkü hiç yukarı çıkmış trayektory tatmamış, value function
+   up-direction action'a 0 yakın değer veriyor.
+
+#### v3 müdahaleleri
+
+* `envs/drone_exploration_env.py` — SPAWN_CANDIDATES diversifiye edildi:
+  - 5 spawn floor 0 (eskisi gibi)
+  - 2 spawn floor 1 (z=3.1, NE delik üstü ve NW)
+  - 1 spawn floor 2 (z=5.6, SW delik üstü)
+  - **Cheat değil** çünkü `_visited_floors` reset'te spawn floor ile
+    prefill ediliyor, +200 ancak başka floor'a geçince veriliyor.
+  - Beklenen etki: %37 ihtimalle drone üst katta uyanır, oradan keşfe
+    başlar, value fn üst katları da öğrenir, ileri rollout'larda "yukarı
+    çıkmak yararlı" gradient'i belirir.
+
+* `envs/drone_exploration_env.py` — `new_floor` bonusu **+100 → +200**.
+  Floor geçişi en nadir event, oda (+50) ile arasındaki oran 4x'e
+  çıkarıldı.
+
+* `configs/ppo.yaml` — output dizini `runs/ppo_v3_floors/`'a alındı,
+  v2 sonuçları `runs/ppo_v2_explore/` altında dokunulmadan kalıyor.
+  `resume_from: ppo_drone_140000_steps.zip` (v2'nin 140k checkpoint'i —
+  floor 0 navigation öğrenilmiş, oradan üst katları eklemek hızlı olur).
+
+#### v3 run plan'ı
+
+Saat 11:55 başladı: 140k → 2M (1.86M step delta), ~12-14 saat. Eğer
+~250-300k civarı eval'de drone üst kata çıkmaya başlamamışsa, daha
+agresif tweak'ler gerekecek (örn. voxel multiplier üst katlarda,
+intrinsic curiosity bonus). Şu an minimal-değişiklik prensibi.
+
+### v3 → v4 pivot: entropy explosion fix (saat 22:15)
+
+#### Veri (1.45M step'te durduruldu, plot scriptiyle teşhis)
+
+`scripts/plot_training.py` koşturup TB event'lerinden v1/v2/v3 6-panel
+grafiği + entropy zoom + reward zoom çıkarıldı (`docs/figures/`).
+
+**Bulgular:**
+
+1. `docs/figures/v3_plateau_zoom.png` — ep_rew_mean **plateau değil,
+   regression**: 440k civarı PEAK ~+95, sonra +40-50'ye geri düştü.
+   1.0M-1.45M ortalaması ~+45.
+
+2. `docs/figures/entropy_zoom.png` — KRİTİK BULGU: action distribution
+   `std` **1 → 14**'e patladı (action space [-1,1] iken!). `entropy_loss`
+   -4 → -12 (daha negatif = yüksek entropi). Yani policy çökmedi —
+   tam tersi, **explode etti.**
+
+3. v3/310k eval'de "rooms=1 in 10/11 episodes" gözleminin sebebi şu:
+   `--deterministic` eval mean action kullanır. Mean action zayıf çünkü
+   policy std'sini büyüterek (rastgele aksiyon → bazen kazanç) reward
+   topluyor; mean action'ı optimize etmiyor.
+
+#### Sebep teşhisi
+
+`ent_coef × entropy_loss` PPO loss'una eklenir. Reward magnitude büyük
+olduğunda (oda +50, kat +200), advantage büyük → policy gradient büyük.
+ent_coef=0.02 entropi'yi maximize etmek için **policy std'sini büyütme**
+gradient'i veriyor (Gaussian entropy = 0.5·log(2πeσ²) → std artırmak
+entropi artırır, ücretsiz bonus). Reward gradient bunu durduramamış.
+
+#### v4 müdahaleleri
+
+A. **`ent_coef`: 0.02 → 0.001** (20x düşürüldü). Entropi bonusu hâlâ
+   var ama std'yi büyütme cezbeden değil. Policy doğal olarak std'yi
+   küçültür, mean action gradient'i hâkim olur.
+
+B. **Idle penalty time-decay** (`envs/drone_exploration_env.py`):
+   ```python
+   if self._steps_since_new_voxel < 30:
+       reward += -0.1     # arama, yön bulma — normal
+   else:
+       reward += -0.5     # oda biten, ÇIK
+   ```
+   v3'te drone spawn odasında 850 step idle olup -85 birikiyordu ama
+   yine de net pozitif kalıyordu (+150 voxel). Yeni decay ile aynı
+   strateji -425 (5x ceza) → net negatif → drone başka odaya gitmek
+   zorunda kalır.
+
+C. **Resume from peak (440k)** — fresh start değil. v3'ün öğrenmiş
+   olduğu floor 0 navigation + biraz da floor 1/2 farkındalığını
+   koruyalım. ent_coef düşük olunca policy std'si bu peak'ten itibaren
+   düşmeye başlayacak.
+
+D. Output `runs/ppo_v4_low_ent/`, v3 sonuçları korundu.
+
+#### v4 run plan'ı
+
+Saat 22:15 başladı: 440k → 2M (1.56M step delta), ~12 saat (yarın
+~10:00 civarı biter). Beklenti:
+
+- ilk 50-100k step'te reward düşebilir (idle decay sert, drone uyum
+  sağlamaya çalışır)
+- 600k civarı: std küçülmeye başlar (eski 14 → ~3-5)
+- 1M+ : mean action policy iyileşir, deterministic eval'de rooms>1
+- 2M sonu: hedef rooms 3-4 ortalama, ara sıra üst kata çıkış
+
+Tüm grafikler `docs/figures/`:
+- `training_curves_all.png` (6-panel v1-v2-v3)
+- `reward_curve_summary.png` (tek panel reward özet)
+- `v3_plateau_zoom.png` (regression görünür)
+- `entropy_zoom.png` (KRİTİK: std explosion)
+
+### v4 → v5 pivot: PPO update stabilization (saat 02:00)
+
+#### Veri (v4 fresh, 310k step'te durduruldu)
+
+`scripts/plot_training.py` v4 dahil yeniden koşturuldu. Bulgular:
+
+1. **Entropy fix tutmuş** ✓ — v4'te std 1 → 0.7'ye **düşüyor** (v3'te
+   1 → 14 explode etmişti). entropy_loss -4.3 → -3.0 (yukarı = az
+   entropi). ent_coef 0.001 doğru çağrı.
+
+2. **Reward hâlâ peak-then-regress paterni** ⚠ — v4 60-100k civarı peak
+   ~+85'e ulaşıyor, sonra 200-310k arası **+30 ile +85 arası yüksek
+   varyans osilasyon** ortalama ~+50. Yani v4 daha da **kötü** (yüksek
+   varyans), reward summary grafiğinden net görünüyor.
+
+3. v3 ile karşılaştırma:
+   - v3: smooth ama yavaş peak (440k +95) sonra düşüş +45
+   - v4: hızlı peak (80k +85) sonra osilasyon +30/+85 mean +50
+
+#### Sebep teşhisi
+
+Entropy düzelmesine rağmen reward osilasyonu sürüyor → sorun **PPO update
+mechanics**, exploration değil. Yüksek magnitudeli reward (oda +50, kat
++200, idle decay -0.5, çarpışma -10) → yüksek varyans advantage → büyük
+policy gradient güncellemeleri → her n_steps=2048 rollout'tan sonra
+policy fazla değişiyor → sonraki rollout'ta data distribution kayıyor
+→ önceki öğrenmeyi unutuyor.
+
+PPO'nun bunu önlemek için clip_range=0.2 mekanizması var ama bizim
+reward scale'imizde 0.2 hâlâ büyük. Ek olarak n_epochs=10 ile her
+rollout'a 10 kez gradient gönderilmesi overfit'i derinleştiriyor.
+
+#### v5 müdahaleleri (env'e dokunma yok, sadece PPO yaml)
+
+| Param | v4 | v5 | Neden |
+|---|---|---|---|
+| `clip_range` | 0.2 | **0.1** | Per-step policy shift'i sınırla, overshoot durdur |
+| `n_epochs` | 10 | **5** | Her rollout'tan daha az gradient pass, daha az overfit |
+| `batch_size` | 64 | **256** | Minibatch gradient'i daha düşük varyanslı |
+| `gae_lambda` | 0.95 | **0.9** | Advantage estimate biraz daha bias / az varyans |
+| `ent_coef` | 0.001 | 0.001 | v4'te tuttu, koru |
+
+Idle decay env değişikliği aynen v4'tekiyle korundu. Multi-floor spawn
++ bumped rewards aynı.
+
+#### v5 run plan'ı
+
+Saat 02:05 başladı: sıfırdan 350k watcher (v3/v4'te ne olduğunu anlamış
+olduğumuz step sayısı), sonra durup eval + plot + (gerekirse) v6.
+Beklenti: peak biraz daha geç gelir ama daha smooth, düşüşsüz / az
+varyanslı plateau. Eğer hâlâ osilasyon varsa, v6'da reward
+normalization (VecNormalize) veya lr schedule eklemek gerekecek.
+
+### v5 → v6 pivot: VecNormalize wrapper (saat 04:36, autonomous loop)
+
+#### Veri (v5 @ 182k step)
+
+v5 PPO mechanics değişiklikleri (clip 0.1, ep 5, batch 256, gae 0.9)
+osilasyonu çözmedi:
+
+- Reward 80k civarı +85 peak yaptı, sonra **v4 ile özdeş yüksek-frekans
+  osilasyon** (+25 ile +80 arası), 180k'da ortalama ~+45.
+- Entropy sağlıklı: std ~0.7 sabit. v3'teki explosion problemi yok, ent_coef=0.001 doğru.
+- v4 ve v5 reward eğrileri reward_curve_summary.png'de neredeyse üst üste çakışıyor.
+
+#### Sebep teşhisi
+
+PPO update mechanics değil, **reward magnitude varyansı** sorun:
+- Idle -0.1, çarpışma -10, voxel +3, oda +50, kat +200
+- Bir episode'da kat geçişi olursa +200, olmazsa +50/+150 → value targets
+  ekstrem değişken
+- value_loss spike → policy gradient noisy → osilasyon
+
+v5'te denenen 4 mechanics tweak'i bu varyansı tüketmedi çünkü hepsi
+gradient ölçeğine göre relatif (clip relative to current policy etc.).
+Reward'ı **mutlak terimle ölçeklendirmek** lazım.
+
+#### v6 müdahaleleri
+
+| Param | v5 | v6 | Neden |
+|---|---|---|---|
+| `VecNormalize` | yok | **enabled** | Running mean/std ile reward + obs normalize, value targets unit-scale |
+| `clip_reward` | — | **10.0** | Single-step reward clipped ±10, kat +200 outlier'ı sönümle |
+| `ent_coef` | 0.001 | 0.001 | Tutuldu (v4'te çözmüştü) |
+| Diğer PPO | aynı | aynı | clip 0.1, ep 5, batch 256, gae 0.9 |
+| Çıktı | runs/ppo_v5_stable | **runs/ppo_v6_normalized** | v5 sonuçları korundu |
+
+train_ppo.py'de yeni `vec_normalize` yaml block okunuyor; aktifse
+`VecNormalize(vec_env, ...)` wrap'liyor. Eğitim sonunda
+`vec_normalize.pkl` da save ediliyor (eval için gerekli).
+
+#### v6 run plan'ı
+
+Saat 04:38'de başladı, fresh start. ~2 saat sonra autonomous cron loop
+yine durup v7 kararı verecek. Beklenti: reward smooth-ish bir trajectory
+izler, peak'ten sonra sürekli oscillation yerine daha düz bir öğrenme
+eğrisi. ep_rew_mean'in mutlak değeri normalize edildiği için BAŞKA
+ölçek ama trend net görünür.
+
+### v6 → v7 pivot: linear lr decay (saat 06:36, autonomous loop)
+
+#### Veri (v6 @ 235k step)
+
+**v6 BÜYÜK BAŞARI**: VecNormalize çalıştı.
+- Smooth reward eğrisi (v3-v5'teki yüksek-frekans osilasyon yok)
+- Peak **+110** (~150k civarı) — tüm versiyonlar arasında en yüksek
+- v3-v5 ortalama ~+45 idi, v6 ~+95 (2x improvement)
+- Entropy sağlıklı (std ~0.7, entropy_loss -4 sabit)
+
+#### Sebep teşhisi
+
+İyileşme var ama hâlâ **peak-then-regress** paterni: 150k +110 → 235k
++85 düşüş. Klasik "policy converges to greedy then breaks down" — sabit
+lr=3e-4 ile policy converge ettikten sonra hâlâ büyük güncelleme
+yapılıyor, en iyi politikayı kemiriyor.
+
+#### v7 müdahaleleri
+
+| Param | v6 | v7 | Neden |
+|---|---|---|---|
+| `learning_rate` | 3.0e-4 sabit | **linear: 3e-4 → 3e-5** | Peak'i koru, fine-tune yap |
+| `lr_schedule` | yok | **linear** | Yeni yaml field |
+| `lr_final` | yok | **3.0e-5** | 10x küçük end-of-training lr |
+| Diğer | aynı | aynı | VecNormalize aktif, ent 0.001, clip 0.1 vs |
+| Çıktı | runs/ppo_v6_normalized | **runs/ppo_v7_lrdecay** | v6 sonuçları korundu |
+
+train_ppo.py'de yeni `_build_lr()` helper, `lr_schedule: linear` +
+`lr_final` yaml'dan okur, callable döner. SB3 PPO callable lr_schedule
+olarak kabul eder, her training step'te `progress_remaining` ile çağırır.
+
+#### v7 run plan'ı
+
+Saat 06:38'de başladı, fresh start. Beklenti: peak v6 seviyesinde veya
+biraz altında ulaşır ama sonrası DÜŞÜŞSÜZ — ya plateau ya da yavaş
+yukarı. lr decay'in tipik faydası "peak'i bozmadan koruma."
+
+### Autonomous loop bitiş (saat 08:36)
+
+Loop durduruldu (saat 08:30 cutoff geçti, CronDelete 25ab885e). Gece
+boyunca 3 cron iterasyonu çalıştı:
+
+- **iter 1 (04:36)**: v5 → v6 (VecNormalize). En etkili müdahale; reward
+  ortalaması +45 → +95'e çıktı, smooth eğri.
+- **iter 2 (06:36)**: v6 → v7 (linear lr decay). Marjinal iyileşme;
+  peak korundu, 220k civarı +90.
+- **iter 3 (08:36)**: stop cutoff, v7 durduruldu (221k step).
+
+v7'nin son hali: 221k step, ep_rew_mean ~+66 (anlık), peak ~+105 (210k).
+v6'ya göre daha smooth ama büyük bir sıçrama yok.
+
+#### Sabah uyandığında — öneriler
+
+1. **Mevcut en iyi policy'yi eval et**: `runs/ppo_v6_normalized/checkpoints/ppo_drone_220000_steps.zip` (v6'nın peak'i). VecNormalize stats:
+   `runs/ppo_v6_normalized/checkpoints/vec_normalize.pkl` — eval script bunu yüklemen lazım.
+2. **v7'yi 2M'e devam ettir**: lr decay zaten orada, devam etmek kolay. resume_from güncelle.
+3. **v8 dene** (eğer eval kötüyse): playbook'taki sonraki adımlar — bigger network [256,256] veya reward magnitude reduction (kat 200→100, oda 50→30).
+
+GitHub'da tüm grafikler güncel: `docs/figures/`. README için "v1→v7
+ablation table" zaten hazır (PROGRESS.md, fixes.txt).
+
+---
+
+## 2026-05-31 — v2 TEMİZ YENİDEN TASARIM (sıfırdan ödül + otonom Claude operatör)
+
+Berker yeni kuralları netleştirdi ve süreci sıfırdan kurmamızı istedi (eski koddan
+miras alma — clean slate). Önceki gece v10 (n_envs=2) **crash-loop**'a girmişti:
+`monitor_agent.py` her 20 dk 180k checkpoint'ten restart atıyordu ama step 193248'de
+donuyor, reward -173'e çakılıyordu. Kök neden: **çoklu env / çoklu Gazebo** süreci
+sürekli bozuyor (Berker bunu zaten biliyordu).
+
+### Yapılan değişiklikler
+- **Tek sim, tek env** (`n_envs=1`). Çoklu env/gazebo tamamen kaldırıldı.
+- **2D action** `[v, ω]` — irtifa sabit (vz=0, gravity=false hover). Ödev tanımıyla
+  (lineer hız + açısal hız) birebir; tek-kat 2D voxel kapsamı için en uygun.
+- **Sabit başlangıç**: drone hep **R0 (-5,-5)** sol-alt köşeden başlar (eski rastgele
+  6-spawn kaldırıldı). `sim_launch.py` spawn'ı da R0'a alındı.
+- **Harita sabit**: `multi_room.sdf` (tek katlı 6 oda) değişmiyor. 3 hareketli engel kalıyor.
+- **40-d temiz obs**: 32 lidar + cos/sin yaw + (v,ω) + (kesif_oranı,oda_oranı) +
+  (min_lidar, idle). Up/down lidar bağımlılığı kaldırıldı.
+- **Ödül sıfırdan (v2.0)**: `return ≈ keşfedilen voxel sayısı`.
+  `-0.01` zaman, `+1.0` yeni voxel, `+10` yeni oda, idle `-0.05` (>40 adım),
+  progresif duvar cezası `-0.5·(1-d/1m)`, ileri-açık bootstrap `+0.05`,
+  çarpışma `-10` (terminal, d<0.30m).
+- **Config v2.0**: `runs/ppo_v2_0`, 2M step, VecNormalize(norm_obs=false, norm_reward=true),
+  lr 3e-4→1e-5 linear, ent 0.005, clip 0.2, n_steps 2048, batch 256, epochs 10.
+- **Metrik loglama**: `ExplorationLogger` callback → TB (`explore/voxels_*`, `rooms_*`) +
+  `runs/ppo_v2_0/progress.csv` (rapor grafikleri için). `vec_normalize.pkl` her rollout
+  tazelenir (restart dayanıklılığı).
+- **Smoke test** (sim ile, 80 adım): obs (40,), R0'dan başladı, voxel 1→14, toplam ödül
+  14.47 ≈ voxel sayısı, çarpışma yok. ✓
+
+### Otonom kontrol — `auto_overnight.py` DEĞİL, gerçek Claude agent
+Berker "aptal" Python babysitter istemiyor (geçen sefer rezalet çalıştı). Yerine:
+- `scripts/deprecated/`'a taşındı: `auto_overnight.py`, `monitor_agent.py`.
+- **`.claude/agents/rl-train-operator.md`** — tüm kontrolü alan Claude operatör agent:
+  crash/freeze kurtarma, dengeli RL müdahaleleri (resume/lr/ent), v2.1→v2.2 versiyon
+  atlama, log + `algo/ppo` push. Bir heartbeat loop her ~20 dk onu tetikliyor.
+- Yardımcılar: `scripts/ensure_training.sh`, `scripts/restart_training.sh`,
+  `scripts/tb_metrics.py` (operatörün gözü), `scripts/report.py` (figür+REPORT.md).
+
+Eğitim ve geliştirme Berker "dur" diyene kadar sürekli çalışacak.
+
+## 2026-05-31 ~11:18 — v2.1 (yon-duyarli lidar cezasi, eval-tabanli)
+v2.0 (780k) 100-episode degerlendirildi (scripts/eval_coverage.py): carpisma %70, ep_len
+462/1000, voxels_max 201, oda ort 3.57/6, 100-ep birlesik kapsama 371/1024 (%36).
+Figurler: docs/figures/eval_v2_0_coverage.png (R0->R1->R4->R5 rotasi ogrenilmis ama oda
+ICI taranmiyor; R3/R2 az), eval_v2_0_trajectories.png (carpismalar R2 dar oda + hareketli
+engel ve R0/R1 kapi bolgesinde kumeleniyor).
+TANI: darbogaz CARPISMA. Eski duvar cezasi YONSUZ (scan_min<1.0m) -> 2m kapida yan duvarlar
+~0.85m -> dogru kapi gecisini cezalandiriyordu. v2.1 FIX: ceza GIDILEN yonde (ileri-ark
++/-22deg, <1.5m); siyirma cezasi <0.5m (kapilar guvende); ileri-acik bonus 0.10; episode
+1000->1500. FRESH 500k (runs/ppo_v2_1). Ayni operator agent surduruyor.

@@ -1,0 +1,43 @@
+# ============================================================================
+# A2C config (= senkron A3C) — DISCRETE aksiyon, PAYLAŞILAN ortam.
+#   * PPO (Berker) ile AYNI: harita, drone, lidar, ödül (v2.1), gözlem, R0 spawn.
+#   * TEK fark: aksiyon Discrete(4) = ileri / sol / sağ / dur.
+#   * TEK sim, TEK env (n_envs=1) — çoklu Gazebo bizim ortamda kararsız (ders).
+# ============================================================================
+env:
+  drone_name: rl_drone
+  max_episode_steps: 1500
+  seed: 42
+  world_name: multi_room
+  discrete: true             # A3C/A2C -> Discrete(4)
+
+a2c:
+  policy: MlpPolicy
+  learning_rate: 0.0007      # A2C tipik lr; gerekirse düşür
+  lr_schedule: linear        # 7e-4 -> lr_final
+  lr_final: 1.0e-05
+  n_steps: 32                # A2C kısa rollout (default 5 çok gürültülü; 16-64 dene)
+  gamma: 0.99
+  gae_lambda: 0.95
+  ent_coef: 0.01             # discrete'te keşif için biraz yüksek
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [128, 128]
+      vf: [128, 128]
+
+train:
+  version: a2c_v1
+  n_envs: 1                  # >1 YAPMA (çoklu Gazebo bozuyor)
+  total_timesteps: 700000
+  save_freq: 20000
+  resume_from: null          # fresh; crash sonrası operatör/elle latest ckpt'e ayarlar
+  log_dir: ./runs/a2c_v1
+  ckpt_dir: ./runs/a2c_v1/checkpoints
+  tb_log: ./runs/a2c_v1/tb
+  vec_normalize:
+    enabled: true
+    norm_obs: false
+    norm_reward: true
+    clip_reward: 10.0
