@@ -571,3 +571,11 @@ TANI: darbogaz CARPISMA. Eski duvar cezasi YONSUZ (scan_min<1.0m) -> 2m kapida y
 ~0.85m -> dogru kapi gecisini cezalandiriyordu. v2.1 FIX: ceza GIDILEN yonde (ileri-ark
 +/-22deg, <1.5m); siyirma cezasi <0.5m (kapilar guvende); ileri-acik bonus 0.10; episode
 1000->1500. FRESH 500k (runs/ppo_v2_1). Ayni operator agent surduruyor.
+
+## 2026-05-31 ~19:35 — Berker direktifi: 700k sonrasi BEST -> 1.5M
+- 700k bitince: v2.2 100-ep eval + v2.0/v2.1/v2.2 uclu KIYAS (carpisma %, kapsama %, voxel) -> docs/EVAL_v2_2.md + REPORT.md, commit/push (sonuclari Berker icin KAYDET).
+- En iyi reward tabanini sec (eval verisine gore: v2.0 vs v2.2; v2.1 elendi). Mantikli iyilestirmeler:
+  * env/policy: maksimum voxel icin (kapsama yogunlugu/frontier shaping; gerekirse v2.3 = lidar gecmisi ile hareketli engel hizi).
+  * ppo.yaml: net_arch [256,256], uzun episode (max_episode_steps 2000-3000), lr schedule 1.5M, ent ayari.
+- En iyi+iyilestirilmis surumle FRESH 1.5M step egitim (runs/ppo_v3_best veya benzeri). Uzun episode -> daha cok voxel.
+- Karar supervisor(Opus) tarafindan eval sonrasi verilecek (sonnet operator degil).
