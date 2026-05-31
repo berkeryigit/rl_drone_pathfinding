@@ -68,3 +68,10 @@ trap cleanup EXIT INT TERM
 echo "[train_sac.sh] SAC egitimi basliyor (config=$CONFIG)..."
 cd "$PROJ_ROOT"
 python3 -m rl_drone_pathfinding.agents.train_sac --config "$CONFIG"
+
+# --- egitim bitti: grafikleri olustur ------------------------------------
+LOG_DIR=$(python3 -c "import yaml; c=yaml.safe_load(open('$CONFIG')); print(c['train']['log_dir'])" 2>/dev/null || echo "runs/sac")
+echo "[train_sac.sh] Grafikler olusturuluyor: $LOG_DIR/plots"
+python3 "$PROJ_ROOT/scripts/plot_training.py" \
+    --log "$LOG_DIR/training_log.csv" \
+    --out "$LOG_DIR/plots" || echo "[train_sac.sh] Grafik olusturma basarisiz (devam)"

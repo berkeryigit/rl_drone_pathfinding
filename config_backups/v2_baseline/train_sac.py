@@ -121,8 +121,6 @@ def _make_env(env_cfg: dict):
             drone_name=env_cfg["drone_name"],
             max_episode_steps=env_cfg["max_episode_steps"],
             seed=env_cfg.get("seed"),
-            eval_mode=bool(env_cfg.get("eval_mode", False)),
-            manage_obstacles=bool(env_cfg.get("manage_obstacles", True)),
         )
         return Monitor(env)
     return _factory
@@ -168,10 +166,7 @@ def main(argv=None):
     best_dir = ckpt_dir / "best";        best_dir.mkdir(parents=True, exist_ok=True)
 
     vec_env  = DummyVecEnv([_make_env(env_cfg)])
-    eval_env_cfg = dict(env_cfg)
-    eval_env_cfg["eval_mode"] = True
-    eval_env_cfg["manage_obstacles"] = False
-    eval_env = DummyVecEnv([_make_env(eval_env_cfg)])
+    eval_env = DummyVecEnv([_make_env(env_cfg)])
 
     if tr_cfg.get("resume_from"):
         print(f"[train_sac] resuming from {tr_cfg['resume_from']}")
@@ -205,7 +200,6 @@ def main(argv=None):
             gamma=float(sac_cfg["gamma"]),
             train_freq=(int(train_freq[0]), str(train_freq[1])),
             gradient_steps=gradient_steps,
-            target_update_interval=int(sac_cfg.get("target_update_interval", 1)),
             ent_coef=sac_cfg["ent_coef"],
             target_entropy=sac_cfg["target_entropy"],
             use_sde=bool(sac_cfg.get("use_sde", False)),
@@ -217,8 +211,7 @@ def main(argv=None):
             seed=env_cfg.get("seed"),
         )
 
-    if bool(sac_cfg.get("torch_compile", False)):
-        _apply_torch_compile(model, use_sde=bool(sac_cfg.get("use_sde", False)))
+    _apply_torch_compile(model, use_sde=bool(sac_cfg.get("use_sde", False)))
 
     if CUDA_AVAILABLE:
         import torch

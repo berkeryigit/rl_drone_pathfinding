@@ -72,7 +72,7 @@ VZ_MAX     = 0.4
 W_MAX      = 1.5
 COLLISION_DIST      = 0.25
 NEAR_COLLISION_DIST = 0.5
-OBS_UPDATE_PERIOD = 3.0
+OBS_UPDATE_PERIOD = 2.0
 
 # Kapi merkez pozisyonlari — door proximity reward icin
 # Sol duvar (x=-2): kapi y in [-4.5,-1.5] → merkez y=-3
@@ -212,14 +212,12 @@ class DroneExplorationEnv(gym.Env):
     metadata = {"render_modes": []}
 
     def __init__(self, world_name=DEFAULT_WORLD_NAME, drone_name=DEFAULT_DRONE_NAME,
-                 max_episode_steps=1000, seed=None, eval_mode=False,
-                 manage_obstacles=True):
+                 max_episode_steps=1000, seed=None, eval_mode=False):
         super().__init__()
         self.world_name = world_name
         self.drone_name = drone_name
         self.eval_mode  = eval_mode
         self.max_episode_steps = max_episode_steps
-        self.manage_obstacles = manage_obstacles
 
         self.action_space = spaces.Box(
             low=np.array([-1.0, -1.0, -1.0], dtype=np.float32),
@@ -257,10 +255,8 @@ class DroneExplorationEnv(gym.Env):
         # Hareketli engel: tek kalici thread, episode baslarindan bagimsiz
         self._sim_time     = 0.0
         self._obs_stop     = threading.Event()
-        self._obs_worker   = None
-        if self.manage_obstacles:
-            self._obs_worker = threading.Thread(target=self._obstacle_loop, daemon=True)
-            self._obs_worker.start()
+        self._obs_worker   = threading.Thread(target=self._obstacle_loop, daemon=True)
+        self._obs_worker.start()
 
     # ----- Gozlem -----
 

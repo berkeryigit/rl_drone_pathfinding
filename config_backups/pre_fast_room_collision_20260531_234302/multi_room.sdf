@@ -177,13 +177,13 @@
       </link>
     </model>
 
-    <!-- R4 icinde, x yonunde salinar; silindir lidar icin daha yumusak ama hafif kalir -->
+    <!-- R4 icinde, x yonunde salinar -->
     <model name="obs_moving_2">
       <static>true</static>
       <pose>1.0 4.0 1.25 0 0 0</pose>
       <link name="l">
-        <collision name="c"><geometry><cylinder><radius>0.35</radius><length>2.5</length></cylinder></geometry></collision>
-        <visual name="v"><geometry><cylinder><radius>0.35</radius><length>2.5</length></cylinder></geometry>
+        <collision name="c"><geometry><box><size>0.7 0.7 2.5</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.7 0.7 2.5</size></box></geometry>
           <material><ambient>0.2 0.7 0.2 1</ambient><diffuse>0.2 0.8 0.2 1</diffuse></material></visual>
       </link>
     </model>

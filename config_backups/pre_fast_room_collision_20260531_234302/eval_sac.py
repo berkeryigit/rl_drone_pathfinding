@@ -6,7 +6,7 @@ Egitilmis SAC modelini degerlendir:
 
 Kullanim:
   python3 -m rl_drone_pathfinding.agents.eval_sac \
-      --model runs/sac_fast_rooms/checkpoints/best/best_model.zip \
+      --model runs/sac/checkpoints/best/best_model.zip \
       --episodes 10
 """
 from __future__ import annotations
@@ -213,9 +213,9 @@ def main(argv=None):
     parser.add_argument("--model",    required=True,
                         help="Model .zip (örn: runs/sac/checkpoints/best/best_model.zip)")
     parser.add_argument("--episodes",  type=int, default=10)
-    parser.add_argument("--max-steps", type=int, default=500,
-                        help="Episode basina max step (default: 500)")
-    parser.add_argument("--out-dir",   default="runs/sac_fast_rooms/eval_results")
+    parser.add_argument("--max-steps", type=int, default=3000,
+                        help="Episode basina max step (default: 3000)")
+    parser.add_argument("--out-dir",   default="runs/sac/eval_results")
     parser.add_argument("--no-gif",       action="store_true", help="GIF olusturma")
     parser.add_argument("--deterministic", action="store_true",
                         help="Deterministik aksiyonlar (default: stochastic)")

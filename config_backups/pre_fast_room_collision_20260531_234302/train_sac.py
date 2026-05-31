@@ -50,7 +50,7 @@ except ImportError:
 # ---------- Callback ----------
 
 class DroneMetricsCallback(BaseCallback):
-    """Episode sonunda metrikleri TensorBoard + CSV dosyasina yazar."""
+    """Episode sonunda metrikleri TensorBoard + CSV dosyasina yazar. Carpismalari loglar."""
 
     def __init__(self, csv_path: Path, verbose=0):
         super().__init__(verbose)
@@ -59,13 +59,14 @@ class DroneMetricsCallback(BaseCallback):
         self._ep_reward = 0.0
         self._file      = None
         self._writer    = None
+        self._crash_count = 0
 
     def _on_training_start(self):
         self._file = open(self.csv_path, "w", newline="", buffering=1)
         self._writer = csv.writer(self._file)
         self._writer.writerow([
             "episode", "timestep", "ep_reward",
-            "explored_voxels", "visited_rooms",
+            "explored_voxels", "visited_rooms", "crashed",
             "ent_coef", "actor_loss", "critic_loss",
         ])
 
@@ -84,6 +85,13 @@ class DroneMetricsCallback(BaseCallback):
                 # Boylece CSV/grafikler normalize edilmemis gercek odulu gosterir.
                 ep_info = info.get("episode")
                 ep_reward = float(ep_info["r"]) if ep_info else self._ep_reward
+                
+                # Carpişma kontrol — min_lidar < 0.25 metresi carpış işaretidir
+                crashed = 0
+                if info.get("min_lidar", float('inf')) < 0.25:
+                    crashed = 1
+                    self._crash_count += 1
+                    print(f"\n[train_sac] CARPIŞMA #{self._crash_count} (ep {self._episode}, step {self.num_timesteps})")
 
                 self._writer.writerow([
                     self._episode,
@@ -91,6 +99,7 @@ class DroneMetricsCallback(BaseCallback):
                     round(ep_reward, 2),
                     info.get("explored_voxels", 0),
                     info.get("visited_rooms",   0),
+                    crashed,
                     round(ent, 4),
                     round(a_l, 4),
                     round(c_l, 4),
@@ -98,6 +107,7 @@ class DroneMetricsCallback(BaseCallback):
 
                 self.logger.record("drone/explored_voxels", info.get("explored_voxels", 0))
                 self.logger.record("drone/visited_rooms",   info.get("visited_rooms",   0))
+                self.logger.record("drone/crashed", crashed)
                 self.logger.dump(self.num_timesteps)
                 self._ep_reward = 0.0
         return True
@@ -121,8 +131,6 @@ def _make_env(env_cfg: dict):
             drone_name=env_cfg["drone_name"],
             max_episode_steps=env_cfg["max_episode_steps"],
             seed=env_cfg.get("seed"),
-            eval_mode=bool(env_cfg.get("eval_mode", False)),
-            manage_obstacles=bool(env_cfg.get("manage_obstacles", True)),
         )
         return Monitor(env)
     return _factory
@@ -168,10 +176,7 @@ def main(argv=None):
     best_dir = ckpt_dir / "best";        best_dir.mkdir(parents=True, exist_ok=True)
 
     vec_env  = DummyVecEnv([_make_env(env_cfg)])
-    eval_env_cfg = dict(env_cfg)
-    eval_env_cfg["eval_mode"] = True
-    eval_env_cfg["manage_obstacles"] = False
-    eval_env = DummyVecEnv([_make_env(eval_env_cfg)])
+    eval_env = DummyVecEnv([_make_env(env_cfg)])
 
     if tr_cfg.get("resume_from"):
         print(f"[train_sac] resuming from {tr_cfg['resume_from']}")
@@ -205,7 +210,6 @@ def main(argv=None):
             gamma=float(sac_cfg["gamma"]),
             train_freq=(int(train_freq[0]), str(train_freq[1])),
             gradient_steps=gradient_steps,
-            target_update_interval=int(sac_cfg.get("target_update_interval", 1)),
             ent_coef=sac_cfg["ent_coef"],
             target_entropy=sac_cfg["target_entropy"],
             use_sde=bool(sac_cfg.get("use_sde", False)),
@@ -217,8 +221,7 @@ def main(argv=None):
             seed=env_cfg.get("seed"),
         )
 
-    if bool(sac_cfg.get("torch_compile", False)):
-        _apply_torch_compile(model, use_sde=bool(sac_cfg.get("use_sde", False)))
+    _apply_torch_compile(model, use_sde=bool(sac_cfg.get("use_sde", False)))
 
     if CUDA_AVAILABLE:
         import torch
