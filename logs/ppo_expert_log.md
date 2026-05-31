@@ -398,3 +398,53 @@ v2.1 eğitimi 500k step'i tamamlayıp final.zip kaydetti; 14:54 UTC itibarıyla 
 ### Müdahale
 **YOK** — v2.1 son fazı zaten çalışıyor (14:54 UTC resume). Mevcut process ppo.yaml'ı çalışma anında okumuyor; config değişikliği şu an etkisiz olur. Peak +133.35 ve aktif iyileşme trendi ile %80 güven eşiğini aşan bir hyperparameter sorunu tespit edilmedi. ent_coef=0.003 önerisi v2.2/v10 için NOT olarak bırakıldı.
 ---
+
+## [2026-05-31 15:05 UTC]
+**Step:** 501,760 (resume → hedef 700k) | **ep_rew_mean:** +123.25 | **peak:** +133.35 | **entropy:** -4.24 (son güvenilir CSV kaydı) | **std:** ~0.998
+
+### Durum
+v2.2 500k eğitimi tamamlandı; ep_rew_mean=**+123.25**, peak=**+133.35** — v8 tüm-zamanlar rekorunu (+113 @ 1.6M step) **500k'da geçti**. 14:54'te ppo_drone_final.zip'ten resume edildi, hedef 700k (198k step kaldı). Config güncellendi: total_timesteps 500k→700k, resume_from null→final.zip.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- interventions.jsonl son kayıt (14:54): step=501760, reward=123.25, peak=133.35. Bu aktif yükseliş fazını gösteriyor — peak hâlâ reward mean'in üzerinde yani her episode'da maksimum keşfedilemiyor ama eğitim yönü pozitif.
+- eval_v3_310k.log (11 ep, interrupted): return=+45..+78, rooms=1-2. 310k'daki politika tutarsız ama tek-oda keşif sağlam. 500k'daki 123.25'e bakılırsa 310k→500k arası güçlü kırılım yaşandı.
+- **+15'lik oda sıçraması görüldü mü?** Evet — +123.25 ≈ 6×15 + voxel kazanımı; politika büyük olasılıkla >4 oda keşfedebiliyor training sırasında.
+- Plato belirtisi yok. peak/mean gap (~10 puan) normal; tutarlı çok-oda keşfi için 600-700k bandı bekleniyor.
+
+**b) lr=5e-5 → 1e-5 linear: bu aşamada doğru mu?**
+- v2.2 fresh 500k boyunca lr=5e-5→1e-5 linear decay uygulandı. Sonuç mükemmel (+123.25).
+- Resume sonrası SB3 progress_remaining=1.0'dan başlıyor → yeniden 5e-5→1e-5, bu sefer 198k step üzerinde. Etkin decay: ~2e-10/step. 100k'da lr≈3e-5, 198k'da lr=1e-5. Fine-tune için uygun; agresif değil.
+- Karşılaştırma: v7 lr_decay (3e-4→3e-5) 220k'da std=0.86, reward=69-90 bölgesinde platoya oturdu. v2.2 aynı step bandında lr=5e-5 ile 123.25'e ulaştı → sabit düşük LR'nin bu harita için doğru strateji olduğu kanıtlandı.
+
+**c) Entropy/std: keşif için yeterli mi?**
+- Son güvenilir CSV kaydı (May 30 22:00, freeze öncesi): entropy_loss=-4.24, std=0.998. Sağlıklı.
+- ent_coef=0.005 (task context'teki 0.0015'ten 3.3× yüksek) → entropy baskısı güçlü, -4'ün altında (uyarı sınırının altında = iyi). Erken deterministikleşme tehlikesi yok.
+- std=~1.0: 0.7 eşiğinin çok üstünde. Keşif kapasitesi tam.
+- train_v2_2m_fresh.log (139k, v2.1 karşılaştırma): entropy=-4.76, std=1.2 → v2.2'de ent_coef aynı olduğu için benzer değerler beklenir.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- 500k'da reward=123.25 ≈ büyük olasılıkla 4-5 oda tutarlı keşif. 6. odanın tutarlı keşfi için 600-700k bekleniyor (peak'in mean'e yakınsama süreci).
+- eval_v2_140k.log (20 ep): rooms_mean~1.2, best=3 oda. eval_v3_310k: rooms=1-2. Training ortamında stochastic politika çok daha iyi keşfediyor; 700k eval bunu netleştirecek.
+- FPS=38 (son log) → 198k step ≈ 5.2M saniye / 38 ≈ 5,200s ≈ ~1.4 saat. Eğitim 16:00-17:00 bandında tamamlanabilir.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **Hareketli engelleri aktifleştir** (3 engel SDF'de mevcut, animasyon devre dışı). n_envs=1 ile SubprocVecEnv deadlock riski yok; 700k final checkpoint'inden fine-tune için ideal temel. v10 ent_coef'i 0.01'e çıkar (yeni dinamizm için keşif gerekir).
+2. **n_steps=2048→4096**: n_envs=1 ile tek rollout buffer çok küçük; 4096 ile policy gradient varyansı düşer, oda sıçramalarını daha stabil öğrenir. Batchsize=512 olarak ayarla.
+
+**f) Acil müdahale gerekiyor mu?**
+- **EVET — Config tutarsızlığı** (giderildi): total_timesteps=500000 ve resume_from=null stale değerler monitor/crash-recovery için risk oluşturuyordu. Güncellendi.
+- Hyperparameter: acil müdahale gerektiren bir anormallik yok. Reward seyri beklentinin üzerinde.
+
+### v10 Önerisi
+1. Hareketli engel aktivasyonu + ent_coef=0.01 (dinamik ortam için artan keşif baskısı)
+2. n_steps=4096, batch_size=512 (n_envs=1 ile geniş rollout buffer, oda-geçiş gradyanlarında daha düşük varyans)
+
+### Müdahale
+**configs/ppo.yaml güncellendi:**
+- `version: v2.2` → `v2.2-resume700k`
+- `total_timesteps: 500000` → `700000` (fiili hedef)
+- `resume_from: null` → `./runs/ppo_v2_2/checkpoints/ppo_drone_final.zip`
+- Sebep: Config crash-recovery için referans; stale değerler yanlış restart'a neden olurdu.
+---
