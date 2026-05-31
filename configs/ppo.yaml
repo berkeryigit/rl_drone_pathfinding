@@ -40,7 +40,7 @@ ppo:
 train:
   version: v2.2-resume700k  # 500k tamamlandi (peak=133.35), 700k'ya uzatildi (2026-05-31 14:54)
   n_envs: 1
-  total_timesteps: 700000    # v2.2 fresh 500k bitti; 700k hedef (200k kaliyor)
+  total_timesteps: 700000    # v2.2 700k (Berker onayi); 500k bitince operator resume eder
   save_freq: 20000
   resume_from: ./runs/ppo_v2_2/checkpoints/ppo_drone_final.zip   # 500k final ckpt
   log_dir: ./runs/ppo_v2_2
