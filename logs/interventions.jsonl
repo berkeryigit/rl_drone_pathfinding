@@ -37,3 +37,4 @@
 {"type": "crash_recovery", "step": 180000, "resume_from": "ppo_drone_180000_steps.zip", "reason": "process ölü veya log stale", "ts": "2026-05-31 02:21:45"}
 {"type": "crash_recovery", "step": 180000, "resume_from": "ppo_drone_180000_steps.zip", "reason": "process ölü veya log stale", "ts": "2026-05-31 02:41:52"}
 {"type": "crash_recovery", "step": 180000, "resume_from": "ppo_drone_180000_steps.zip", "reason": "process ölü veya log stale", "ts": "2026-05-31 03:01:59"}
+{"ts":"2026-05-31T02:22:28Z","type":"FREEZE","step":2048,"reward":-15.504,"peak":-15.504,"action":"forced restart (restart_training.sh, fresh; no ckpt existed)","reason":"gz transport Host-unreachable after 1st rollout -> /scan stopped -> env.step() blocked; reproduced post-restart; root cause = bridge/transport stability, not hyperparams"}

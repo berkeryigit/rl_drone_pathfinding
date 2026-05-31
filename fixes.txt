@@ -580,3 +580,31 @@ Karar: reduce_lr
 [2026-05-31 02:41:52] RESTART — step=180000, resume=ppo_drone_180000_steps.zip
 
 [2026-05-31 03:01:59] RESTART — step=180000, resume=ppo_drone_180000_steps.zip
+
+[2026-05-31 05:09] FREEZE (v2.0, ilk iterasyon)
+- Belirti: train_ppo (pid 10127) canli ama step 2048'de takildi; train log 04:43'ten,
+  sim log 04:46'dan beri guncellenmiyor (~25 dk bayat). tb_metrics n_points=1.
+- Kok neden: sim logunda surekli "NodeShared::RecvSrvRequest() error sending response:
+  Host unreachable" -> gz transport (Gazebo<->egitim) kopmus, egitim thread'i sim
+  step yanitini beklerken kilitlendi. SAGLIKLI rollout sayisi=1.
+- Henuz checkpoint yok (sadece vec_normalize.pkl), bu yuzden FRESH restart (resume_from
+  zaten null). vec_normalize.pkl yedeklendi.
+- Cozum: restart_training.sh ile temiz kill + yeniden baslatma.
+- Ders: ilk rollout sonrasi gz transport "Host unreachable" verirse sim'i komple
+  temizleyip yeniden ayaga kaldirmak gerekiyor; tek tek bridge restart yetmez.
+
+[2026-05-31 05:23] FREEZE TEKRARLADI -> kok neden netlesti (transport/bridge)
+- Restart sonrasi da TAM ayni sekilde 1. rollout (step 2048) sonrasi takildi.
+- Olculenler: gz server (ruby pid 17158) ~210% CPU'da donuyor (hung degil, spin),
+  ama /scan YAYINLANMIYOR (ros2 topic hz /scan timeout). GPU sadece %30 (RTX 3050Ti),
+  yani GPU darbogaz degil. sim log "Host unreachable" sel halinde.
+- Yorum: 1. rollout bitip PPO GPU optimize pass'i yapinca sim<->egitim ROS/gz
+  transport peer'i kopuyor (Host unreachable), /scan teslimi oluyor; env.step()
+  bir sonraki lidar scan'i beklerken sonsuz blokloaniyor. Iki kosuda da BIREBIR
+  ayni nokta -> bu bir TRANSPORT/BRIDGE KARARLILIK bug'i, reward/hiperparametre DEGIL.
+- Bu dongude tek buyuk mudahale (restart) zaten kullanildi ve tekrarladi; ikinci
+  restart = thrash, YAPILMADI.
+- ONERILEN YAPISAL FIX (sonraki dongu): env.step() icine /scan watchdog timeout
+  (orn 10 sn scan gelmezse) + sim soft reset; VEYA rollout arasi parameter_bridge'i
+  yeniden ayaga kaldirma; VEYA GZ_PARTITION/ROS_DOMAIN transport ayari. Spawn/harita/
+  n_envs/2D-action SABIT kalacak. Reward'a dokunma.
