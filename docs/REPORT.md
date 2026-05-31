@@ -9,6 +9,7 @@ Otomatik uretildi (`scripts/report.py`). Operator agent gunceller.
 | v2.0 | 792,576 | +102.8 | +121.6 | 232/1024 | 6/6 |
 | v2.1 | 700,416 | +144.2 | +144.2 | 268/1024 | 6/6 |
 | v2.2 | 701,760 | +87.1 | +105.3 | 222/1024 | 6/6 |
+| v3.0 | 434,176 | +99.8 | +102.5 | 284/1024 | 6/6 |
 
 ## Versiyon / Mudahale Gunlugu
 
