@@ -112,6 +112,18 @@ Derinlemesine emin olman gerekirse: bakım moduna al (`/tmp/operator_pause` yaz)
 ile 20-30 episode kısa eval koş (çarpışma oranı + kapsama haritası), sonra pause'u kaldır — ama bu
 eğitimi durdurur, yalnızca plato netken yap.
 
+### 3.6) Versiyon SONU 100-ep eval (RAPOR İÇİN — Berker hocaya sunacak)
+Bir versiyon hedefine ulaştığında VEYA yeni versiyona geçmeden ÖNCE, o versiyonun
+performansını kalıcı olarak yakala (before/after kıyas verisi):
+1. Bakım moduna al: `echo "<ver> final eval" > /tmp/operator_pause`; eğitimi durdur
+   (`pkill -INT -f "train_ppo --config"; sleep 6; pkill -TERM -f "gz sim"; ...; rm -f /tmp/rl_drone_train.lock`).
+2. Sim aç + `python3 scripts/eval_coverage.py --model <son/en iyi ckpt> --episodes 100 --version <ver_alt_cizgili>`
+   (örn `--version v2_1`) → `docs/EVAL_<ver>.md` + `docs/figures/eval_<ver>_{coverage,trajectories}.png`.
+   (Kalıp için /tmp/rl_eval.sh'a bak — sim aç/scan-bekle/eval/kapat dizisi.)
+3. `python3 scripts/report.py` → konsolide rapor + kıyas figürleri tazelensin.
+4. commit + algo/ppo push. Sonra devam/versiyon-bump kararını uygula; pause'u kaldır.
+EVAL_SUMMARY satırındaki çarpışma oranı + kapsama, versiyon kararını da besler (§3.5).
+
 ### 4) Versiyon atlama (v2.x) — voxel kapsamını yükseltmek için
 Mantıklı bulduğun reward/obs iyileştirmesiyle yeni versiyon aç:
 1. Yeni minor seç (örn v2.0 → v2.1). Yeni dizin: `runs/ppo_v2_<minor>` (nokta yerine alt çizgi).
