@@ -621,3 +621,9 @@ FIX (3 katman):
  3) train_ppo._obstacle_updater: subprocess.run(timeout=1.0)+try/except, hiz 10->4Hz.
 SONUC: step 2048->4096->...->10240 sorunsuz ilerledi, fps 38, rooms_max=2. Kalan
 'Host unreachable' (300 satirda ~45) zararsiz ack-teslim hatasi (pose uygulaniyor).
+
+[2026-05-31] v2.1 500k tamamlandi -> 700k resume
+- Belirti: train_ppo process YOK; tb current_step=501760/500000 (%100), ep_rew_mean 123 (peak 133@485k).
+- Kok neden: SB3 run eski total_timesteps=500000 ile basladi, 500k'da hedefe ulasti, ppo_drone_final.zip + vec_normalize.pkl kaydetti, sonra "terminate called without an active exception" / Aborted (core dumped) ile cikti. Bu KAYIT SONRASI iyi-huylu teardown crash'i, egitim kaybi YOK.
+- Config total_timesteps zaten 700000'e cekilmis ama eski process bunu gormeden 500k'da bitti.
+- Fix: resume_from=ppo_drone_final.zip; restart_training.sh ile devam. train_ppo remaining=700000-500000=200000 hesaplar, reset_num_timesteps=False ile surdurur.

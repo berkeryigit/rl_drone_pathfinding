@@ -37,7 +37,7 @@ train:
   n_envs: 1
   total_timesteps: 700000    # v2.1 iyilesmeye devam ettigi icin 500k->700k uzatildi (Berker onayi)
   save_freq: 20000
-  resume_from: null          # FRESH — temiz v2.0 vs v2.1 karsilastirmasi
+  resume_from: ./runs/ppo_v2_1/checkpoints/ppo_drone_final.zip  # 500k tamamlandi (final saved, benign teardown abort); 700k'ya devam (Berker onayi)
   log_dir: ./runs/ppo_v2_1
   ckpt_dir: ./runs/ppo_v2_1/checkpoints
   tb_log: ./runs/ppo_v2_1/tb
