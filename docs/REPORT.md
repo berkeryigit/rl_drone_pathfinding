@@ -6,7 +6,7 @@ Otomatik uretildi (`scripts/report.py`). Operator agent gunceller.
 
 | Versiyon | Son step | Son reward | Peak reward | Peak voxel (max) | Peak oda (max) |
 |---|---|---|---|---|---|
-| v2.0 | 540,672 | +101.1 | +104.1 | 217/1024 | 6/6 |
+| v2.0 | 593,920 | +99.9 | +104.1 | 224/1024 | 6/6 |
 
 ## Versiyon / Mudahale Gunlugu
 
