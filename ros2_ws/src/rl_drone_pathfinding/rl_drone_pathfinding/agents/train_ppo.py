@@ -130,7 +130,7 @@ def _obstacle_updater(world_name: str, env_id: int, stop_event: threading.Event)
     """
     env = {**os.environ, "GZ_PARTITION": f"sim{env_id}"}
     t0 = time.time()
-    interval = 0.1  # 10 Hz — smooth enough for T≥5s periods
+    interval = 0.25  # 4 Hz — T≥5s salinimlar icin yeterince akici; transport yukunu dusurur
 
     while not stop_event.is_set():
         t = time.time() - t0
@@ -141,13 +141,18 @@ def _obstacle_updater(world_name: str, env_id: int, stop_event: threading.Event)
             req = (f"name: '{obs['name']}', "
                    f"position: {{x: {x:.4f}, y: {y:.4f}, z: {obs['z']:.4f}}}, "
                    f"orientation: {{x: 0, y: 0, z: 0, w: 1}}")
-            subprocess.run(
-                ["gz", "service", "-s", f"/world/{world_name}/set_pose",
-                 "--reqtype", "gz.msgs.Pose", "--reptype", "gz.msgs.Boolean",
-                 "--timeout", "80", "--req", req],
-                env=env,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
+            # Python timeout sart: gz transport hiccup'inda bu thread'i asma.
+            try:
+                subprocess.run(
+                    ["gz", "service", "-s", f"/world/{world_name}/set_pose",
+                     "--reqtype", "gz.msgs.Pose", "--reptype", "gz.msgs.Boolean",
+                     "--timeout", "150", "--req", req],
+                    env=env,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    timeout=1.0,
+                )
+            except subprocess.TimeoutExpired:
+                pass
         stop_event.wait(interval)
 
 

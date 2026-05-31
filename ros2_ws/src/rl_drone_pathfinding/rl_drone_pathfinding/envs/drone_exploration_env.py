@@ -241,12 +241,19 @@ class DroneExplorationEnv(gym.Env):
         req = (f"name: '{name}', position: {{x: {x}, y: {y}, z: {z}}}, "
                f"orientation: {{x: 0, y: 0, "
                f"z: {math.sin(yaw/2):.6f}, w: {math.cos(yaw/2):.6f}}}")
-        subprocess.run(
-            ["gz", "service", "-s", f"/world/{self.world_name}/set_pose",
-             "--reqtype", "gz.msgs.Pose", "--reptype", "gz.msgs.Boolean",
-             "--timeout", "500", "--req", req],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
-        )
+        # KRITIK: subprocess.run'a Python-seviyesi timeout SART. gz transport
+        # "Host unreachable" verirse gz service CLI sonsuza kadar asilabilir;
+        # python timeout olmadan reset() butun egitimi dondurur (step 2048 bug'i).
+        try:
+            subprocess.run(
+                ["gz", "service", "-s", f"/world/{self.world_name}/set_pose",
+                 "--reqtype", "gz.msgs.Pose", "--reptype", "gz.msgs.Boolean",
+                 "--timeout", "500", "--req", req],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                check=False, timeout=3.0,
+            )
+        except subprocess.TimeoutExpired:
+            pass
 
     # ----- Gym API -----
 

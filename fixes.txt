@@ -608,3 +608,16 @@ Karar: reduce_lr
   (orn 10 sn scan gelmezse) + sim soft reset; VEYA rollout arasi parameter_bridge'i
   yeniden ayaga kaldirma; VEYA GZ_PARTITION/ROS_DOMAIN transport ayari. Spawn/harita/
   n_envs/2D-action SABIT kalacak. Reward'a dokunma.
+
+--- 2026-05-31 05:33  SUPERVISOR FIX: step 2048 transport freeze ---
+BELIRTI: Egitim her seferinde TAM step 2048'de (1. rollout sonrasi ilk reset) donuyordu.
+KOK NEDEN: Makinede wlp4s0 (hotspot) UP, docker0/eno1 DOWN. gz transport service
+yanitlarini erisilemez arayuze gondermeye calisip 'Host unreachable' uretiyor.
+reset()'teki senkron 'gz service set_pose' cagrisinin subprocess.run'inda PYTHON
+timeout YOKTU -> yanit gelmeyince sonsuza kadar bloklandi -> tum egitim dondu.
+FIX (3 katman):
+ 1) train.sh: export GZ_IP=127.0.0.1 (+IGN_IP) -> gz transport loopback'e sabit.
+ 2) env._gz_set_pose: subprocess.run(timeout=3.0)+try/except -> reset asla asilmaz.
+ 3) train_ppo._obstacle_updater: subprocess.run(timeout=1.0)+try/except, hiz 10->4Hz.
+SONUC: step 2048->4096->...->10240 sorunsuz ilerledi, fps 38, rooms_max=2. Kalan
+'Host unreachable' (300 satirda ~45) zararsiz ack-teslim hatasi (pose uygulaniyor).

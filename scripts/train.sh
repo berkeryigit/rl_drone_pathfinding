@@ -45,6 +45,15 @@ source ros2_ws/install/setup.bash
 }
 source .venv/bin/activate
 
+# --- gz transport loopback (KRITIK) ------------------------------------------
+# Bu makinede wlp4s0 (hotspot) UP, docker0/eno1 DOWN. gz transport service
+# yanitlarini erisilemez arayuze gondermeye calisip "Host unreachable" seli
+# uretiyor; reset()'teki set_pose asiliyor ve egitim step 2048'de donuyordu.
+# Her sey localhost'ta -> transport'u loopback'e sabitle.
+export GZ_IP=127.0.0.1
+export IGN_IP=127.0.0.1
+echo "[train.sh] GZ_IP=$GZ_IP (transport loopback'e sabitlendi)"
+
 # --- read n_envs from config -------------------------------------------------
 N_ENVS=$(python3 -c "
 import yaml, sys
