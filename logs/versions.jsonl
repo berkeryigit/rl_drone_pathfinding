@@ -1,0 +1,1 @@
+{"ts": "2026-05-31 04:30", "version": "v2.0", "type": "redesign", "reason": "Sifirdan temiz baslangic: 2D action [v,w], sabit R0 spawn, 40-d obs, temiz odul (return~=voxel). Tek env (n_envs=1), coklu gazebo kaldirildi. VecNormalize(norm_reward). Hedef 2M step."}
