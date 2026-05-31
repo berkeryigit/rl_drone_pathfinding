@@ -133,7 +133,7 @@ def main(argv=None):
     ax.plot(SPAWN_X, SPAWN_Y, marker="*", color="red", markersize=20,
             markeredgecolor="white", zorder=6, label="Baslangic (R0)")
     fig.colorbar(im, ax=ax, label="episode orani (1.0 = her episode gezildi)")
-    ax.set_title(f"v2.0 KAPSAMA ISI HARITASI — {args.episodes} episode\n"
+    ax.set_title(f"{args.version} KAPSAMA ISI HARITASI — {args.episodes} episode\n"
                  f"birlesik benzersiz hucre: {cov_cells}/{TOTAL}")
     ax.set_xlabel("x (m)"); ax.set_ylabel("y (m)"); ax.legend(loc="upper right")
     fig.tight_layout()
@@ -156,7 +156,7 @@ def main(argv=None):
             markeredgecolor="black", zorder=8, label="Baslangic (R0)")
     ax.set_xlim(-WORLD_HALF, WORLD_HALF); ax.set_ylim(-WORLD_HALF, WORLD_HALF)
     ax.set_aspect("equal")
-    ax.set_title(f"v2.0 ORNEK YORUNGELER (ilk {len(trajectories)} ep) + TUM carpisma noktalari")
+    ax.set_title(f"{args.version} ORNEK YORUNGELER (ilk {len(trajectories)} ep) + TUM carpisma noktalari")
     ax.set_xlabel("x (m)"); ax.set_ylabel("y (m)"); ax.legend(loc="upper right")
     fig.tight_layout()
     p2 = fig_dir / f"eval_{args.version}_trajectories.png"; fig.savefig(p2, dpi=120); plt.close(fig)

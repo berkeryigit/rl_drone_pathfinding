@@ -38,14 +38,14 @@ ppo:
       vf: [128, 128]
 
 train:
-  version: v2.1
+  version: v2.2
   n_envs: 1
-  total_timesteps: 700000    # v2.1 iyilesmeye devam ettigi icin 500k->700k uzatildi (Berker onayi)
+  total_timesteps: 500000    # v2.2 fresh 500k (v2.1 eval: directional-only carpismayi dusurmedi)
   save_freq: 20000
-  resume_from: ./runs/ppo_v2_1/checkpoints/ppo_drone_final.zip  # 500k tamamlandi (final saved, benign teardown abort); 700k'ya devam (Berker onayi)
-  log_dir: ./runs/ppo_v2_1
-  ckpt_dir: ./runs/ppo_v2_1/checkpoints
-  tb_log: ./runs/ppo_v2_1/tb
+  resume_from: null          # FRESH — v2.2 = her-yon caution (v2.0) + ileri-ark (v2.1) birlesik
+  log_dir: ./runs/ppo_v2_2
+  ckpt_dir: ./runs/ppo_v2_2/checkpoints
+  tb_log: ./runs/ppo_v2_2/tb
   vec_normalize:
     enabled: true
     norm_obs: false          # obs zaten [-1,1]/[0,1] -> restart'a dayanikli

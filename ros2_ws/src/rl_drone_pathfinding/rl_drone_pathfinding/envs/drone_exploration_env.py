@@ -90,6 +90,11 @@ FWD_ARC_HALF      = 2       # ileri-ark = FORWARD_BIN +/- 2 bin (~+/-22 derece)
 FWD_PENALTY_DIST  = 1.5     # ileri yonde bu mesafeden yakin engel/duvar -> progresif ceza
 SCRAPE_DIST       = 0.5     # her yonde siyirma cezasi (kapi 0.85m'nin altinda -> kapilar guvende)
 FWD_OPEN_BONUS    = 0.10    # ileri acikken ileri gitme bonusu (acikliklardan gecmeyi tesvik)
+# --- v2.2: HER-YON (omnidirectional) caution GERI getirildi ---
+# v2.1 eval'i: directional-only ceza carpismayi DUSURMEDI (%70 -> %79). Demek ki
+# v2.0'in her-yon cezasi koruyucuymus (yanlardan/capraz hareketli engelden kaciniyordu).
+# v2.2 = v2.0'in her-yon cezasi + v2.1'in ileri-ark cezasi BIRLESIK.
+OMNI_PENALTY_DIST = 1.0     # her yonde bu mesafeden yakin -> progresif caution (v2.0 tarzi)
 STEP_DT           = 0.02    # her adim wall-clock bekleme
 IDLE_GRACE        = 40      # bu kadar adim yeni voxel yoksa idle cezasi
 
@@ -320,16 +325,21 @@ class DroneExplorationEnv(gym.Env):
         if new_room:
             reward += 10.0                               # oda kilometre tasi
 
-        # v2.1 YON-DUYARLI ceza: sadece GIDILEN yondeki (ileri-ark) engel yakinsa
-        # cezalandir (=duvara/engele daliyor). Yanlar yakin ama on acik (=kapidan
-        # geciyor) ise CEZA YOK -> 2m kapilardan rahat gecsin.
+        # v2.2 HER-YON caution (v2.0'dan geri): yanlardan/caprazdan (ozellikle hareketli
+        # engel) yaklasmayi da cezalandir. v2.1 eval'i directional-only'nin carpismayi
+        # DUSURMEDIGINI (%70->%79) gosterdi -> her-yon caution koruyucu.
+        if scan_min < OMNI_PENALTY_DIST:
+            reward -= 0.5 * (OMNI_PENALTY_DIST - scan_min) / OMNI_PENALTY_DIST
+
+        # v2.1 YON-DUYARLI ek ceza: GIDILEN yondeki (ileri-ark) engel yakinsa ekstra cezalandir
+        # (duvara/engele daliyor). Bu, her-yon cezasinin USTUNE binen ileri-odakli caution.
         lo = max(0, FORWARD_BIN - FWD_ARC_HALF)
         hi = min(LIDAR_BINS, FORWARD_BIN + FWD_ARC_HALF + 1)
         fwd_clear = float(lidar_obs[lo:hi].min()) * LIDAR_MAX
         if fwd_clear < FWD_PENALTY_DIST:
             reward -= 0.6 * (FWD_PENALTY_DIST - fwd_clear) / FWD_PENALTY_DIST
 
-        # Siyirma cezasi: her yonde COK yakin (kapi genisliginin altinda) -> kucuk ceza
+        # Siyirma cezasi: her yonde COK yakin -> ekstra kucuk ceza
         if scan_min < SCRAPE_DIST:
             reward -= 0.3 * (SCRAPE_DIST - scan_min) / SCRAPE_DIST
 
