@@ -579,3 +579,14 @@ TANI: darbogaz CARPISMA. Eski duvar cezasi YONSUZ (scan_min<1.0m) -> 2m kapida y
   * ppo.yaml: net_arch [256,256], uzun episode (max_episode_steps 2000-3000), lr schedule 1.5M, ent ayari.
 - En iyi+iyilestirilmis surumle FRESH 1.5M step egitim (runs/ppo_v3_best veya benzeri). Uzun episode -> daha cok voxel.
 - Karar supervisor(Opus) tarafindan eval sonrasi verilecek (sonnet operator degil).
+
+## 2026-05-31 ~21:42 — ÜÇLÜ EVAL KIYAS + v3.0 (en iyi + 1.5M)
+| metrik | v2.0 | v2.1 | v2.2 |
+|---|---|---|---|
+| Carpisma % | **70** | 79 | 88 |
+| Birlesik kapsama | **36%** | 32% | 29% |
+| voxels_mean | **80** | 69 | 66 |
+| voxels_max | **201** | 195 | 168 |
+SONUC: v2.0 sade odul KAZANDI; ceza-sekillendirme (v2.1/v2.2) carpismayi dusurmedi -> elendi.
+v3.0 = v2.0 odulu + uzun episode (2500) + net [256,256] + ent 0.008 + lr 3e-4->1e-5, FRESH 1.5M
+(runs/ppo_v3_best). Hedef: maksimum voxel (uzun episode = daha cok gezme).

@@ -1,53 +1,51 @@
 # ============================================================================
-# PPO config — v2.0 TEMIZ BASELINE (2026-05-31, sifirdan yeniden tasarlandi)
+# PPO config — v3.0 EN İYİ SÜRÜM + iyileştirmeler, 1.5M (2026-05-31)
 #
-#   * Tek sim, tek env (n_envs=1). Coklu env/gazebo YOK — gecmiste surekli bozdu.
-#   * Sabit harita (multi_room), sabit baslangic (R0), 2D action [v, w].
-#   * Temiz odul: return ~= kesfedilen voxel sayisi.
-#   * Versiyon ilerlemesi: operator agent v2.1, v2.2 ... olarak gunceller,
-#     her seferinde log_dir/ckpt_dir/tb_log degisir, 'version' alani guncellenir.
+#   Üçlü 100-ep eval sonucu: v2.0 ödülü KAZANDI (çarpışma %70 / kapsama %36).
+#   v2.1 (yön-duyarlı) ve v2.2 (birleşik caution) ELENDİ (kötüleştirdi).
+#   v3.0 = v2.0 ödülü + Berker'in istediği iyileştirmeler:
+#     * UZUN episode (2500) — maksimum voxel için daha çok gezme zamanı
+#     * net_arch [256,256] — daha zengin politika (1.5M için)
+#     * ent_coef 0.008 — biraz daha keşif (oda-içi tarama)
+#     * lr 3e-4 -> 1e-5 linear, 1.5M boyunca
+#   Tek sim/tek env (n_envs=1). Sabit harita+R0 spawn, 2D action [v,w].
 # ============================================================================
 env:
   drone_name: rl_drone
-  max_episode_steps: 1500    # v2.1: 1000->1500, carpismazsa daha cok gezsin
+  max_episode_steps: 2500    # UZUN episode (Berker: max voxel icin daha cok gezsin)
   seed: 42
   world_name: multi_room
 
 ppo:
   policy: MlpPolicy
-  learning_rate: 5.0e-05     # v2.1 500k->700k fine-tune: 3e-4->5e-5
-                             # Sebep: SB3 resume'da LR progress_remaining=1'den
-                             # basliyor (train_resume_500k.log: step 250k'da
-                             # LR=0.0003 gozlemlendi; linear decay olsaydi ~2e-4).
-                             # 500k+ politikasini 3e-4 ile fine-tune etmek
-                             # ep_rew_mean'i -12.7->-25.5 geriliyor. 5e-5 stabil.
-  lr_schedule: linear        # 5e-5 -> lr_final boyunca dogrusal azalir
+  learning_rate: 0.0003      # FRESH -> tam lr schedule
+  lr_schedule: linear        # 3e-4 -> 1e-5 (1.5M boyunca dogrusal)
   lr_final: 1.0e-05
-  n_steps: 2048              # n_envs=1 -> rollout = 2048
+  n_steps: 2048
   batch_size: 256
   n_epochs: 10
   gamma: 0.99
   gae_lambda: 0.95
   clip_range: 0.2
-  ent_coef: 0.005            # kesfi tesvik et (drone gezsin)
+  ent_coef: 0.008            # biraz daha kesif (oda-ici tarama tesviki)
   vf_coef: 0.5
   max_grad_norm: 0.5
   policy_kwargs:
     net_arch:
-      pi: [128, 128]
-      vf: [128, 128]
+      pi: [256, 256]
+      vf: [256, 256]
 
 train:
-  version: v2.2
+  version: v3.0
   n_envs: 1
-  total_timesteps: 700000    # v2.2 700k (Berker onayi); 500k bitince operator resume eder
-  save_freq: 20000
-  resume_from: runs/ppo_v2_2/checkpoints/ppo_drone_200000_steps.zip   # 198k crash sonrasi gecerli son ckpt (bozuk final.zip yerine)
-  log_dir: ./runs/ppo_v2_2
-  ckpt_dir: ./runs/ppo_v2_2/checkpoints
-  tb_log: ./runs/ppo_v2_2/tb
+  total_timesteps: 1500000
+  save_freq: 25000
+  resume_from: null          # FRESH 1.5M
+  log_dir: ./runs/ppo_v3_best
+  ckpt_dir: ./runs/ppo_v3_best/checkpoints
+  tb_log: ./runs/ppo_v3_best/tb
   vec_normalize:
     enabled: true
-    norm_obs: false          # obs zaten [-1,1]/[0,1] -> restart'a dayanikli
-    norm_reward: true        # value-fonksiyon olceklemesi icin
+    norm_obs: false
+    norm_reward: true
     clip_reward: 10.0

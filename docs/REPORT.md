@@ -8,7 +8,7 @@ Otomatik uretildi (`scripts/report.py`). Operator agent gunceller.
 |---|---|---|---|---|---|
 | v2.0 | 792,576 | +102.8 | +121.6 | 232/1024 | 6/6 |
 | v2.1 | 700,416 | +144.2 | +144.2 | 268/1024 | 6/6 |
-| v2.2 | 443,712 | +91.6 | +94.2 | 202/1024 | 6/6 |
+| v2.2 | 701,760 | +87.1 | +105.3 | 222/1024 | 6/6 |
 
 ## Versiyon / Mudahale Gunlugu
 
@@ -21,6 +21,8 @@ Otomatik uretildi (`scripts/report.py`). Operator agent gunceller.
 | 2026-05-31 16:40 | v2.2 | version_bump | v2.1 dersine gore TEK-tema: v2.0 her-yon cezasi (scan_min<1.0m, -0.5) GERI getirildi + v2.1 ileri-ark cezasi (fwd<1.5m,-0.6) KORUNDU = birlesik caution. FRESH 500k, episode 1500, runs/ppo_v2_2. Hedef: v2.0 %70 carpisma / %36 kapsamasini gecmek. |
 | 2026-05-31 18:00 | v2.2 | extend | v2.2 hedef 500k->700k (Berker onayi). 500k bitince operator final.zip ten resume. 700k eval sonrasi mantikliysa v2.3 (gozleme lidar gecmisi = hareketli engel hizi). |
 | 2026-05-31 19:35 | PLAN | directive | Berker direktifi: 700k bitince v2.2 eval + v2.0/v2.1/v2.2 KIYAS kaydet -> en iyi reward+hiperparametre tabanini sec + mantikli iyilestirmeleri (env reward/policy + ppo.yaml) uygula -> en iyi surumle UZUN episode (2000-3000) + 1.5M step egit. HEDEF: maksimum voxel. Bu 1.5M karari supervisor(ben) tarafindan eval verisiyle verilecek. |
+| 2026-05-31 21:40 | v2.2 | eval_result | v2.2 100-ep eval (700k): carpisma %88 (v2.0 %70, v2.1 %79 -> EN KOTU), birlesik kapsama 297/1024 %29 (v2.0 %36), voxels_mean 66, voxels_max 168, rooms_mean 3.77. SONUC: ceza-sekillendirme (v2.1 yon-duyarli, v2.2 birlesik) carpismayi DUSURMEDI, kotulestirdi. v2.0 sade odul EN IYI. |
+| 2026-05-31 21:42 | v3.0 | version_bump | Berker direktifi: en iyi taban+iyilestirme+1.5M. EVAL KIYAS: v2.0 %70/%36 (KAZANAN) > v2.1 %79/%32 > v2.2 %88/%29. KARAR: v2.0 odulune GERI DON + iyilestir: max_episode_steps 1500->2500 (uzun), net_arch [128]->256, ent 0.005->0.008, lr 3e-4->1e-5 fresh. FRESH 1.5M, runs/ppo_v3_best. Ceza-sekillendirme yolu elendi; carpisma kalan darbogaz (hareketli engel -> ileride lidar gecmisi adayi). |
 
 ## Figurler
 

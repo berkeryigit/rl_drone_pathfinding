@@ -311,7 +311,7 @@ class DroneExplorationEnv(gym.Env):
         if new_room:
             self._visited_rooms.add(groom)
 
-        # ----- ODUL (v2.1: yon-duyarli ceza) -----
+        # ----- ODUL (v3.0 = v2.0 sade ceza; eval'de en iyi) -----
         reward = -0.01                                   # zaman
 
         if new_voxel:
@@ -325,28 +325,16 @@ class DroneExplorationEnv(gym.Env):
         if new_room:
             reward += 10.0                               # oda kilometre tasi
 
-        # v2.2 HER-YON caution (v2.0'dan geri): yanlardan/caprazdan (ozellikle hareketli
-        # engel) yaklasmayi da cezalandir. v2.1 eval'i directional-only'nin carpismayi
-        # DUSURMEDIGINI (%70->%79) gosterdi -> her-yon caution koruyucu.
+        # v3.0 = v2.0 ODULU (uclu 100-ep eval'de KANITLANMIS EN IYI: %70 carpisma / %36 kapsama).
+        # v2.1 (yon-duyarli) ve v2.2 (birlesik caution) ceza-sekillendirmeleri ELENDI
+        # (carpismayi %79/%88'e cikarip kapsamayi dusurdu). Sade her-yon yaklasma cezasi:
         if scan_min < OMNI_PENALTY_DIST:
             reward -= 0.5 * (OMNI_PENALTY_DIST - scan_min) / OMNI_PENALTY_DIST
 
-        # v2.1 YON-DUYARLI ek ceza: GIDILEN yondeki (ileri-ark) engel yakinsa ekstra cezalandir
-        # (duvara/engele daliyor). Bu, her-yon cezasinin USTUNE binen ileri-odakli caution.
-        lo = max(0, FORWARD_BIN - FWD_ARC_HALF)
-        hi = min(LIDAR_BINS, FORWARD_BIN + FWD_ARC_HALF + 1)
-        fwd_clear = float(lidar_obs[lo:hi].min()) * LIDAR_MAX
-        if fwd_clear < FWD_PENALTY_DIST:
-            reward -= 0.6 * (FWD_PENALTY_DIST - fwd_clear) / FWD_PENALTY_DIST
-
-        # Siyirma cezasi: her yonde COK yakin -> ekstra kucuk ceza
-        if scan_min < SCRAPE_DIST:
-            reward -= 0.3 * (SCRAPE_DIST - scan_min) / SCRAPE_DIST
-
-        # Ileri-acik bonus: on acikken ileri gitmeyi odullendir (acikliklardan gec)
+        # Ileri-acik bonus (v2.0: 0.05): on lidar acikken ileri gitmeyi hafifce odullendir
         forward_open = float(lidar_obs[FORWARD_BIN])
         forward_act  = float(np.clip(a[0], 0.0, 1.0))
-        reward += FWD_OPEN_BONUS * forward_open * forward_act
+        reward += 0.05 * forward_open * forward_act
 
         # Carpisma -> terminal (her yon, fiziksel temas)
         terminated = False
