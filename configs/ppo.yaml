@@ -15,8 +15,13 @@ env:
 
 ppo:
   policy: MlpPolicy
-  learning_rate: 0.0003
-  lr_schedule: linear        # 3e-4 -> lr_final boyunca dogrusal azalir
+  learning_rate: 5.0e-05     # v2.1 500k->700k fine-tune: 3e-4->5e-5
+                             # Sebep: SB3 resume'da LR progress_remaining=1'den
+                             # basliyor (train_resume_500k.log: step 250k'da
+                             # LR=0.0003 gozlemlendi; linear decay olsaydi ~2e-4).
+                             # 500k+ politikasini 3e-4 ile fine-tune etmek
+                             # ep_rew_mean'i -12.7->-25.5 geriliyor. 5e-5 stabil.
+  lr_schedule: linear        # 5e-5 -> lr_final boyunca dogrusal azalir
   lr_final: 1.0e-05
   n_steps: 2048              # n_envs=1 -> rollout = 2048
   batch_size: 256

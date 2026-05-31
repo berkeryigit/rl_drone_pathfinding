@@ -53,7 +53,7 @@ v9 ~599k step'te platoda çöktü; crash_recovery ile fresh restart yapıldı (c
 ### Detay
 - **Reward eğrisi (pre-crash plato — KRİTİK):** 294k→447k→599k adımlarında ep_rew_mean: -272.4 → -270.7 → -270.0. ~300k adımlık sert plato. ep_len tüm ölçümlerde 1000 (max): drone hayatta kalıyor ama hiç oda/voxel kazanamıyor — klasik "safe-but-useless" yerel optimumu. Bu platoda entropy -3.886 → -3.324 ve std 0.888 → 0.746 düştü; bir sonraki ölçümde std 0.7 eşiğini kırma riskiyle eğitim zaten dejenere olmaya başlamıştı. Crash, bu kötü yerel optimumdan çıkmayı sağladı.
 
-- **Post-crash hızlı kırılım (v10 config):** 49k step'te -102.9, 84k step'te -25.3. 35k adımda +77.6 rew artışı. Pre-crash v9'da 457k adımda yalnızca +20 rew artışı vardı (294k→599k arası). v10 config'i (lr=1.5e-4 linear, n_envs=4) açıkça çok daha etkili.
+- **Post-crash hızlı kırılım (v10 config):** 49k step'te -102.9, 84k step'te -25.3. 35k adımda +77.6 rew artışı. Pre-crash v9'da 457k adımda yalnızca +20 rew artışı vardı (294k→599k); v10 config'i (lr=1.5e-4 linear, n_envs=4) açıkça çok daha etkili.
 
 - **lr=1.5e-4 → 1.5e-5 linear:** v9'un sabit 7.5e-5'ine kıyasla başlangıçta 2× daha yüksek, decay ile sonunda 7.5× daha düşük. Bu doğru seçim: yüksek LR başlangıçta hızlı politika güncellemesi, azalan LR sonunda fine-tune. Pre-crash platosunu kıran ana faktör muhtemelen bu.
 
@@ -291,4 +291,61 @@ v10 crash-loop (n_envs=4, 3× ardışık 11:22-11:53 UTC) önceki oturumda n_env
 
 ### Müdahale
 **Yok** — configs/ppo.yaml v2.1 (n_envs=1, lr=3e-4→1e-5 linear, ent_coef=0.005, total=700k) mevcut veriye göre optimal. Training process dead olması operasyonel sorun; hyperparameter müdahalesi %80 güven eşiğini aşmıyor. Kullanıcının lokalde `./scripts/train.sh configs/ppo.yaml` ile süreci yeniden başlatması gerekiyor.
+---
+
+## [2026-05-31 15:45 UTC]
+**Step:** ~501,760 (interventions.jsonl son kayıt — 14:54 UTC) | **ep_rew_mean:** 123.25 (resume noktası) | **peak:** 133.35 | **entropy:** ~-3.53 (train_resume_500k.log @ 250-291k) | **std:** ~0.79 (train_resume_500k.log @ 250-291k)
+
+### Durum
+v2.1 run, v8 all-time peak'ini (+113 @ 1.6M step) çoktan geride bıraktı: step 501760'ta ep_rew_mean=123.25, peak=133.35. 700k hedefe 198240 adım kaldı. Ancak `train_resume_500k.log` analizi iki kritik sorunu ortaya koydu: (1) SB3 her resume'da LR'yi 3e-4'e sıfırlıyor — fine-tune fazında bu agresif başlangıç ep_rew_mean'i -12.7→-25.5 gerilettiği görüldü; (2) entropy 250-291k bandında -3.53 ile -4.0 tehlike eşiğini aştı, std 0.79'a geriledi. **configs/ppo.yaml güncellendi: `learning_rate: 3e-4 → 5e-5`.**
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV'deki son veri (193248) tamamen geçersiz — v9/v10 döneminin kalıntısı.
+- Gerçek v2.1 zaman çizgisi:
+  - 0→120k: hızlı kırılım, -kayıp → +92.6, rooms_max=2
+  - 120k→250k: yükselen faz, peak 133.35 civarına ulaşıldı
+  - 248k→291k (train_resume_500k.log): LR reset sonrası geçici regresyon, ep_rew_mean -12.7→-25.5; ep_len 299→488 (drone çok uzun yaşıyor ama skor düşüyor — time penalty birikimi)
+  - 291k→500k: toparlanma, ppo_drone_final.zip kaydedildi (peak=133.35)
+  - 500k→700k: şu an bu fazda, 198k adım kaldı
+- Kırılım fazı geride kaldı; artık exploitation+fine-tune çerçevesindeyiz.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Bu soru artık bağlamı aşmış. Kritik bulgu: train_resume_500k.log step 250592'de `learning_rate: 0.0003` gösterdi. Eğer SB3 linear decay doğru çalışsaydı, 250k/700k ≈ %36 tamamlandığında LR ≈ 2e-4 olmalıydı. 3e-4 görülmesi, **SB3'ün resume'da `reset_num_timesteps=True` ile progress_remaining=1'den başladığını** kanıtlıyor.
+- Bu reset, 500k'da öğrenilmiş politikayı her restart'ta 3e-4 LR ile "sarsiyor" ve başlangıçta regresyona neden oluyor.
+- **Düzeltme: `learning_rate: 5e-5`** — 500k+ fine-tune için uygun başlangıç. 5e-5→1e-5 aralığı stabil sonlandırma sağlar.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- train_resume_500k.log @ 250-291k:
+  - entropy_loss: -3.59 → -3.53. Bu değer **-4.0 EŞIĞININ ÜSTÜNDE (tehlike bölgesi)**.
+  - std: 0.802 → 0.788. 0.7 eşiğine yaklaşıyor. Düşüş hızı: -0.0028/1k step; bu hızda ~310-320k'da 0.7'yi kırabilirdi.
+  - Sebepler: (1) yüksek LR (3e-4 reset) büyük politika güncellemeleri → aksiyon dağılımı daralıyor; (2) ep_len artışı (299→488) → daha uzun episodlarda değer fonksiyonu hatalı tahmin → gradient gürültüsü.
+- Peak 133.35 bu entropy seviyesine rağmen elde edildi — ent_coef=0.005 yeterli korumayla politikayı tuttu.
+- 500k→700k fazında LR düşürülerek entropy daha stabil kalacak; ent_coef değişimine gerek yok.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- eval_v2_140k.log: 20 ep'de 1/20 ep 3 oda, rooms_max=3 (best=+172).
+- 500k'da peak=133.35 ≈ (133.35 - voxel) / 15 ≈ 8-9 oda bonusu → politika stochastic modda birden fazla oda keşfediyor.
+- 700k'da beklenti: rooms_mean ≥ 3 tutarlı; 5-6 oda mümkün ama garanti değil (asimetrik kapılar en büyük engel).
+- Eğer 700k tamamlandığında rooms_mean < 3: v2.2 ile direction-aware lidar penalty artışı + ent_coef: 0.010.
+
+**e) v10/v2.2 için en kritik 1-2 öneri:**
+1. **trainer.py'de `reset_num_timesteps=False` kalıcı fix:** Her resume'da LR'nin sıfırlanmasının kök sebebi bu. Trainer kodu incelenmeli: eğer `model.learn(remaining_steps, reset_num_timesteps=True)` kullanılıyorsa `False`'a çevirmek + `remaining_steps = total - resume_step` gerekli. Bu config değişikliği değil, kod düzeltmesi — yüksek öncelik.
+2. **700k sonunda eval çalıştır, v2.2 kararını veriler üzerine kur:** rooms_mean ölçümü olmadan v2.2 konfigürasyonunu kör belirleme. Eval 20 ep: rooms_mean ≥ 3 → v2.2 ile 3 engel aktif (ent_coef: 0.010, n_envs: 2). rooms_mean < 3 → v2.2'de önce direction penalty sıkılaştır, sonra engel ekle.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **EVET — LR reset kanıtlandı ve configs/ppo.yaml güncellendi (aşağıya bak).** Bu değişiklik mevcut run'ı etkilemez ama bir sonraki restart'ta (crash veya 700k tamamlanınca) geçerli olacak.
+- **entropy -4.0 eşiği aşımı:** Geçici, LR reset'e bağlı; mevcut run'da 500k peak=133.35 görülmüş. Kalıcı çözüm LR düşürülmesi (yapıldı).
+- **CSV monitoring donmuş (193k):** Operasyonel, hyperparameter sorunu değil.
+
+### v10/v2.2 Önerisi
+1. **trainer.py `reset_num_timesteps=False`:** LR reset bug'ı en yüksek ROI düzeltmesi. Her resume agresif 3e-4 başlangıcından kurtulmak için kod seviyesinde fix gerekli. ppo.yaml'daki LR değişikliği kısa vadeli önlem.
+2. **700k sonrası eval → v2.2 konfigürasyonu:** rooms_mean < 3 → ent_coef: 0.005→0.010, direction penalty 0.3→0.5, siyırma eşiği 0.5→0.7m. 3 hareketli engel yalnızca rooms_mean ≥ 3 sonrası aktif edilmeli — daha zor ortamı hazır olmayan politikaya sunmak öğrenmeyi bozar.
+
+### Müdahale
+**YAPILDI — configs/ppo.yaml:** `learning_rate: 0.0003 → 5.0e-05`
+- **Kanıt:** train_resume_500k.log step 250592'de `learning_rate: 0.0003` gösteriyor. Linear decay 250k/700k noktasında ~2e-4 olmalıydı; 3e-4 görülmesi SB3'ün resume'da LR schedule'ı sıfırladığını kanıtlıyor.
+- **Etki:** Step 248k→291k'da ep_rew_mean -12.7→-25.5 regresyonu bu yüksek LR'nin sonucu. 500k+ fine-tune için 5e-5 başlangıcı daha stabil; policy'i bozmadan gerçek improvement için zemin yaratır.
+- **Kapsam:** Bir sonraki restart'ta (crash veya 700k tamamlanınca) devreye girer. Mevcut çalışan process etkilenmez.
 ---
