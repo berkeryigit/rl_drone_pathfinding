@@ -15,10 +15,12 @@ EPISODES="${2:-10}"
 MAX_STEPS="${3:-500}"
 SIM_HEADLESS="${SIM_HEADLESS:-1}"
 DETERMINISTIC="${DETERMINISTIC:-0}"
+FIXED_SPAWN="${FIXED_SPAWN:-0}"
 
 source /opt/ros/jazzy/setup.bash
 [[ -f ros2_ws/install/setup.bash ]] && source ros2_ws/install/setup.bash
-source .venv/bin/activate
+# venv varsa kullan; yoksa (Docker imaji) sistem python3'une guven
+[[ -d .venv ]] && source .venv/bin/activate || echo "[eval_sac.sh] .venv yok — sistem python3"
 
 SIM_LOG="/tmp/rl_drone_sim.log"
 pgrep -f "ros2 launch rl_drone_pathfinding sim_launch.py" >/dev/null && {
@@ -55,11 +57,13 @@ trap cleanup EXIT INT TERM
 
 DET_FLAG=""
 [[ "$DETERMINISTIC" == "1" ]] && DET_FLAG="--deterministic"
+SPAWN_FLAG=""
+[[ "$FIXED_SPAWN" == "1" ]] && SPAWN_FLAG="--fixed-spawn"
 
-echo "[eval_sac.sh] Model=$MODEL | Episodes=$EPISODES | MaxSteps=$MAX_STEPS | det=$DETERMINISTIC"
+echo "[eval_sac.sh] Model=$MODEL | Episodes=$EPISODES | MaxSteps=$MAX_STEPS | det=$DETERMINISTIC | fixed_spawn=$FIXED_SPAWN"
 cd "$PROJ_ROOT"
 python3 -m rl_drone_pathfinding.agents.eval_sac \
     --model      "$MODEL"     \
     --episodes   "$EPISODES"  \
     --max-steps  "$MAX_STEPS" \
-    $DET_FLAG
+    $DET_FLAG $SPAWN_FLAG

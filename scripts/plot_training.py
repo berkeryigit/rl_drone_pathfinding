@@ -59,17 +59,27 @@ def plot_all(df: pd.DataFrame, out_dir: Path):
     ax.set_ylim(0, 7); ax.set_title("Ziyaret Edilen Oda")
     ax.set_xlabel("Timestep"); ax.set_ylabel("Oda Sayisi"); ax.legend(fontsize=8)
 
-    # --- Actor Loss ---
+    # --- Actor Loss (varsa) ---
     ax = fig.add_subplot(gs[1, 0])
-    ax.plot(steps, df["actor_loss"], alpha=0.3, color="#ef9a9a", linewidth=0.8)
-    ax.plot(steps, smooth(df["actor_loss"]), color="#c62828", linewidth=2)
-    ax.set_title("Actor Loss"); ax.set_xlabel("Timestep"); ax.set_ylabel("Loss")
+    if "actor_loss" in df.columns:
+        ax.plot(steps, df["actor_loss"], alpha=0.3, color="#ef9a9a", linewidth=0.8)
+        ax.plot(steps, smooth(df["actor_loss"]), color="#c62828", linewidth=2)
+        ax.set_xlabel("Timestep"); ax.set_ylabel("Loss")
+    else:
+        ax.text(0.5, 0.5, "loss verisi yok\n(2D log)", ha="center", va="center", fontsize=11, color="gray")
+        ax.set_xticks([]); ax.set_yticks([])
+    ax.set_title("Actor Loss")
 
-    # --- Critic Loss ---
+    # --- Critic Loss (varsa) ---
     ax = fig.add_subplot(gs[1, 1])
-    ax.plot(steps, df["critic_loss"], alpha=0.3, color="#ce93d8", linewidth=0.8)
-    ax.plot(steps, smooth(df["critic_loss"]), color="#6a1b9a", linewidth=2)
-    ax.set_title("Critic Loss"); ax.set_xlabel("Timestep"); ax.set_ylabel("Loss")
+    if "critic_loss" in df.columns:
+        ax.plot(steps, df["critic_loss"], alpha=0.3, color="#ce93d8", linewidth=0.8)
+        ax.plot(steps, smooth(df["critic_loss"]), color="#6a1b9a", linewidth=2)
+        ax.set_xlabel("Timestep"); ax.set_ylabel("Loss")
+    else:
+        ax.text(0.5, 0.5, "loss verisi yok\n(2D log)", ha="center", va="center", fontsize=11, color="gray")
+        ax.set_xticks([]); ax.set_yticks([])
+    ax.set_title("Critic Loss")
 
     # --- Oda dagilimi histogram ---
     ax = fig.add_subplot(gs[1, 2])
@@ -123,6 +133,27 @@ def plot_all(df: pd.DataFrame, out_dir: Path):
     print(f"[plot] {path}")
 
     # ------------------------------------------------------------------ #
+    # 3b. Basari / Carpisma orani egrisi (sutunlar varsa)
+    # ------------------------------------------------------------------ #
+    if "success" in df.columns or "crashed" in df.columns:
+        fig, ax = plt.subplots(figsize=(12, 5))
+        win = max(10, len(df) // 25)
+        if "success" in df.columns:
+            ax.plot(steps, smooth(df["success"].astype(float), win) * 100,
+                    color="#2e7d32", linewidth=2, label="Başarı (6 oda) %")
+        if "crashed" in df.columns:
+            ax.plot(steps, smooth(df["crashed"].astype(float), win) * 100,
+                    color="#c62828", linewidth=2, label="Çarpışma %")
+        ax.set_ylim(-2, 102)
+        ax.set_xlabel("Timestep"); ax.set_ylabel("Oran (%)")
+        ax.set_title(f"Başarı ve Çarpışma Oranı (hareketli ort., pencere={win})")
+        ax.legend(loc="upper left"); ax.grid(alpha=0.2)
+        path = out_dir / "success_collision_curve.png"
+        fig.savefig(str(path), dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        print(f"[plot] {path}")
+
+    # ------------------------------------------------------------------ #
     # 4. Istatistik ozeti
     # ------------------------------------------------------------------ #
     last_n = min(50, len(df))
@@ -138,6 +169,9 @@ def plot_all(df: pd.DataFrame, out_dir: Path):
         "Ort. Oda (son 50)":     round(recent["visited_rooms"].mean(), 2),
         "6 Oda Orani (son 50)":  f"{(recent['visited_rooms'] == 6).mean()*100:.1f}%",
     }
+    if "coverage_pct" in df.columns:
+        stats["Max Coverage %"]        = round(df["coverage_pct"].max(), 1)
+        stats["Ort. Coverage (son 50)"] = round(recent["coverage_pct"].mean(), 1)
     if "success" in df.columns:
         stats["Success Orani (son 50)"] = f"{recent['success'].mean()*100:.1f}%"
     if "crashed" in df.columns:

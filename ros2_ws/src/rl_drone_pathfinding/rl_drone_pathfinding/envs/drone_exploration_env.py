@@ -70,7 +70,9 @@ LIDAR_MAX  = 10.0
 V_MAX      = 1.2
 VZ_MAX     = 0.4
 W_MAX      = 1.5
-COLLISION_DIST      = 0.25
+DRONE_FOOTPRINT_RADIUS = 0.22
+DRONE_VERTICAL_RADIUS  = 0.08
+COLLISION_DIST      = 0.02
 NEAR_COLLISION_DIST = 0.5
 OBS_UPDATE_PERIOD = 3.0
 
@@ -192,7 +194,7 @@ class _RosBridge(Node):
         with self._lock:
             self._pose  = (p.x, p.y, p.z, _yaw_from_quat(q.x, q.y, q.z, q.w))
             self._twist = (msg.twist.twist.linear.x,
-                           msg.twist.twist.linear.z,
+                           msg.twist.twist.linear.y,   # 2D env ile uyum: planar yanal hiz (dikey vz degil)
                            msg.twist.twist.angular.z)
 
     def snapshot(self):
@@ -268,13 +270,17 @@ class DroneExplorationEnv(gym.Env):
         n = ranges.shape[0]
         if n == 0:
             return np.ones(LIDAR_BINS, dtype=np.float32)
+        # Ham /scan -pi'den baslar (index 0 = ARKA). 2D env ile uyum icin ileri yonu
+        # (index n//2) bin 0'a getir → bin 0 = ON, CCW. Aksi halde 2D'de egitilen model
+        # Gazebo'da lidar'i yarim tur donuk gorur ve onundeki duvari fark edemez.
+        ranges = np.roll(ranges, -(n // 2))
         bs = max(1, n // LIDAR_BINS)
         out = np.array([ranges[i*bs:(i+1)*bs].min() if ranges[i*bs:(i+1)*bs].size else LIDAR_MAX
                         for i in range(LIDAR_BINS)], dtype=np.float32)
         return np.clip(out / LIDAR_MAX, 0.0, 1.0)
 
     def _make_obs(self):
-        scan, scan_min, scan_up, scan_down, (x, y, z, yaw), (vx, vz, wz) = self._node.snapshot()
+        scan, scan_min, scan_up, scan_down, (x, y, z, yaw), (vx, vy, wz) = self._node.snapshot()
         if scan is None:
             scan = np.full(360, LIDAR_MAX, dtype=np.float32)
             scan_min = LIDAR_MAX
@@ -290,9 +296,9 @@ class DroneExplorationEnv(gym.Env):
         obs = np.concatenate([
             self._bin_lidar(scan),                                             # 32
             np.array([math.cos(yaw), math.sin(yaw)], dtype=np.float32),        # 2
-            np.array([np.clip(vx / V_MAX,  -1, 1),                             # 3
-                      np.clip(vz / VZ_MAX, -1, 1),
-                      np.clip(wz / W_MAX,  -1, 1)], dtype=np.float32),
+            np.array([np.clip(vx / V_MAX, -1, 1),                              # 3 (planar vx,vy,wz)
+                      np.clip(vy / V_MAX, -1, 1),
+                      np.clip(wz / W_MAX, -1, 1)], dtype=np.float32),
             np.array([progress, rooms_scalar], dtype=np.float32),              # 2
             np.array([np.clip(scan_min / LIDAR_MAX, 0, 1),                     # 2
                       idle_norm], dtype=np.float32),
@@ -300,13 +306,33 @@ class DroneExplorationEnv(gym.Env):
         ])
         return obs.astype(np.float32), scan_min, scan_up, scan_down, (x, y, z, yaw), door_dist
 
-    def _mark_voxel(self, x, y, z) -> bool:
-        gx = int((x + WORLD_HALF) / GRID_CELL_XY)
-        gy = int((y + WORLD_HALF) / GRID_CELL_XY)
-        if 0 <= gx < GRID_NXY and 0 <= gy < GRID_NXY and not self._explored[gx, gy, 0]:
-            self._explored[gx, gy, 0] = True
-            return True
-        return False
+    @staticmethod
+    def _circle_overlaps_cell(x: float, y: float, radius: float, gx: int, gy: int) -> bool:
+        cell_x0 = gx * GRID_CELL_XY - WORLD_HALF
+        cell_y0 = gy * GRID_CELL_XY - WORLD_HALF
+        cell_x1 = cell_x0 + GRID_CELL_XY
+        cell_y1 = cell_y0 + GRID_CELL_XY
+        closest_x = min(max(x, cell_x0), cell_x1)
+        closest_y = min(max(y, cell_y0), cell_y1)
+        return (x - closest_x) ** 2 + (y - closest_y) ** 2 <= radius ** 2
+
+    def _covered_grid_cells(self, x: float, y: float):
+        gx0 = math.floor((x - DRONE_FOOTPRINT_RADIUS + WORLD_HALF) / GRID_CELL_XY)
+        gx1 = math.floor((x + DRONE_FOOTPRINT_RADIUS + WORLD_HALF) / GRID_CELL_XY)
+        gy0 = math.floor((y - DRONE_FOOTPRINT_RADIUS + WORLD_HALF) / GRID_CELL_XY)
+        gy1 = math.floor((y + DRONE_FOOTPRINT_RADIUS + WORLD_HALF) / GRID_CELL_XY)
+        for gx in range(max(0, gx0), min(GRID_NXY - 1, gx1) + 1):
+            for gy in range(max(0, gy0), min(GRID_NXY - 1, gy1) + 1):
+                if self._circle_overlaps_cell(x, y, DRONE_FOOTPRINT_RADIUS, gx, gy):
+                    yield gx, gy
+
+    def _mark_voxel(self, x, y, z) -> int:
+        new_count = 0
+        for gx, gy in self._covered_grid_cells(x, y):
+            if not self._explored[gx, gy, 0]:
+                self._explored[gx, gy, 0] = True
+                new_count += 1
+        return new_count
 
     # ----- gz service -----
 
@@ -362,7 +388,14 @@ class DroneExplorationEnv(gym.Env):
         for _ in range(3):
             self._node.send_cmd(0.0, 0.0, 0.0)
             time.sleep(0.05)
-        sp = SPAWN_CANDIDATES[int(self._np_random.integers(len(SPAWN_CANDIDATES)))]
+        # options={"spawn_index": i} verilirse o spawn'dan basla (sabit/tekrarlanabilir eval);
+        # aksi halde rastgele spawn (egitim).
+        spawn_index = None
+        if options is not None:
+            spawn_index = options.get("spawn_index")
+        if spawn_index is None:
+            spawn_index = int(self._np_random.integers(len(SPAWN_CANDIDATES)))
+        sp = SPAWN_CANDIDATES[int(spawn_index) % len(SPAWN_CANDIDATES)]
         self._gz_set_pose(self.drone_name, sp[0], sp[1], sp[2], sp[3])
         self._step_count = 0
         self._explored.fill(False)
@@ -402,7 +435,8 @@ class DroneExplorationEnv(gym.Env):
 
         obs, scan_min, scan_up, scan_down, (x, y, z, _), door_dist = self._make_obs()
 
-        new_voxel = self._mark_voxel(x, y, z)
+        new_voxels = self._mark_voxel(x, y, z)
+        new_voxel = new_voxels > 0
         groom     = _global_room_id(x, y, z)
         new_room  = groom not in self._visited_rooms
         if new_room:
@@ -413,7 +447,7 @@ class DroneExplorationEnv(gym.Env):
         if groom not in self._room_explored_voxels:
             self._room_explored_voxels[groom] = 0
         if new_voxel:
-            self._room_explored_voxels[groom] += 1
+            self._room_explored_voxels[groom] += new_voxels
 
         # Oda kalma sayaci
         if groom == self._current_room:
@@ -462,7 +496,10 @@ class DroneExplorationEnv(gym.Env):
             reward -= wall_penalty
 
         # Carpışma kontrolü
-        clearance = min(scan_min, scan_up, scan_down)
+        xy_clearance = max(0.0, scan_min - DRONE_FOOTPRINT_RADIUS)
+        up_clearance = max(0.0, scan_up - DRONE_VERTICAL_RADIUS)
+        down_clearance = max(0.0, scan_down - DRONE_VERTICAL_RADIUS)
+        clearance = min(xy_clearance, up_clearance, down_clearance)
         terminated = False
         if self._grace_steps > 0:
             self._grace_steps -= 1
@@ -492,6 +529,8 @@ class DroneExplorationEnv(gym.Env):
             "room_explore_ratio": float(room_explore_ratio),
             "new_room": bool(new_room),
             "new_voxel": bool(new_voxel),
+            "new_voxels": int(new_voxels),
+            "body_clearance": float(clearance),
             "room_changed": bool(room_changed),
             "collision_count": int(self._collision_count),
         }

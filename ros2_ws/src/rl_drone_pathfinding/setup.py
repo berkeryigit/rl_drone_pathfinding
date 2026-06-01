@@ -31,6 +31,9 @@ setup(
     entry_points={
         'console_scripts': [
             'train_ppo = rl_drone_pathfinding.agents.train_ppo:main',
+            'train_sac = rl_drone_pathfinding.agents.train_sac:main',
+            'train_sac_gymnasium = rl_drone_pathfinding.agents.train_sac_gymnasium:main',
+            'train_sac_fast_2d = rl_drone_pathfinding.agents.train_sac_fast_2d:main',
             'eval_ppo = rl_drone_pathfinding.agents.eval_ppo:main',
             'env_smoke_test = rl_drone_pathfinding.envs.smoke_test:main',
         ],

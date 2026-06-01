@@ -61,8 +61,9 @@ GIF_STEP = 10
 GIF_FPS  = 10
 
 
-def run_episode(model: SAC, env: DroneExplorationEnv, deterministic: bool = False) -> dict:
-    obs, _ = env.reset()
+def run_episode(model: SAC, env: DroneExplorationEnv, deterministic: bool = False,
+                reset_options: dict | None = None) -> dict:
+    obs, _ = env.reset(options=reset_options)
     done = False
     total_reward = 0.0
     positions: list[tuple[float, float]] = []
@@ -219,6 +220,8 @@ def main(argv=None):
     parser.add_argument("--no-gif",       action="store_true", help="GIF olusturma")
     parser.add_argument("--deterministic", action="store_true",
                         help="Deterministik aksiyonlar (default: stochastic)")
+    parser.add_argument("--fixed-spawn", action="store_true",
+                        help="Her episode'u sirayla sabit spawn'dan baslat (tekrarlanabilir eval)")
     args, _ = parser.parse_known_args(argv)
 
     import shutil
@@ -243,8 +246,15 @@ def main(argv=None):
 
     all_metrics = []
     for ep in range(args.episodes):
-        print(f"\n[eval_sac] Episode {ep+1}/{args.episodes}")
-        data = run_episode(model, env, deterministic=args.deterministic)
+        reset_options = None
+        if args.fixed_spawn:
+            spawn_idx = ep % N_ROOMS          # her odadan sirayla (R0..R5, sonra tekrar)
+            reset_options = {"spawn_index": spawn_idx}
+            print(f"\n[eval_sac] Episode {ep+1}/{args.episodes}  (sabit spawn R{spawn_idx})")
+        else:
+            print(f"\n[eval_sac] Episode {ep+1}/{args.episodes}")
+        data = run_episode(model, env, deterministic=args.deterministic,
+                           reset_options=reset_options)
         m = {k: v for k, v in data.items() if k not in ("positions", "snapshots")}
         all_metrics.append(m)
         print(f"  Ödül={m['total_reward']:.1f}  Voxel={m['explored_voxels']}  "

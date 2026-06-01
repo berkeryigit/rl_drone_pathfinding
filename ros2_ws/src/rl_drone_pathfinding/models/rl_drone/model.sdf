@@ -17,6 +17,10 @@
         <geometry><box><size>0.30 0.30 0.10</size></box></geometry>
       </collision>
 
+      <collision name="body_footprint">
+        <geometry><cylinder><radius>0.22</radius><length>0.12</length></cylinder></geometry>
+      </collision>
+
       <visual name="chassis_v">
         <geometry><box><size>0.30 0.30 0.10</size></box></geometry>
         <material><ambient>0.1 0.1 0.1 1</ambient><diffuse>0.2 0.2 0.2 1</diffuse></material>
