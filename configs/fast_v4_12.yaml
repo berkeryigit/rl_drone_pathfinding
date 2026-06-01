@@ -1,0 +1,46 @@
+# v4.12 — CURRICULUM: GÜVENLİ v4.8 tabanından DEVAM ET + nazik fine-tune + yüksek ceza.
+#   Sıfırdan 5M (v4.10/v4.11) güvenliği bozuyor. Bu sefer: v4.8'in %0-çarpışma politikasını
+#     BAŞLANGIÇ al, düşük LR (1e-4) ile NAZİK fine-tune et, çarpışma cezasını yükselt (45).
+#   Hipotez: temkinli taban + nazik genişletme -> kapsamı artır AMA güvenliği koru.
+#   resume_from = v4.8 final.zip ; vec_normalize.pkl runs/fast_v4_12/checkpoints/ içine kopyalandı.
+env:
+  max_episode_steps: 2500
+  seed: 42
+  lidar_history: 2
+  room_bonus: 30.0
+  idle_penalty: 0.06
+  idle_grace: 30
+  collision_penalty: 45.0   # 25 -> 45 (devam ederken güvenliği koru)
+  far_voxel_bonus: 1.0
+ppo:
+  policy: MlpPolicy
+  learning_rate: 0.0001     # 3e-4 -> 1e-4 (NAZİK fine-tune: güvenli tabanı bozma)
+  lr_schedule: linear
+  lr_final: 1.0e-05
+  n_steps: 1024
+  batch_size: 512
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.008
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+train:
+  version: fast_v4_12
+  n_envs: 8
+  total_timesteps: 3000000   # 2M tabanın üstüne 3M devam (~5M deneyim, güvenli başlangıçtan)
+  save_freq: 200000
+  resume_from: ./runs/fast_v4_8/checkpoints/fast_drone_final.zip
+  log_dir: ./runs/fast_v4_12
+  ckpt_dir: ./runs/fast_v4_12/checkpoints
+  tb_log: ./runs/fast_v4_12/tb
+  vec_normalize:
+    enabled: true
+    norm_obs: false
+    norm_reward: true
+    clip_reward: 10.0
