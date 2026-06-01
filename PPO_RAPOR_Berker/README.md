@@ -10,11 +10,11 @@ sonuçlarını, parametre değişimlerini ve gerekçelerini içerir.
 | **`RAPOR.md`** | ⭐ Ana rapor — problem, 3 faz, ana bulgular, sonuç. **Önce bunu oku.** |
 | **`PARAMETRELER_VE_GEREKCELER.md`** | ⭐ Her sürümde **ne değişti + NEDEN öyle davrandı** (v4.8 neden %0, v4.10 neden hem kapsayıcı hem %54 vb.) |
 | `SONUCLAR.csv` | Tüm 25 sürümün makine-okunur metrik tablosu (Excel/pandas'a aç) |
-| `figurler/` | Anahtar görseller (01–12 numaralı, hikaye sırasında) |
+| `figurler/` | Anahtar görseller (01–14 numaralı, hikaye sırasında) |
 | `figurler/tum_surumler/` | Her sürümün kapsama + yörünge haritası (tartışmak için) |
 | `ham_veri/` | Zaman damgalı karar günlüğü + detaylı kıyas dokümanları |
 
-## En önemli iki sonuç
+## En önemli sonuçlar
 
 - **`figurler/13_v4_1_YOGUN_kapsama.png`** — v4.1: **%2 çarpışma, 150 voxel** ama 2 odaya yoğun (en yüksek bölüm-içi voxel, düşük çarpışma)
 - **`figurler/03_v4_8_GUVENLI_kapsama.png`** — v4.8: **%0 çarpışma**, 5 oda, 117 voxel (ödev hedefinin cevabı)
@@ -30,5 +30,6 @@ teslim politikası: **v4.1 (yoğun/az çarpışma)**, **v4.8 (güvenli+geniş)**
 ## Model dosyaları nerede?
 
 Eğitilmiş ağırlıklar repo içinde:
-- `rl_drone_pathfinding/runs/fast_v4_8/checkpoints/fast_drone_final.zip` (güvenli)
-- `rl_drone_pathfinding/runs/fast_v4_10/checkpoints/fast_drone_final.zip` (kapsamlı)
+- `rl_drone_pathfinding/runs/fast_v4_1/checkpoints/fast_drone_final.zip` (yoğun: %2 çarpışma, 150 voxel)
+- `rl_drone_pathfinding/runs/fast_v4_8/checkpoints/fast_drone_final.zip` (güvenli: %0, 5 oda)
+- `rl_drone_pathfinding/runs/fast_v4_10/checkpoints/fast_drone_final.zip` (kapsamlı: 281 voxel, 6 oda)
