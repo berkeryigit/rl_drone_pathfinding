@@ -58,7 +58,7 @@ from sensor_msgs.msg import LaserScan
 DEFAULT_WORLD_NAME = "multi_room"
 DEFAULT_DRONE_NAME = "rl_drone"
 
-WORLD_HALF = 8.0          # x, y in [-WORLD_HALF, +WORLD_HALF]
+WORLD_HALF = 6.0         # x, y in [-WORLD_HALF, +WORLD_HALF]
 FLOOR_HEIGHT = 2.5        # per floor
 N_FLOORS = 3              # 0, 1, 2
 TOTAL_HEIGHT = N_FLOORS * FLOOR_HEIGHT  # 7.5 m
@@ -324,7 +324,25 @@ class DroneExplorationEnv(gym.Env):
         self._node.send_cmd(0.0, 0.0, 0.0)
         time.sleep(0.05)
 
-        spawn = SPAWN_CANDIDATES[int(self._np_random.integers(len(SPAWN_CANDIDATES)))]
+        if "obstacles" in self.world_name:
+            candidates = [
+                (-4.0,  0.0, 0.6, 0.0),  # Corridor left
+                ( 4.0,  0.0, 0.6, 0.0),  # Corridor mid
+                (12.0,  0.0, 0.6, 0.0),  # Corridor right
+                (-4.0,  7.0, 0.6, 0.0),  # Top left room (away from center obstacle)
+                ( 4.0, -7.0, 0.6, 0.0),  # Bottom mid room (away from center obstacle)
+            ]
+            spawn = candidates[int(self._np_random.integers(len(candidates)))]
+        elif "house" in self.world_name:
+            # Guney-Dogu odasi bombos, oradan baslasin
+            spawn = (3.0, -3.0, 0.6, 3.14)
+        elif "four_rooms" in self.world_name:
+            spawn = (-4.0, -4.0, 0.6, 0.0) # Start in SW room
+        elif "six_rooms" in self.world_name:
+            spawn = (-10.0, 0.0, 0.6, 0.0) # Start at the left end of the corridor
+        else:
+            spawn = SPAWN_CANDIDATES[int(self._np_random.integers(len(SPAWN_CANDIDATES)))]
+        
         self._gz_set_pose(*spawn)
 
         self._step_count = 0
@@ -344,9 +362,7 @@ class DroneExplorationEnv(gym.Env):
 
     def step(self, action: np.ndarray):
         a = np.asarray(action, dtype=np.float32).reshape(-1)
-        # forward bias: a[0] in [-1,1] -> [-0.3*V_MAX, V_MAX]
-        vx = float(np.clip(0.35 * (a[0] + 1.0) * V_MAX - 0.3 * V_MAX,
-                           -0.3 * V_MAX, V_MAX))
+        vx = float(np.clip(a[0] * V_MAX, -V_MAX, V_MAX))
         vz = float(np.clip(a[1] * VZ_MAX, -VZ_MAX, VZ_MAX))
         wz = float(np.clip(a[2] * W_MAX,  -W_MAX,  W_MAX))
         self._node.send_cmd(vx, vz, wz)

@@ -9,7 +9,7 @@ import yaml
 from stable_baselines3 import DQN
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.vec_env import DummyVecEnv, VecFrameStack
 
 from rl_drone_pathfinding.envs import DroneExplorationEnvDiscrete
 
@@ -19,7 +19,7 @@ def _load_config(path: str) -> dict:
         return yaml.safe_load(f)
 
 
-def _make_env(env_cfg: dict):
+def _make_env(env_cfg: dict, log_dir: Path):
     def _factory():
         env = DroneExplorationEnvDiscrete(
             world_name=env_cfg["world_name"],
@@ -27,7 +27,7 @@ def _make_env(env_cfg: dict):
             max_episode_steps=env_cfg["max_episode_steps"],
             seed=env_cfg.get("seed"),
         )
-        return Monitor(env)
+        return Monitor(env, str(log_dir), info_keywords=("explored_voxels", "visited_rooms"))
     return _factory
 
 
@@ -46,7 +46,8 @@ def main(argv=None):
     ckpt_dir = Path(tr_cfg["ckpt_dir"]); ckpt_dir.mkdir(parents=True, exist_ok=True)
     tb_log = Path(tr_cfg["tb_log"]); tb_log.mkdir(parents=True, exist_ok=True)
 
-    vec_env = DummyVecEnv([_make_env(env_cfg)])
+    vec_env = DummyVecEnv([_make_env(env_cfg, log_dir)])
+    vec_env = VecFrameStack(vec_env, n_stack=4)
 
     if tr_cfg.get("resume_from"):
         print(f"[train_dqn] resuming from {tr_cfg['resume_from']}")

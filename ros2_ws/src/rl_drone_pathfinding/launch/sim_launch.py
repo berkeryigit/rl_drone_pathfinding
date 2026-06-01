@@ -14,7 +14,15 @@ def generate_launch_description():
     pkg_share = get_package_share_directory('rl_drone_pathfinding')
     pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
 
-    world_file = os.path.join(pkg_share, 'worlds', 'multi_room.sdf')
+    # Let the user pass `world_file_name:=...` (default: multi_room.sdf)
+    world_arg = DeclareLaunchArgument(
+        'world_file_name', default_value='multi_room.sdf',
+        description='Name of the SDF world file (including .sdf extension)')
+
+    world_file = PathJoinSubstitution([
+        pkg_share, 'worlds', LaunchConfiguration('world_file_name')
+    ])
+
     drone_sdf = os.path.join(pkg_share, 'models', 'rl_drone', 'model.sdf')
     bridge_yaml = os.path.join(pkg_share, 'config', 'ros_gz_bridge.yaml')
 
@@ -36,7 +44,7 @@ def generate_launch_description():
 
     # `-r` runs the sim immediately; without it gz starts paused and no sensor
     # data flows. `-v 3` keeps log noise reasonable.
-    gz_args_value = f'-r -v 3 {headless_flag} {world_file}'.strip()
+    gz_args_value = [f'-r -v 3 {headless_flag} ', world_file]
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')),
@@ -54,7 +62,7 @@ def generate_launch_description():
         arguments=[
             '-name', 'rl_drone',
             '-file', drone_sdf,
-            '-x', '4.0', '-y', '-4.0', '-z', '0.6',
+            '-x', '0.0', '-y', '0.0', '-z', '0.6',
             '-Y', '1.57',
         ],
     )
@@ -69,6 +77,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        world_arg,
         set_gz_resource,
         headless_arg,
         gz_sim,

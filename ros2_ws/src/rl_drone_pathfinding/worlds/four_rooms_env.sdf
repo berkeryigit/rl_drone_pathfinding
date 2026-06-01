@@ -1,0 +1,161 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="four_rooms_env">
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.02</max_step_size>
+      <real_time_factor>0</real_time_factor>
+    </physics>
+    <plugin filename="gz-sim-physics-system" name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system" name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system" name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-sensors-system" name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-imu-system" name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-contact-system" name="gz::sim::systems::Contact"/>
+    
+    <gravity>0 0 -9.81</gravity>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>20 20</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>20 20</size></plane></geometry>
+          <material><ambient>0.8 0.8 0.8 1</ambient><diffuse>0.8 0.8 0.8 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 12x12m Building -->
+    <model name="building">
+      <static>true</static>
+      
+      <!-- Outer Walls -->
+      <link name="wall_n">
+        <pose>0 6 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>12 0.2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>12 0.2 3</size></box></geometry>
+          <material><ambient>0.6 0.6 0.6 1</ambient></material></visual>
+      </link>
+      <link name="wall_s">
+        <pose>0 -6 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>12 0.2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>12 0.2 3</size></box></geometry>
+          <material><ambient>0.6 0.6 0.6 1</ambient></material></visual>
+      </link>
+      <link name="wall_w">
+        <pose>-6 0 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 12 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 12 3</size></box></geometry>
+          <material><ambient>0.6 0.6 0.6 1</ambient></material></visual>
+      </link>
+      <link name="wall_e">
+        <pose>6 0 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 12 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 12 3</size></box></geometry>
+          <material><ambient>0.6 0.6 0.6 1</ambient></material></visual>
+      </link>
+
+      <!-- Inner Horizontal Walls with doors -->
+      <link name="wall_h_e1">
+        <pose>1 0 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>2 0.2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>2 0.2 3</size></box></geometry></visual>
+      </link>
+      <link name="wall_h_e2">
+        <pose>5 0 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>2 0.2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>2 0.2 3</size></box></geometry></visual>
+      </link>
+      <link name="wall_h_w1">
+        <pose>-5 0 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>2 0.2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>2 0.2 3</size></box></geometry></visual>
+      </link>
+      <link name="wall_h_w2">
+        <pose>-1 0 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>2 0.2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>2 0.2 3</size></box></geometry></visual>
+      </link>
+
+      <!-- Inner Vertical Walls with doors -->
+      <link name="wall_v_n1">
+        <pose>0 1 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 2 3</size></box></geometry></visual>
+      </link>
+      <link name="wall_v_n2">
+        <pose>0 5 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 2 3</size></box></geometry></visual>
+      </link>
+      <link name="wall_v_s1">
+        <pose>0 -5 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 2 3</size></box></geometry></visual>
+      </link>
+      <link name="wall_v_s2">
+        <pose>0 -1 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 2 3</size></box></geometry></visual>
+      </link>
+    </model>
+
+    <!-- Obstacles (1 per room, static, different shapes) -->
+    <!-- Room 1 (NW) -->
+    <model name="obs_nw">
+      <static>true</static>
+      <pose>-3 3 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><cylinder><radius>0.6</radius><length>1.0</length></cylinder></geometry></collision>
+        <visual name="v"><geometry><cylinder><radius>0.6</radius><length>1.0</length></cylinder></geometry>
+        <material><ambient>0.8 0.2 0.2 1</ambient></material></visual>
+      </link>
+    </model>
+
+    <!-- Room 2 (NE) -->
+    <model name="obs_ne">
+      <static>true</static>
+      <pose>3 3 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>1.2 1.2 1.0</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>1.2 1.2 1.0</size></box></geometry>
+        <material><ambient>0.2 0.8 0.2 1</ambient></material></visual>
+      </link>
+    </model>
+
+    <!-- Room 3 (SW) -->
+    <model name="obs_sw">
+      <static>true</static>
+      <pose>-3 -3 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="c"><geometry><sphere><radius>0.7</radius></sphere></geometry></collision>
+        <visual name="v"><geometry><sphere><radius>0.7</radius></sphere></geometry>
+        <material><ambient>0.2 0.2 0.8 1</ambient></material></visual>
+      </link>
+    </model>
+
+    <!-- Room 4 (SE) -->
+    <model name="obs_se">
+      <static>true</static>
+      <pose>3 -3 0.5 0 0 0.785398</pose>
+      <link name="link">
+        <collision name="c"><geometry><box><size>2.0 0.4 1.0</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>2.0 0.4 1.0</size></box></geometry>
+        <material><ambient>0.8 0.8 0.2 1</ambient></material></visual>
+      </link>
+    </model>
+
+  </world>
+</sdf>

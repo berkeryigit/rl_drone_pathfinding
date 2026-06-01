@@ -1,0 +1,30 @@
+env:
+  world_name: four_rooms_env
+  drone_name: rl_drone
+  max_episode_steps: 1000
+  seed: 42
+
+dqn:
+  policy: MlpPolicy
+  learning_rate: 1.0e-4
+  buffer_size: 100000
+  learning_starts: 10000
+  batch_size: 64
+  tau: 1.0
+  gamma: 0.99
+  train_freq: 4
+  gradient_steps: 1
+  target_update_interval: 1000
+  exploration_fraction: 0.3
+  exploration_initial_eps: 1.0
+  exploration_final_eps: 0.05
+  policy_kwargs:
+    net_arch: [128, 128]
+
+train:
+  total_timesteps: 300000
+  save_freq: 10000
+  log_dir: ./runs/dqn_four_rooms
+  ckpt_dir: ./runs/dqn_four_rooms/checkpoints
+  tb_log: ./runs/dqn_four_rooms/tb
+  resume_from: null

@@ -2,15 +2,13 @@ import gymnasium as gym
 import numpy as np
 from .drone_exploration_env import DroneExplorationEnv, V_MAX, VZ_MAX, W_MAX
 
-# 7 aksiyon: hover / forward / back / yaw_left / yaw_right / up / down
+# 5 aksiyon: Sürekli ileri hareket ağırlıklı (Tembelliği önler)
 ACTION_TABLE = np.array([
-    [   0.0,    0.0,    0.0],   # 0: hover
-    [ V_MAX,    0.0,    0.0],   # 1: forward
-    [-V_MAX,    0.0,    0.0],   # 2: back
-    [   0.0,    0.0,  W_MAX],   # 3: yaw left
-    [   0.0,    0.0, -W_MAX],   # 4: yaw right
-    [   0.0,  VZ_MAX,    0.0],  # 5: up
-    [   0.0, -VZ_MAX,    0.0],  # 6: down
+    [   1.0,    0.0,    0.0],   # 0: Sadece Ileri (Tam gaz)
+    [   0.8,    0.0,    1.0],   # 1: Ileri + Hafif Sola Donus
+    [   0.8,    0.0,   -1.0],   # 2: Ileri + Hafif Saga Donus
+    [   0.4,    0.0,    1.0],   # 3: Yari Ileri + Keskin Sola Donus (Spin atamaz, daire cizer)
+    [   0.4,    0.0,   -1.0],   # 4: Yari Ileri + Keskin Saga Donus (Spin atamaz, daire cizer)
 ], dtype=np.float32)
 
 

@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Tek komutla eğitime başla:
-#   ./scripts/train_dqn.sh                            # default config (configs/dqn.yaml)
+# Tek komutla degerlendirme (evaluation) yap:
+#   ./scripts/eval_dqn.sh configs/dqn_obstacles.yaml runs/dqn_obstacles/checkpoints/dqn_drone_final.zip
 #
-# Ne yapar:
-#   1) ROS + colcon install + venv'i source eder
-#   2) sim_launch.py'yi background'a alır, /scan ve /odom mesajını bekler
-#   3) train_dqn'i ön planda koşturur (loglar terminale)
-#   4) Eğitim biter / Ctrl-C basılınca sim'i temiz şekilde indirir
-# `set -u` would fire on unbound vars inside ROS's setup.bash (e.g.
-# AMENT_TRACE_SETUP_FILES); we keep -e and pipefail but drop -u.
 set -eo pipefail
 
 cd "$(dirname "$0")/.."
 PROJ_ROOT="$(pwd)"
 CONFIG="${1:-configs/dqn.yaml}"
+MODEL="$2"
+
+if [[ -z "$MODEL" ]]; then
+    echo "[eval_dqn.sh] HATA: Model yolu belirtilmedi!"
+    echo "Kullanim: ./scripts/eval_dqn.sh <config_yolu> <model_yolu.zip>"
+    exit 1
+fi
 
 if [[ ! -f "$CONFIG" ]]; then
-    echo "[train_dqn.sh] config bulunamadi: $CONFIG" >&2
+    echo "[eval_dqn.sh] config bulunamadi: $CONFIG" >&2
     exit 1
 fi
 
@@ -25,39 +25,37 @@ if [[ -z "$WORLD_NAME" ]]; then
     WORLD_NAME="multi_room"
 fi
 
-
 # --- env setup ---------------------------------------------------------------
 source /opt/ros/jazzy/setup.bash
 [[ -f ros2_ws/install/setup.bash ]] || {
-    echo "[train_dqn.sh] ros2_ws/install yok; once: cd ros2_ws && colcon build --symlink-install" >&2
+    echo "[eval_dqn.sh] ros2_ws/install yok; once build et." >&2
     exit 1
 }
 source ros2_ws/install/setup.bash
-[[ -d .venv ]] || {
-    echo "[train_dqn.sh] .venv yok; once: python3 -m venv .venv --system-site-packages && pip install -r requirements.txt" >&2
-    exit 1
-}
 source .venv/bin/activate
 
 # --- bring up sim ------------------------------------------------------------
-SIM_LOG="${PROJ_ROOT}/runs/rl_drone_sim.log"
+SIM_LOG="${PROJ_ROOT}/runs/rl_drone_eval_sim.log"
 pgrep -f "ros2 launch rl_drone_pathfinding sim_launch.py" >/dev/null && {
-    echo "[train_dqn.sh] sim zaten calisiyor; mevcut sim'e bagliyorum"
+    echo "[eval_dqn.sh] sim zaten calisiyor; mevcut sim'e bagliyorum"
     SIM_PID=""
 } || {
-    echo "[train_dqn.sh] sim_launch.py baslatiliyor (world: $WORLD_NAME)..."
+    # Test asamasinda headless flag'i kapatip (gui=True) Gazebo arayuzunu acmak istersen
+    # sim_launch.py icindeki headless=false yapman gerekebilir, ama biz SIM_HEADLESS=0 gonderecegiz
+    echo "[eval_dqn.sh] Gazebo baslatiliyor (world: $WORLD_NAME)..."
+    export SIM_HEADLESS=0
     nohup ros2 launch rl_drone_pathfinding sim_launch.py world_file_name:="${WORLD_NAME}.sdf" > "$SIM_LOG" 2>&1 &
     SIM_PID=$!
-    # /scan'i bekle (60s timeout)
-    echo "[train_dqn.sh] /scan'in publish edilmesi bekleniyor..."
+    
+    echo "[eval_dqn.sh] /scan bekleniyor..."
     for i in $(seq 1 30); do
         if timeout 2 ros2 topic echo /scan --once --qos-reliability best_effort >/dev/null 2>&1; then
-            echo "[train_dqn.sh] sim hazir (${i}. denemede)"
+            echo "[eval_dqn.sh] sim hazir!"
             break
         fi
         sleep 2
         if [[ $i -eq 30 ]]; then
-            echo "[train_dqn.sh] sim 60s'de hazir olmadi, log: $SIM_LOG" >&2
+            echo "[eval_dqn.sh] sim 60s'de hazir olmadi." >&2
             kill "$SIM_PID" 2>/dev/null || true
             exit 1
         fi
@@ -66,7 +64,7 @@ pgrep -f "ros2 launch rl_drone_pathfinding sim_launch.py" >/dev/null && {
 
 cleanup() {
     echo
-    echo "[train_dqn.sh] cleanup..."
+    echo "[eval_dqn.sh] cleanup..."
     if [[ -n "$SIM_PID" ]] && kill -0 "$SIM_PID" 2>/dev/null; then
         kill "$SIM_PID" 2>/dev/null || true
         sleep 2
@@ -77,8 +75,8 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# --- train -------------------------------------------------------------------
-echo "[train_dqn.sh] DQN egitimi basliyor (config=$CONFIG)..."
+# --- evaluate -------------------------------------------------------------------
+echo "[eval_dqn.sh] DQN Test basliyor..."
 cd "$PROJ_ROOT"
 export PYTHONPATH="$PROJ_ROOT/ros2_ws/src/rl_drone_pathfinding:$PYTHONPATH"
-python3 -m rl_drone_pathfinding.agents.train_dqn --config "$CONFIG"
+python3 -m rl_drone_pathfinding.agents.eval_dqn --config "$CONFIG" --model "$MODEL" --episodes 5 --deterministic

@@ -1,0 +1,237 @@
+<?xml version="1.0" ?>
+<sdf version="1.10">
+  <world name="multi_room_obstacles">
+
+    <physics name="fast" type="ignored">
+      <max_step_size>0.02</max_step_size>
+      <real_time_factor>0</real_time_factor>
+    </physics>
+
+    <plugin filename="gz-sim-physics-system"
+            name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system"
+            name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system"
+            name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-sensors-system"
+            name="gz::sim::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <plugin filename="gz-sim-imu-system"
+            name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-contact-system"
+            name="gz::sim::systems::Contact"/>
+
+    <gravity>0 0 -9.81</gravity>
+
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 12 0 0 0</pose>
+      <diffuse>0.9 0.9 0.9 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>40 40</size></plane></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><plane><normal>0 0 1</normal><size>40 40</size></plane></geometry>
+          <material><ambient>0.4 0.4 0.4 1</ambient><diffuse>0.5 0.5 0.5 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- ============================================================== -->
+    <!-- 6-room building with a central corridor. Total area: 24x16 m   -->
+    <!-- (x: -8 to 16, y: -8 to 8). Corridor: y in [-2, 2]              -->
+    <!-- ============================================================== -->
+    <model name="building">
+      <static>true</static>
+
+      <!-- ===== Outer walls ===== -->
+      <link name="wall_n">
+        <pose>4 8 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>24 0.2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>24 0.2 3</size></box></geometry>
+          <material><ambient>0.7 0.7 0.7 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material></visual>
+      </link>
+      <link name="wall_s">
+        <pose>4 -8 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>24 0.2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>24 0.2 3</size></box></geometry>
+          <material><ambient>0.7 0.7 0.7 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material></visual>
+      </link>
+      <link name="wall_w">
+        <pose>-8 0 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 16 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 16 3</size></box></geometry>
+          <material><ambient>0.7 0.7 0.7 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material></visual>
+      </link>
+      <link name="wall_e">
+        <pose>16 0 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 16 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 16 3</size></box></geometry>
+          <material><ambient>0.7 0.7 0.7 1</ambient><diffuse>0.7 0.7 0.7 1</diffuse></material></visual>
+      </link>
+
+      <!-- ===== Roof (Removed for better visibility) ===== -->
+
+      <!-- ===== Inner horizontal walls (y=3) - Top of Corridor ===== -->
+      <link name="wall_h_top_1">
+        <pose>-6.5 3 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>3 0.2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>3 0.2 3</size></box></geometry>
+          <material><ambient>0.6 0.6 0.7 1</ambient></material></visual>
+      </link>
+      <link name="wall_h_top_2">
+        <pose>0 3 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>6 0.2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>6 0.2 3</size></box></geometry>
+          <material><ambient>0.6 0.6 0.7 1</ambient></material></visual>
+      </link>
+      <link name="wall_h_top_3">
+        <pose>8 3 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>6 0.2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>6 0.2 3</size></box></geometry>
+          <material><ambient>0.6 0.6 0.7 1</ambient></material></visual>
+      </link>
+      <link name="wall_h_top_4">
+        <pose>14.5 3 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>3 0.2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>3 0.2 3</size></box></geometry>
+          <material><ambient>0.6 0.6 0.7 1</ambient></material></visual>
+      </link>
+
+      <!-- ===== Inner horizontal walls (y=-3) - Bottom of Corridor ===== -->
+      <link name="wall_h_bot_1">
+        <pose>-6.5 -3 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>3 0.2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>3 0.2 3</size></box></geometry>
+          <material><ambient>0.6 0.6 0.7 1</ambient></material></visual>
+      </link>
+      <link name="wall_h_bot_2">
+        <pose>0 -3 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>6 0.2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>6 0.2 3</size></box></geometry>
+          <material><ambient>0.6 0.6 0.7 1</ambient></material></visual>
+      </link>
+      <link name="wall_h_bot_3">
+        <pose>8 -3 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>6 0.2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>6 0.2 3</size></box></geometry>
+          <material><ambient>0.6 0.6 0.7 1</ambient></material></visual>
+      </link>
+      <link name="wall_h_bot_4">
+        <pose>14.5 -3 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>3 0.2 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>3 0.2 3</size></box></geometry>
+          <material><ambient>0.6 0.6 0.7 1</ambient></material></visual>
+      </link>
+
+      <!-- ===== Inner vertical walls separating rooms (Top: y in 3 to 8) ===== -->
+      <link name="wall_v_top_1">
+        <pose>0 5.5 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 5 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 5 3</size></box></geometry>
+          <material><ambient>0.6 0.6 0.7 1</ambient></material></visual>
+      </link>
+      <link name="wall_v_top_2">
+        <pose>8 5.5 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 5 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 5 3</size></box></geometry>
+          <material><ambient>0.6 0.6 0.7 1</ambient></material></visual>
+      </link>
+
+      <!-- ===== Inner vertical walls separating rooms (Bottom: y in -8 to -3) ===== -->
+      <link name="wall_v_bot_1">
+        <pose>0 -5.5 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 5 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 5 3</size></box></geometry>
+          <material><ambient>0.6 0.6 0.7 1</ambient></material></visual>
+      </link>
+      <link name="wall_v_bot_2">
+        <pose>8 -5.5 1.5 0 0 0</pose>
+        <collision name="c"><geometry><box><size>0.2 5 3</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>0.2 5 3</size></box></geometry>
+          <material><ambient>0.6 0.6 0.7 1</ambient></material></visual>
+      </link>
+    </model>
+
+    <!-- ====== 6 Static Obstacles (1 per room) ====== -->
+    <model name="obs_static_1">
+      <static>true</static>
+      <pose>-4 5.5 1 0 0 0</pose>
+      <link name="l">
+        <collision name="c"><geometry><cylinder><radius>0.5</radius><length>2.0</length></cylinder></geometry></collision>
+        <visual name="v"><geometry><cylinder><radius>0.5</radius><length>2.0</length></cylinder></geometry>
+          <material><ambient>0.4 0.2 0.2 1</ambient></material></visual>
+      </link>
+    </model>
+    <model name="obs_static_2">
+      <static>true</static>
+      <pose>4 5.5 1 0 0 0</pose>
+      <link name="l">
+        <collision name="c"><geometry><box><size>1 1 2</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>1 1 2</size></box></geometry>
+          <material><ambient>0.2 0.4 0.2 1</ambient></material></visual>
+      </link>
+    </model>
+    <model name="obs_static_3">
+      <static>true</static>
+      <pose>12 5.5 1 0 0 0</pose>
+      <link name="l">
+        <collision name="c"><geometry><cylinder><radius>0.5</radius><length>2.0</length></cylinder></geometry></collision>
+        <visual name="v"><geometry><cylinder><radius>0.5</radius><length>2.0</length></cylinder></geometry>
+          <material><ambient>0.2 0.2 0.4 1</ambient></material></visual>
+      </link>
+    </model>
+    <model name="obs_static_4">
+      <static>true</static>
+      <pose>-4 -5.5 1 0 0 0</pose>
+      <link name="l">
+        <collision name="c"><geometry><box><size>1 1 2</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>1 1 2</size></box></geometry>
+          <material><ambient>0.4 0.4 0.2 1</ambient></material></visual>
+      </link>
+    </model>
+    <model name="obs_static_5">
+      <static>true</static>
+      <pose>4 -5.5 1 0 0 0</pose>
+      <link name="l">
+        <collision name="c"><geometry><cylinder><radius>0.5</radius><length>2.0</length></cylinder></geometry></collision>
+        <visual name="v"><geometry><cylinder><radius>0.5</radius><length>2.0</length></cylinder></geometry>
+          <material><ambient>0.4 0.2 0.4 1</ambient></material></visual>
+      </link>
+    </model>
+    <model name="obs_static_6">
+      <static>true</static>
+      <pose>12 -5.5 1 0 0 0</pose>
+      <link name="l">
+        <collision name="c"><geometry><box><size>1 1 2</size></box></geometry></collision>
+        <visual name="v"><geometry><box><size>1 1 2</size></box></geometry>
+          <material><ambient>0.2 0.4 0.4 1</ambient></material></visual>
+      </link>
+    </model>
+
+    <!-- ====== 1 Moving-ready Obstacle (Corridor) ====== -->
+    <!-- Removed failing trajectory plugin, will be static until a ROS node is added -->
+    <model name="obs_dynamic_1">
+      <static>true</static>
+      <pose>-6 0 1 0 0 0</pose>
+      <link name="link">
+        <collision name="c">
+          <geometry><box><size>0.8 0.8 2.0</size></box></geometry>
+        </collision>
+        <visual name="v">
+          <geometry><box><size>0.8 0.8 2.0</size></box></geometry>
+          <material><ambient>0.8 0.1 0.1 1</ambient><diffuse>1.0 0.1 0.1 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+  </world>
+</sdf>
