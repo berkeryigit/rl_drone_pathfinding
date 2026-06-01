@@ -21,6 +21,7 @@ Hedef: **çarpışmadan MAKSİMUM voxel tara.**
 | v4.10 | v4.8 ayarı + **5M eğitim** | %54 | **281** | **328** | **5.76 (max 6!)** | **%44.5** | %95 |
 | v4.11 | 5M + collision 50 | %100 ❌ | 147 | 197 | 4.9 | %27.3 | %29 |
 | v4.12 | v4.8'den resume + lr1e-4 + coll45 (3M) | %24 | 90 | 115 | 4.52 | %13.2 | %77 |
+| v4.13 | v4.10 ayarı + **8M eğitim** | %26 | 134 | 140 | 4.99 | %15.6 | %95 |
 
 ## Ana Bulgular (rapor için)
 
@@ -58,6 +59,8 @@ Hedef: **çarpışmadan MAKSİMUM voxel tara.**
 v4.4/v4.6 ham keşifte daha yüksek (167–176 voxel) ama %93–97 çarpışma → gerçek görevde drone düşer, "çarpışmadan" kısıtını ihlal eder. v4.8 hem güvenli hem tam kapsamlı (5 oda).
 
 8. **Curriculum (resume) trade-off'u kıramadı.** v4.12'de v4.8'in %0-çarpışma politikasından devam + nazik fine-tune (lr 1e-4) + collision 45 ile genişletmek İKİ EKSENDE de geriletti: çarpışma %0→%24, voxel 117→90. Güvenli taban bile daha çok keşfetmeye zorlanınca temkinini kaybediyor.
+
+9. **Kapsama 5M'de TEPE yapıp geriliyor (monoton değil).** Aynı ödül, 8M (v4.13): çarpışma %26, voxel 134, kapsama %15.6 — yani 5M'deki 281-voxel/%44.5 zirvesi GEÇİCİ; 8M'de politika daha güvenli/temkinli bir noktaya regularize oluyor. "Daha uzun eğit, daha çok voxel" YOK. v4.10'un yüksek kapsamı kararlı bir tavan değil, geçici bir tepe.
 
 ---
 

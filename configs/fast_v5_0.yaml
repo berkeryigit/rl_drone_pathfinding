@@ -1,0 +1,48 @@
+# v5.0 — YAPISAL KALDIRAÇ: lidar_history 2 -> 3 (engel hız+İVME gözlemi).
+#   v4.x dersi: bu ödül+aksiyon+lidar_history=2 ile keşif↔güvenlik trade-off'u TEMEL.
+#   Hipotez: 3 kare lidar geçmişi (sadece hız değil ivme de) -> kapsamlı keşif sırasında
+#     hareketli engelleri DAHA İYİ tahmin -> v4.10'un kapsamı (281 voxel/6 oda) DAHA DÜŞÜK
+#     çarpışmayla (<%54) elde edilebilir. Trade-off cephesini sağa kaydırma denemesi.
+#   Ayar = v4.10 (collision 25, room 30, far 1.0) — TEK fark lidar_history=3, 5M.
+#   NOT: obs_dim = 32*3+8 = 104 (otomatik). Eval'de --lidar-history 3 ŞART.
+env:
+  max_episode_steps: 2500
+  seed: 42
+  lidar_history: 3          # 2 -> 3 (DEĞİŞEN: ivme bilgisi)
+  room_bonus: 30.0
+  idle_penalty: 0.06
+  idle_grace: 30
+  collision_penalty: 25.0
+  far_voxel_bonus: 1.0
+ppo:
+  policy: MlpPolicy
+  learning_rate: 0.0003
+  lr_schedule: linear
+  lr_final: 1.0e-05
+  n_steps: 1024
+  batch_size: 512
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.008
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+train:
+  version: fast_v5_0
+  n_envs: 8
+  total_timesteps: 5000000
+  save_freq: 500000
+  resume_from: null
+  log_dir: ./runs/fast_v5_0
+  ckpt_dir: ./runs/fast_v5_0/checkpoints
+  tb_log: ./runs/fast_v5_0/tb
+  vec_normalize:
+    enabled: true
+    norm_obs: false
+    norm_reward: true
+    clip_reward: 10.0
