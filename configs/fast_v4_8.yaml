@@ -1,0 +1,45 @@
+# v4.8 — FRONTIER PROBE: v4.5'in güvenli ayarını koru, çarpışma cezasını HAFİF gevşet.
+#   Frontier: collision 30 -> %8 çarpışma/114 voxel (v4.5) ; collision 10 -> %97/167 (v4.4).
+#   v4.8: collision 30 -> 25. Hipotez: ~%15-20 çarpışma + ~130 voxel (v4.5'ten fazla, hâlâ güvenli).
+#   DİĞER HER ŞEY v4.5 ile AYNI (idle 0.06/grace 30 — v4.7'de idle nudge geri tepti, dokunma).
+env:
+  max_episode_steps: 2500
+  seed: 42
+  lidar_history: 2
+  room_bonus: 30.0
+  idle_penalty: 0.06        # v4.5 ile aynı (v4.7 dersi: artırma geri tepiyor)
+  idle_grace: 30            # v4.5 ile aynı
+  collision_penalty: 25.0   # 30 -> 25 (TEK DEĞİŞEN: hafif gevşet, daha derin tarama)
+  far_voxel_bonus: 1.0      # v4.5 ile aynı (1.5 güvenliği bozuyordu)
+ppo:
+  policy: MlpPolicy
+  learning_rate: 0.0003
+  lr_schedule: linear
+  lr_final: 1.0e-05
+  n_steps: 1024
+  batch_size: 512
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.008
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+train:
+  version: fast_v4_8
+  n_envs: 8
+  total_timesteps: 2000000
+  save_freq: 100000
+  resume_from: null
+  log_dir: ./runs/fast_v4_8
+  ckpt_dir: ./runs/fast_v4_8/checkpoints
+  tb_log: ./runs/fast_v4_8/tb
+  vec_normalize:
+    enabled: true
+    norm_obs: false
+    norm_reward: true
+    clip_reward: 10.0

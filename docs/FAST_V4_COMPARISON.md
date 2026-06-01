@@ -15,6 +15,7 @@ Hedef: **çarpışmadan MAKSİMUM voxel tara.**
 | v4.4 | güvenli taban + far 1.0 | %97 | 167 | 216 | 4.94 | %26.7 | %52 |
 | **v4.5** | **far 1.0 + collision 30** | **%8** ✅ | 114 | 132 | **5.0** | %15.6 | **%95** |
 | v4.6 | far 1.5 + collision 30 + 3M | %93 | **176** | **247** | 5.0 | **%30.9** | %54 |
+| v4.7 | v4.5 + idle↑ (0.08/grace20) + 4M | %72 ❌ | 72 | 79 | 5.0 | %9.4 | %85 (idle backfire) |
 
 ## Ana Bulgular (rapor için)
 
@@ -30,6 +31,8 @@ Hedef: **çarpışmadan MAKSİMUM voxel tara.**
 4. **far_voxel_bonus çok hassas.** collision=30 sabitken far_voxel 1.0 → %8 çarpışma (v4.5); far_voxel 1.5 → %93 (v4.6). Uzak-hücre dürtüsü güvenlik cezasını ezebiliyor. Güvenli rejim için far_voxel ≤ ~1.0.
 
 5. **Ödül-şekillendirme yakınsamayı kırabilir.** v4.3 (agresif çoklu değişiklik) %100 çarpışma + voxel çöküşü → PPO kötü local optimum. Tek-değişken, kademeli ilerleme daha güvenli.
+
+6. **Yumuşak idle cezası güvenlik için kritik.** v4.7'de idle_penalty 0.06→0.08 + grace 30→20 ile ajanı sürekli harekete zorlamak GERİ TEPTİ: engel yanında yavaşlayıp/duramadığından çarpışma %8→%72, voxel 114→71. v4.5'in düşük idle'ı ajanın güvenli durup-bekleme manevrasına izin veriyor.
 
 ## EN İYİ POLİTİKA → **v4.5**
 
