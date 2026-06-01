@@ -137,28 +137,29 @@ Ama yeni sorun: güvenli politika tembelleşip **yalnız 2 odaya** sıkıştı (
 
 ---
 
-## 7. SONUÇ — Üç Teslim Politikası
+## 7. SONUÇ — İki Teslim Politikası (+ bir öğretici tuzak)
 
-Optimizasyon **kesin yakınsadı** (bkz. `figurler/01_pareto_cephesi.png`). Cephe üzerinde üç
-kayda değer çalışma noktası — hangisinin "en iyi" olduğu **hangi metriği önemsediğine** bağlı:
+Optimizasyon **kesin yakınsadı** (bkz. `figurler/01_pareto_cephesi.png`). İki Pareto-optimal uç
+teslim edilir; ayrıca v4.1 **kaçınılması gereken yerel optimum tuzağını** gösteren öğretici örnektir:
 
-| Politika | Model dosyası | Çarpışma | Voxel | Oda | Kapsama | Ne zaman en iyi |
+| Politika | Model dosyası | Çarpışma | Voxel | Oda | Kapsama | Değerlendirme |
 |---|---|---:|---:|---:|---:|---|
-| **v4.1 — YOĞUN** ⭐ | `runs/fast_v4_1/checkpoints/fast_drone_final.zip` | **%2** | **150** | 2.0 | %6 | "az çarpışma + yüksek bölüm-içi voxel" — ama 2 odaya yoğunlaşıyor (yayılmaz) |
-| **v4.8 — GÜVENLİ** ⭐ | `runs/fast_v4_8/checkpoints/fast_drone_final.zip` | **%0** | 117 | 5.0 | %13.8 | "çarpışmadan, tüm odaları güvenle gez" = **ödev hedefinin cevabı** |
+| v4.1 — TUZAK | `runs/fast_v4_1/checkpoints/fast_drone_final.zip` | %2 | 150 | **2** | %6 | ⚠️ Yüksek voxel YANILTICI: sadece 2 odayı aşırı tarıyor, yayılmıyor — **hedef DEĞİL** |
+| **v4.8 — GÜVENLİ** ⭐ | `runs/fast_v4_8/checkpoints/fast_drone_final.zip` | **%0** | 117 | **5** | %13.8 | "çarpışmadan, odalara yayılarak gez" = **ödev hedefinin cevabı** |
 | **v4.10 — KAPSAM** | `runs/fast_v4_10/checkpoints/fast_drone_final.zip` | %54 | **281** | **6** | **%44.5** | "max toplam kapsama" = kapasite tavanı (ama riskli) |
 
-**Üç noktanın yorumu (Berker'in dikkat çektiği nüans):**
-- **v4.1** bölüm başına **en çok voxeli (150)** neredeyse hiç çarpmadan (%2) topluyor — ama hep
-  **aynı 2 odayı** yoğun tarıyor, yeni odaya yayılmıyor (union kapsama düşük: %6). "Tek bölgeyi
-  güvenle ve derin tara" senaryosu için ideal.
-- **v4.8** biraz daha az voxel (117) ama **%0 çarpışma + 6 odanın 5'ini** her bölüm geziyor →
-  güvenlik + genişlik dengesi. Proje hedefi "çarpışmadan maksimum voxel" için **önerilen ana sonuç.**
+**Yorum:**
+- **v4.1 neden tuzak?** Bölüm başına 150 voxel kulağa iyi gelir AMA hepsi **aynı 2 odada.** Ajan
+  "yakın 2 odayı sömür, yeni odaya gitme" yerel optimumuna düşmüş — union kapsama yalnızca %6
+  (hep aynı yer). Hedefimiz **binanın tamamını gezmekti**; v4.1 bunu yapmıyor. Bu, asıl mücadelenin
+  "voxel sayısı" değil **GENİŞLİK (kaç farklı oda)** olduğunu gösteren öğretici negatif sonuç.
+- **v4.8** biraz daha az bölüm-içi voxel (117) ama **%0 çarpışma + 6 odanın 5'ine yayılıyor** →
+  güvenlik + genişlik dengesi. Hedefin (çarpışmadan geniş keşif) **önerilen cevabı.**
 - **v4.10** ham kapsamada zirve (281 voxel, 6 oda, %44.5) ama %54 çarpışma → gerçek görevde düşer.
 
-> **Anahtar gözlem:** v4.1 ↔ v4.8 kıyası gösteriyor ki "daha çok voxel" mutlaka "daha çok çarpışma"
-> demek değil — **genişlikten (oda sayısı) feda ederek** düşük çarpışmada yüksek bölüm-içi voxel
-> alınabiliyor (v4.1). Asıl ödünleşim voxel↔çarpışma değil, **genişlik (kaç oda) ↔ güvenlik.**
+> **Anahtar gözlem:** Asıl ödünleşim "voxel ↔ çarpışma" değil, **GENİŞLİK (kaç oda) ↔ güvenlik.**
+> v4.1 düşük çarpışmada yüksek voxel alır ama genişlikten feda eder (2 oda) — istediğimiz bu değil.
+> v4.8 genişliği koruyup güvenliği de sağlar; bu yüzden teslim edilen ana sonuçtur.
 
 ### Gazebo ↔ numpy iki-ayaklı kanıt
 - **Gazebo (yavaş, gerçekçi fizik):** en iyi v2.0 → çarpışma %70, kapsama %36, ~2 oda.
