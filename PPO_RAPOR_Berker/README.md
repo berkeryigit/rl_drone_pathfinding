@@ -16,15 +16,16 @@ sonuçlarını, parametre değişimlerini ve gerekçelerini içerir.
 
 ## En önemli iki sonuç
 
+- **`figurler/13_v4_1_YOGUN_kapsama.png`** — v4.1: **%2 çarpışma, 150 voxel** ama 2 odaya yoğun (en yüksek bölüm-içi voxel, düşük çarpışma)
 - **`figurler/03_v4_8_GUVENLI_kapsama.png`** — v4.8: **%0 çarpışma**, 5 oda, 117 voxel (ödev hedefinin cevabı)
 - **`figurler/05_v4_10_KAPSAM_kapsama.png`** — v4.10: **281 voxel, 6 oda**, %44.5 kapsama ama %54 çarpışma (kapasite tavanı)
-- **`figurler/01_pareto_cephesi.png`** — kapsama↔güvenlik ödünleşiminin Pareto cephesi (rapor için ideal figür)
+- **`figurler/01_pareto_cephesi.png`** — genişlik↔güvenlik ödünleşiminin Pareto cephesi (rapor için ideal figür)
 
 ## Tek cümlelik özet
 
-Çarpışmayı **gözlem tasarımı** (lidar geçmişi) çözdü (%80→%1); ardından "çok kapsa" ile "hiç
-çarpma" arasında **temel bir ödünleşim** olduğu, 14 deney + 4 bağımsız kaldıraçla kanıtlandı —
-iki teslim politikası: **v4.8 (güvenli)** ve **v4.10 (kapsamlı)**.
+Çarpışmayı **gözlem tasarımı** (lidar geçmişi) çözdü (%80→%1); ardından asıl ödünleşimin
+**genişlik (kaç oda) ↔ güvenlik** olduğu 14 deney + 4 bağımsız kaldıraçla kanıtlandı — üç
+teslim politikası: **v4.1 (yoğun/az çarpışma)**, **v4.8 (güvenli+geniş)**, **v4.10 (max kapsam)**.
 
 ## Model dosyaları nerede?
 

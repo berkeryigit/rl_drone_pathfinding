@@ -121,9 +121,12 @@ Ama yeni sorun: güvenli politika tembelleşip **yalnız 2 odaya** sıkıştı (
 2. **Sade ödül > karmaşık ceza-şekillendirme.** v2.0 (sade) tüm yön-duyarlı/birleşik ceza
    varyantlarını yendi. Aşırı şekillendirme yakınsamayı bozabiliyor (v4.3 %100 çarpışma).
 
-3. **Kapsama ↔ güvenlik TEMEL bir ödünleşim.** Bu ortam+ödül+2D-aksiyon kurulumunda "çok kapsa"
-   ile "hiç çarpma" aynı anda elde edilemiyor. Dört bağımsız kaldıraç — **ödül-şekillendirme,
-   eğitim süresi, curriculum/resume, gözlem zenginliği** — hepsi aynı Pareto cephesini doğruladı.
+3. **Asıl ödünleşim: GENİŞLİK (kaç oda) ↔ güvenlik.** "Çok oda gez" ile "hiç çarpma" aynı anda
+   olmuyor. Dört bağımsız kaldıraç — **ödül-şekillendirme, eğitim süresi, curriculum/resume,
+   gözlem zenginliği** — hepsi aynı Pareto cephesini doğruladı.
+   **Önemli incelik (v4.1):** "daha çok voxel" mutlaka "daha çok çarpışma" değil — v4.1, 2 odaya
+   yoğunlaşarak %2 çarpışmada 150 voxel topluyor (v4.8'in 117'sinden fazla). Yani per-bölüm voxel
+   düşük çarpışmada da yükseltilebiliyor; bedel **genişlikten** (oda sayısı / union kapsama) ödeniyor.
 
 4. **Çarpışma cezası = baş kaldıraç, ama tatlı noktası DAR.** collision_penalty ∈ {22:çöktü,
    **25:OPTIMAL (%0)**, 30:%8, 50@5M:%100}. Sezgiye aykırı: cezayı 30→25 düşürmek çarpışmayı %8→%0
@@ -134,19 +137,28 @@ Ama yeni sorun: güvenli politika tembelleşip **yalnız 2 odaya** sıkıştı (
 
 ---
 
-## 7. SONUÇ — İki Teslim Politikası
+## 7. SONUÇ — Üç Teslim Politikası
 
-Optimizasyon **kesin yakınsadı** (bkz. `figurler/pareto_cephesi.png`). İki Pareto-optimal uç:
+Optimizasyon **kesin yakınsadı** (bkz. `figurler/01_pareto_cephesi.png`). Cephe üzerinde üç
+kayda değer çalışma noktası — hangisinin "en iyi" olduğu **hangi metriği önemsediğine** bağlı:
 
-| Politika | Model dosyası | Çarpışma | Voxel | Oda | Kapsama | Kullanım |
+| Politika | Model dosyası | Çarpışma | Voxel | Oda | Kapsama | Ne zaman en iyi |
 |---|---|---:|---:|---:|---:|---|
-| **v4.8 — GÜVENLİ** ⭐ | `runs/fast_v4_8/checkpoints/fast_drone_final.zip` | **%0** | 117 | 5.0 | %13.8 | "çarpışmadan keşif" = **ödev hedefinin cevabı** |
-| **v4.10 — KAPSAM** | `runs/fast_v4_10/checkpoints/fast_drone_final.zip` | %54 | **281** | **6** | **%44.5** | "max voxel" = kapasite tavanı |
+| **v4.1 — YOĞUN** ⭐ | `runs/fast_v4_1/checkpoints/fast_drone_final.zip` | **%2** | **150** | 2.0 | %6 | "az çarpışma + yüksek bölüm-içi voxel" — ama 2 odaya yoğunlaşıyor (yayılmaz) |
+| **v4.8 — GÜVENLİ** ⭐ | `runs/fast_v4_8/checkpoints/fast_drone_final.zip` | **%0** | 117 | 5.0 | %13.8 | "çarpışmadan, tüm odaları güvenle gez" = **ödev hedefinin cevabı** |
+| **v4.10 — KAPSAM** | `runs/fast_v4_10/checkpoints/fast_drone_final.zip` | %54 | **281** | **6** | **%44.5** | "max toplam kapsama" = kapasite tavanı (ama riskli) |
 
-**Önerilen ana sonuç: v4.8.** Proje hedefi "çarpışmadan maksimum voxel" olduğundan, görevi
-güvenle tamamlayan (100/100 bölümde hiç çarpmadan, 6 odanın 5'ini her bölümde gezerek) tek
-politika v4.8'dir. v4.10 ise modelin kapasite tavanını (6 odanın hepsi, 281 voxel) gösteren
-tamamlayıcı kanıttır.
+**Üç noktanın yorumu (Berker'in dikkat çektiği nüans):**
+- **v4.1** bölüm başına **en çok voxeli (150)** neredeyse hiç çarpmadan (%2) topluyor — ama hep
+  **aynı 2 odayı** yoğun tarıyor, yeni odaya yayılmıyor (union kapsama düşük: %6). "Tek bölgeyi
+  güvenle ve derin tara" senaryosu için ideal.
+- **v4.8** biraz daha az voxel (117) ama **%0 çarpışma + 6 odanın 5'ini** her bölüm geziyor →
+  güvenlik + genişlik dengesi. Proje hedefi "çarpışmadan maksimum voxel" için **önerilen ana sonuç.**
+- **v4.10** ham kapsamada zirve (281 voxel, 6 oda, %44.5) ama %54 çarpışma → gerçek görevde düşer.
+
+> **Anahtar gözlem:** v4.1 ↔ v4.8 kıyası gösteriyor ki "daha çok voxel" mutlaka "daha çok çarpışma"
+> demek değil — **genişlikten (oda sayısı) feda ederek** düşük çarpışmada yüksek bölüm-içi voxel
+> alınabiliyor (v4.1). Asıl ödünleşim voxel↔çarpışma değil, **genişlik (kaç oda) ↔ güvenlik.**
 
 ### Gazebo ↔ numpy iki-ayaklı kanıt
 - **Gazebo (yavaş, gerçekçi fizik):** en iyi v2.0 → çarpışma %70, kapsama %36, ~2 oda.
