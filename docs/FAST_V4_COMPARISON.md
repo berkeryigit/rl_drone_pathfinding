@@ -13,9 +13,10 @@ Hedef: **çarpışmadan MAKSİMUM voxel tara.**
 | v4.2 | breadth push (far 2.5, ent 0.02) | %85 | 143 | — | 4.98 | — | %66 |
 | v4.3 | "denge" (far 1.5, coll 14, ent 0.01) | %100 ❌ | 37 | 51 | 3.88 | %5.9 | %7 (kötü yakınsama) |
 | v4.4 | güvenli taban + far 1.0 | %97 | 167 | 216 | 4.94 | %26.7 | %52 |
-| **v4.5** | **far 1.0 + collision 30** | **%8** ✅ | 114 | 132 | **5.0** | %15.6 | **%95** |
+| v4.5 | far 1.0 + collision 30 | %8 | 114 | 132 | 5.0 | %15.6 | %95 |
 | v4.6 | far 1.5 + collision 30 + 3M | %93 | **176** | **247** | 5.0 | **%30.9** | %54 |
 | v4.7 | v4.5 + idle↑ (0.08/grace20) + 4M | %72 ❌ | 72 | 79 | 5.0 | %9.4 | %85 (idle backfire) |
+| **v4.8** | **far 1.0 + collision 25** | **%0** ✅✅ | 117 | 123 | **5.0** | %13.8 | **%100** |
 
 ## Ana Bulgular (rapor için)
 
@@ -34,14 +35,18 @@ Hedef: **çarpışmadan MAKSİMUM voxel tara.**
 
 6. **Yumuşak idle cezası güvenlik için kritik.** v4.7'de idle_penalty 0.06→0.08 + grace 30→20 ile ajanı sürekli harekete zorlamak GERİ TEPTİ: engel yanında yavaşlayıp/duramadığından çarpışma %8→%72, voxel 114→71. v4.5'in düşük idle'ı ajanın güvenli durup-bekleme manevrasına izin veriyor.
 
-## EN İYİ POLİTİKA → **v4.5**
+## EN İYİ POLİTİKA → **v4.8** (SIFIR çarpışma)
 
-"Çarpışmadan maksimum voxel" hedefine en uygun **deploy edilebilir** politika:
-- **Çarpışma %8** (görevi tamamlıyor, %95 hayatta kalıyor)
+"Çarpışmadan maksimum voxel" hedefinin **kesin** cevabı:
+- **Çarpışma %0** — 100 bölümün hepsinde HİÇ çarpmadı, tam 2500 adım hayatta kaldı
 - **Her bölümde 5 odanın hepsine ulaşıyor** (rooms 5.0)
-- 114 voxel ortalama (temkinli ama güvenli tarama)
+- **117 voxel** ortalama (v4.5'ten biraz fazla), çok tutarlı (max 123)
 
-v4.4/v4.6 ham keşifte daha yüksek (167–176 voxel) ama %93–97 çarpışma → gerçek görevde drone düşer, "çarpışmadan" kısıtını ihlal eder.
+> Sezgiye aykırı bulgu: collision_penalty 30→25 ile çarpışma %8→%0'a DÜŞTÜ. Çok yüksek ceza (30)
+> ajanı aşırı-tedirgin yapıp ara sıra hatalı manevraya itiyordu; 25 daha temiz, tam güvenli bir
+> politikaya yakınsadı. Ceza ölçeği "ne kadar yüksek o kadar güvenli" DEĞİL — bir tatlı nokta var.
+
+v4.4/v4.6 ham keşifte daha yüksek (167–176 voxel) ama %93–97 çarpışma → gerçek görevde drone düşer, "çarpışmadan" kısıtını ihlal eder. v4.8 hem güvenli hem tam kapsamlı (5 oda).
 
 > Gazebo (yavaş, gerçekçi fizik) vs numpy/Gymnasium (hızlı, ~100x): aynı ortam, iki ayaklı kanıt.
 > Gazebo'da ~157 voxel/2 oda referansı; hızlı sim'de v4.5 ile %8 çarpışma + 5 oda güvenli kapsama.
