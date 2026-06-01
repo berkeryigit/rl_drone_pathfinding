@@ -1,0 +1,40 @@
+# a3c_v4 — UZA GIT: far_voxel_bonus 0->1.0 (baslangictan uzak hucreye ekstra odul) + idle_grace 40->30 (yerel taramayi daha erken bitir). Breadth (oda sayisi) artar.
+# A3C(=A2C senkron) | DISCRETE aksiyon | numpy hizli sim | 1.5M step | her biri kumulatif iyilesme
+env:
+  max_episode_steps: 2500
+  seed: 42
+  lidar_history: 2
+  room_bonus: 30.0
+  idle_penalty: 0.05
+  idle_grace: 30
+  collision_penalty: 10.0
+  far_voxel_bonus: 1.0
+a2c:
+  policy: MlpPolicy
+  learning_rate: 0.0007
+  lr_schedule: linear
+  lr_final: 0.0001
+  n_steps: 16
+  gamma: 0.99
+  gae_lambda: 0.95
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  use_rms_prop: true
+  normalize_advantage: false
+  policy_kwargs:
+    net_arch: [256, 256]
+train:
+  version: a3c_v4
+  n_envs: 8
+  total_timesteps: 1500000
+  save_freq: 150000
+  resume_from: null
+  log_dir: ./runs/a3c_v4
+  ckpt_dir: ./runs/a3c_v4/checkpoints
+  tb_log: ./runs/a3c_v4/tb
+  vec_normalize:
+    enabled: true
+    norm_obs: false
+    norm_reward: true
+    clip_reward: 10.0

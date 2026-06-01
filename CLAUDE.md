@@ -1,5 +1,17 @@
 # CLAUDE.md — A3C Branch (Claude bunu OTOMATİK okur)
 
+> # 🚨 GÜNCEL PLAN (2026-06-01) — GAZEBO/ROS İPTAL → NUMPY HIZLI SİM
+> Arkadaşın çok az vakti var. **Gazebo/ROS KULLANMA.** Bunun yerine numpy hızlı sim ile
+> **8 versiyon (a3c_v1→v8), her biri 1.5M, A3C(=A2C) discrete** eğitilecek, her sürümde
+> parametreler iyileştirilerek. **TEK YAPMAN GEREKEN:**
+> ```bash
+> git checkout algo/a3c && git pull origin algo/a3c
+> python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements_numpy.txt
+> bash scripts/run_a3c_all.sh        # 8 versiyon eğitim+eval, ~1-2 saat, MacBook CPU
+> ```
+> **Tam talimat: `A3C_NUMPY_TALIMATLAR.md` (ÖNCE ONU OKU).** Aşağıdaki Gazebo bölümleri
+> ARŞİVDİR — yalnızca referans, kullanma. Bitince Berker'e haber ver.
+
 Merhaba Claude. Bu repo bir KOU pekiştirmeli öğrenme dönem projesi. Sen **A3C (discrete)**
 ile çalışan ekip üyesine yardım ediyorsun. Aşağısı senin tam bağlamın + yapılacaklar listesi.
 

@@ -1,5 +1,10 @@
 # A3C (Discrete) Eğitim Talimatları — Drone Oda Keşfi
 
+> # 📦 ARŞİV — BU DOSYA ARTIK KULLANILMIYOR (Gazebo/ROS tabanlı)
+> 2026-06-01 itibarıyla Gazebo/ROS İPTAL edildi (vakit yok). Güncel ve geçerli talimat:
+> **`A3C_NUMPY_TALIMATLAR.md`** (numpy hızlı sim, MacBook'ta çalışır). Bu dosya yalnız
+> ortam/ödül/aksiyon mantığını anlamak için referanstır.
+
 > ## ⚠️ ÖNCE BUNU OKU — BRANCH
 > Bu görev **`algo/a3c`** branch'inde yapılır. Başka branch'e (özellikle `algo/ppo`
 > veya `main`) **dokunma**, oraya **push etme**.
