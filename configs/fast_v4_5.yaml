@@ -1,0 +1,47 @@
+# v4.5 — v4.4'ün KEŞİF ayarını koru (5 oda, 167 voxel) + güçlü hayatta-kalma sinyali.
+#   v4.4 dersi: far_voxel 1.0 ile 5 oda/167 voxel KEŞFEDİYOR ama %97 çarpıyor —
+#     çünkü çarpışma -10, keşif kazancına (+137) göre çok küçük; ajan keşfedip -10'u yutuyor.
+#   v4.5 fikri: keşif tamamlanınca (tüm voxel bulunca) ödül kalmaz; tek terminal seçenek
+#     çarpışma(-X) ya da timeout(0). collision_penalty 10->30 => "gez SONRA hayatta kal" optimal.
+#     far_voxel/room aynı (breadth'i kaybetme), idle düşük (donup-kalma yok).
+env:
+  max_episode_steps: 2500
+  seed: 42
+  lidar_history: 2
+  room_bonus: 30.0
+  idle_penalty: 0.06
+  idle_grace: 30
+  collision_penalty: 30.0    # 10 -> 30 (keşif sonrası hayatta kalmayı zorla)
+  far_voxel_bonus: 1.0       # v4.4 ile ayni (breadth'i koru)
+ppo:
+  policy: MlpPolicy
+  learning_rate: 0.0003
+  lr_schedule: linear
+  lr_final: 1.0e-05
+  n_steps: 1024
+  batch_size: 512
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.008
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+train:
+  version: fast_v4_5
+  n_envs: 8
+  total_timesteps: 2000000
+  save_freq: 100000
+  resume_from: null
+  log_dir: ./runs/fast_v4_5
+  ckpt_dir: ./runs/fast_v4_5/checkpoints
+  tb_log: ./runs/fast_v4_5/tb
+  vec_normalize:
+    enabled: true
+    norm_obs: false
+    norm_reward: true
+    clip_reward: 10.0
