@@ -1,0 +1,45 @@
+# v4.10 — ŞAMPİYONU UZUN EĞİT: v4.8 (%0 çarpışma) ayarı SABIT, sadece 2M->5M.
+#   Son temiz deney: ödülü hiç değiştirme (collision 25 sihirli nokta), sadece daha uzun eğit.
+#   Hipotez: %0 çarpışma + 5 odayı KORU, daha verimli/derin tarama -> voxel 117 -> 130+.
+#   Geçmezse v4.8 NIHAI (frontier yakınsadı: 22 çöküyor, 25 optimal, 30 %8).
+env:
+  max_episode_steps: 2500
+  seed: 42
+  lidar_history: 2
+  room_bonus: 30.0
+  idle_penalty: 0.06
+  idle_grace: 30
+  collision_penalty: 25.0   # v4.8 sihirli nokta — SABIT
+  far_voxel_bonus: 1.0
+ppo:
+  policy: MlpPolicy
+  learning_rate: 0.0003
+  lr_schedule: linear
+  lr_final: 1.0e-05
+  n_steps: 1024
+  batch_size: 512
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.008
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+train:
+  version: fast_v4_10
+  n_envs: 8
+  total_timesteps: 5000000   # 2M -> 5M (şampiyonu derinleştir, ödül sabit)
+  save_freq: 200000
+  resume_from: null
+  log_dir: ./runs/fast_v4_10
+  ckpt_dir: ./runs/fast_v4_10/checkpoints
+  tb_log: ./runs/fast_v4_10/tb
+  vec_normalize:
+    enabled: true
+    norm_obs: false
+    norm_reward: true
+    clip_reward: 10.0

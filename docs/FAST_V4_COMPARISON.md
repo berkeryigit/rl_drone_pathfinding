@@ -17,6 +17,7 @@ Hedef: **çarpışmadan MAKSİMUM voxel tara.**
 | v4.6 | far 1.5 + collision 30 + 3M | %93 | **176** | **247** | 5.0 | **%30.9** | %54 |
 | v4.7 | v4.5 + idle↑ (0.08/grace20) + 4M | %72 ❌ | 72 | 79 | 5.0 | %9.4 | %85 (idle backfire) |
 | **v4.8** | **far 1.0 + collision 25** | **%0** ✅✅ | 117 | 123 | **5.0** | %13.8 | **%100** |
+| v4.9 | far 1.0 + collision 22 | %37 ❌ | 119 | 138 | 2.0 (çöktü) | %18.2 | %89 |
 
 ## Ana Bulgular (rapor için)
 
@@ -45,6 +46,9 @@ Hedef: **çarpışmadan MAKSİMUM voxel tara.**
 > Sezgiye aykırı bulgu: collision_penalty 30→25 ile çarpışma %8→%0'a DÜŞTÜ. Çok yüksek ceza (30)
 > ajanı aşırı-tedirgin yapıp ara sıra hatalı manevraya itiyordu; 25 daha temiz, tam güvenli bir
 > politikaya yakınsadı. Ceza ölçeği "ne kadar yüksek o kadar güvenli" DEĞİL — bir tatlı nokta var.
+>
+> Tatlı nokta DAR: collision 22 (v4.9) ise 2-oda yerel optimumuna çöküp %37 çarpıştı.
+> Yani collision_penalty ∈ {22:çöktü, 25:OPTIMAL, 30:%8} → 25 benzersiz iyi.
 
 v4.4/v4.6 ham keşifte daha yüksek (167–176 voxel) ama %93–97 çarpışma → gerçek görevde drone düşer, "çarpışmadan" kısıtını ihlal eder. v4.8 hem güvenli hem tam kapsamlı (5 oda).
 
