@@ -22,6 +22,7 @@ Hedef: **çarpışmadan MAKSİMUM voxel tara.**
 | v4.11 | 5M + collision 50 | %100 ❌ | 147 | 197 | 4.9 | %27.3 | %29 |
 | v4.12 | v4.8'den resume + lr1e-4 + coll45 (3M) | %24 | 90 | 115 | 4.52 | %13.2 | %77 |
 | v4.13 | v4.10 ayarı + **8M eğitim** | %26 | 134 | 140 | 4.99 | %15.6 | %95 |
+| v5.0 | v4.10 ayarı + **lidar_history=3** | %35 | 106 | 125 | 4.81 | %15.4 | %88 |
 
 ## Ana Bulgular (rapor için)
 
@@ -64,14 +65,19 @@ v4.4/v4.6 ham keşifte daha yüksek (167–176 voxel) ama %93–97 çarpışma �
 
 ---
 
-## NİHAİ SONUÇ — Optimizasyon Yakınsadı (13 versiyon)
+10. **Obs zenginliği (lidar_history=3) trade-off'u kıramadı.** v5.0'da engel geçmişini 2→3 kareye çıkarmak (hız + ivme) v4.10 ayarıyla: çarpışma %54→%35 AMA voxel 281→106. Yani daha temkinli ama daha az kapsamlı — v4.8 tarafından domine edilen bir nokta (%0/117 > %35/106). Darboğaz gözlem değil, keşif↔kaçınma'nın temel gerilimi.
 
-Üç bağımsız yaklaşım denendi ve hepsi aynı sonuca vardı:
-- **Ödül-şekillendirme** (room_bonus, far_voxel, idle, collision_penalty, entropy): v4.1–v4.9
-- **Eğitim süresi** (2M / 3M / 5M): v4.6, v4.10, v4.11
+---
+
+## NİHAİ SONUÇ — Optimizasyon Yakınsadı (14 deney)
+
+**DÖRT bağımsız lever kategorisi** denendi, hepsi aynı Pareto cephesini doğruladı:
+- **Ödül-şekillendirme** (room_bonus, far_voxel, idle, collision_penalty, entropy): v4.0–v4.9
+- **Eğitim süresi** (2M / 3M / 5M / 8M; non-monoton, 5M'de tepe): v4.6, v4.10, v4.11, v4.13
 - **Curriculum / resume** (güvenli tabandan nazik genişletme): v4.12
+- **Gözlem zenginliği** (lidar_history 2→3): v5.0
 
-**Bu ortam + ödül + 2D-aksiyon + lidar_history=2 kurulumunda keşif-kapsamı ↔ güvenlik ödünleşimi TEMELDİR.** İki Pareto-optimal uç var; arada "hem yüksek kapsam hem sıfır çarpışma" noktası yok (bkz. `docs/figures/fast_pareto.png`).
+**Bu ortam + ödül + 2D-aksiyon kurulumunda keşif-kapsamı ↔ güvenlik ödünleşimi TEMELDİR.** İki Pareto-optimal uç var; arada "hem yüksek kapsam hem sıfır çarpışma" noktası yok (bkz. `docs/figures/fast_pareto.png`).
 
 ### Teslim edilen iki politika
 
@@ -85,3 +91,16 @@ v4.4/v4.6 ham keşifte daha yüksek (167–176 voxel) ama %93–97 çarpışma �
 > Gazebo (yavaş, gerçekçi fizik) vs numpy/Gymnasium (hızlı, ~100x): aynı ortam, iki ayaklı kanıt.
 > Gazebo'da ~157 voxel/2 oda referansı; hızlı sim'de v4.8 ile %0 çarpışma + 5 oda güvenli kapsama,
 > v4.10 ile %44.5 kapsama / 6 oda kapasite tavanı.
+
+## Gelecek İş (cepheyi sağa kaydırmak için — sabit kısıtların DIŞINDA)
+
+Tüm "kısıt-içi" kaldıraçlar tükendi. Trade-off'u kırmak (hem yüksek kapsam hem düşük çarpışma)
+için artık projenin sabitlerini değiştirmek gerekir:
+- **Yinelemeli politika (RecurrentPPO/LSTM):** sabit kare-yığını yerine bellek — engel dinamiğini
+  uzun ufukta entegre edebilir, kaçınmayı kapsamdan ayrıştırabilir.
+- **Hareketli engel hızında müfredat (curriculum):** yavaş engellerle başlayıp hızlandırmak.
+- **Eylem uzayı / gözlem değişikliği:** ivme-kontrolü, engel-merkezli gözlem kanalları.
+- **Farklı algoritma:** SAC (off-policy, örnek-verimli) — aynı ortamda kıyas.
+
+Bunlar dönem projesinin sabit kıstaslarını (harita/spawn/2D-aksiyon/PPO) değiştirir; mevcut sonuç
+bu kıstaslar altında KESİN ve eksiksizdir.
