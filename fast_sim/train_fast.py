@@ -39,7 +39,12 @@ def _make_env(env_cfg, i=0):
         return Monitor(
             FastDroneEnv(max_episode_steps=env_cfg["max_episode_steps"],
                          seed=(env_cfg.get("seed") or 0) + i, env_id=i,
-                         lidar_history=int(env_cfg.get("lidar_history", 1))),
+                         lidar_history=int(env_cfg.get("lidar_history", 1)),
+                         room_bonus=float(env_cfg.get("room_bonus", 10.0)),
+                         idle_penalty=float(env_cfg.get("idle_penalty", 0.05)),
+                         idle_grace=int(env_cfg.get("idle_grace", 40)),
+                         collision_penalty=float(env_cfg.get("collision_penalty", 10.0)),
+                         far_voxel_bonus=float(env_cfg.get("far_voxel_bonus", 0.0))),
             info_keywords=("explored_voxels", "visited_rooms"))
     return f
 

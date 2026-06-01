@@ -76,12 +76,20 @@ class FastDroneEnv(gym.Env):
     """Gazebo DroneExplorationEnv'in hızlı numpy analoğu (v2.0 ödülü)."""
     metadata = {"render_modes": []}
 
-    def __init__(self, max_episode_steps=2500, seed=None, env_id=0, lidar_history=1):
+    def __init__(self, max_episode_steps=2500, seed=None, env_id=0, lidar_history=1,
+                 room_bonus=10.0, idle_penalty=0.05, idle_grace=IDLE_GRACE,
+                 collision_penalty=10.0, far_voxel_bonus=0.0):
         super().__init__()
         self.max_episode_steps = max_episode_steps
         # lidar_history>1: son K lidar karesi gözleme eklenir -> ajan ENGEL HAREKETINI
         # (hizini) cikarip hareketli engelden kacinabilir. =1: orijinal 40-d.
         self.lidar_history = max(1, int(lidar_history))
+        # --- v4.x parametrize odul (config'ten ayarlanir; max voxel deneyleri icin) ---
+        self.room_bonus = float(room_bonus)            # yeni odaya gecis bonusu (genislik)
+        self.idle_penalty = float(idle_penalty)        # yeni voxel yoksa ceza (yerel taramayi bitir)
+        self.idle_grace = int(idle_grace)              # bu kadar adim sonra idle cezasi
+        self.collision_penalty = float(collision_penalty)
+        self.far_voxel_bonus = float(far_voxel_bonus)  # baslangictan uzak voxel'e ekstra (uza git)
         self.action_space = spaces.Box(low=np.array([-1, -1], np.float32),
                                        high=np.array([1, 1], np.float32), dtype=np.float32)
         obs_dim = LIDAR_BINS * self.lidar_history + 8
@@ -207,13 +215,16 @@ class FastDroneEnv(gym.Env):
         # ----- ÖDÜL (v2.0 — üçlü eval'de en iyi) -----
         reward = -0.01
         if new_voxel:
-            reward += 1.0; self._idle = 0
+            # uzak hücreler daha değerli (far_voxel_bonus>0 -> genişliğe it)
+            far = min(1.0, math.hypot(self.x - SPAWN_X, self.y - SPAWN_Y) / 16.0)
+            reward += 1.0 + self.far_voxel_bonus * far
+            self._idle = 0
         else:
             self._idle += 1
-            if self._idle > IDLE_GRACE:
-                reward -= 0.05
+            if self._idle > self.idle_grace:
+                reward -= self.idle_penalty
         if new_room:
-            reward += 10.0
+            reward += self.room_bonus
         if scan_min < OMNI_PENALTY_DIST:
             reward -= 0.5 * (OMNI_PENALTY_DIST - scan_min) / OMNI_PENALTY_DIST
         forward_open = float(lidar_obs[FORWARD_BIN])
@@ -222,7 +233,7 @@ class FastDroneEnv(gym.Env):
 
         terminated = scan_min < COLLISION_DIST
         if terminated:
-            reward -= 10.0
+            reward -= self.collision_penalty
         truncated = self._step >= self.max_episode_steps
 
         info = {"explored_voxels": int(self._explored.sum()),

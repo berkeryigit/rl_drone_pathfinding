@@ -1,0 +1,49 @@
+# ============================================================================
+# v4.0 — HIZLI sim, lidar-geçmişi TABAN (çarpışma %1 çözüldü), 2M
+#   Berker: v4.0→v4.6 progresyon, her biri 2M, MAX VOXEL hedefi.
+#   v4.0 = referans: lidar_history=2 + v2.0 ödül (default param). ~157 voxel / 2 oda.
+#   Sonraki versiyonlar ödül parametrelerini değiştirerek KAPSAMA GENİŞLİĞİNİ artırır.
+# ============================================================================
+env:
+  max_episode_steps: 2500
+  seed: 42
+  lidar_history: 2          # çarpışma çözümü (engel hareketi) — TÜM v4.x'te kalır
+  room_bonus: 10.0          # v4.1+: artırılacak (genişlik)
+  idle_penalty: 0.05        # v4.2+: güçlendirilecek
+  idle_grace: 40
+  collision_penalty: 10.0   # v4.4+: düşürülebilir (lidar-geçmişi güvenli kıldı)
+  far_voxel_bonus: 0.0      # v4.3+: uzak hücre bonusu
+
+ppo:
+  policy: MlpPolicy
+  learning_rate: 0.0003
+  lr_schedule: linear
+  lr_final: 1.0e-05
+  n_steps: 1024
+  batch_size: 512
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.008
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+
+train:
+  version: fast_v4_0
+  n_envs: 8
+  total_timesteps: 2000000
+  save_freq: 100000
+  resume_from: null
+  log_dir: ./runs/fast_v4_0
+  ckpt_dir: ./runs/fast_v4_0/checkpoints
+  tb_log: ./runs/fast_v4_0/tb
+  vec_normalize:
+    enabled: true
+    norm_obs: false
+    norm_reward: true
+    clip_reward: 10.0
