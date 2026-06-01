@@ -621,3 +621,48 @@ Aktif eğitim süreci yok. `training_metrics.csv` 2026-05-30 22:00'dan beri 14 �
 ### Müdahale
 **Yok** — configs/ppo.yaml v3.0'da, tarihsel olarak kanıtlanmış (peak=110.3 @ 610k, v8 all-time +113'ün %97'si). Aktif eğitim süreci yok; %80+ güven eşiğini aşan hyperparameter sorunu tespit edilmedi. v10 için gerekli değişiklikler env kodu düzeyinde (`lidar_history=2`, `collision_penalty=25`); yaml-only müdahale bu gerçekleri yansıtmaz ve yanıltıcı olur.
 ---
+
+## [2026-06-01 14:30 UTC]
+**Step:** 610,000 (Gazebo v3.0 — kasıtlı durduruldu, peak=110.3) | **ep_rew_mean:** −173.85 (CSV SON KAYIT — STALE, v9/v10 kalıntısı, geçersiz) | **entropy:** −5.67 (ref: train_v3_floors @312k) | **std:** 1.63 (aynı referans)
+
+### Durum
+**Aktif eğitim süreci yok.** `training_metrics.csv` 2026-05-30 22:00'dan beri step=193,248 ile 24+ saat DONMUŞ — v9/v10 crash-loop kalıntısı, mevcut proje durumunu hiç yansıtmıyor. Gerçek durum: Gazebo v3.0 bugün 610k adımda peak=110.3 ile kasıtlı sonlandırıldı; fast-sim zinciri v4.1→v5.0 kesin yakınsama bulgusuna ulaştı (4 kaldıraç kategorisi — ödül, eğitim süresi, curriculum, obs — denendi, Pareto cephesi netleşti). Proje bir sonraki yapısal adım olan Gazebo v10 için env kodu değişikliği bekliyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV son 20 satır TAMAMEN GEÇERSİZ: tümü özdeş (step=193,248, ep_rew_mean=−173.85, 2026-05-30 22:00 ile 03:01 UTC arası), v9_newmap crash-loop'unun donmuş kalıntısı. Herhangi bir trend analizi yapılamaz.
+- **Gerçek Gazebo v3.0 eğri (interventions.jsonl):** 434k → ep_rew_mean=99.84, peak=102.54 (06-01 01:30 UTC, taze kırılmıştı); 610k → peak=110.3 (kasıtlı durdurma, 08:30 UTC notu). Olgunlaşma fazındaydı — plato değil, intentional stop.
+- **+15'lik oda sıçraması:** peak=110.3 ≈ 7×15=105 oda bonusu + ~5 voxel/frontier. Eğitim boyunca politika tutarlı 7+ oda keşfetti.
+- **Fast-sim Pareto cephesi (versions.jsonl, 06-01 06:48–08:05):** v4.8 @1.5M → collision %0, rooms_mean=5.0, voxels=117 (deploy-ready). v4.10 @5M → collision %54, voxels=281, rooms_mean=5.76 (6/6 oda AMA güvensiz). v4.13 @8M → politika regularize oldu (voxels 281→134); "daha uzun eğit = daha çok voxel" YOK. v5.0 (lidar_history 2→3) → v4.8 tarafından domine edildi (%35/106 < %0/117). Tüm 4 kaldıraç tükendi; yapısal trade-off kırılamadı.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz soru: configs/ppo.yaml v3.0'da lr=3e-4→1e-5 linear decay (1.5M boyunca). v9'un sabit 7.5e-5'i çok önceki oturumlarda terk edildi — doğru karardı. Kanıt: v3.0 yalnızca 610k adımda v8 all-time rekorunun (%113 @ 1.6M) %97'sine (110.3) erişti. Lineer decay bu harita için kesinleşmiş doğru strateji.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Doğrudan v3.0 run verisi yok (CSV bozuk, TB bu container'da yok). En yakın güvenilir referans: train_v3_floors @312k → entropy=−5.67, std=1.63.
+- −4.0 uyarı eşiğinin çok altında (daha negatif = daha yüksek entropi ✓), std=1.63 alarm eşiği 0.70'in 2.3× üstünde ✓.
+- ent_coef=0.008 (görev tanımındaki 0.0015'in 5.3×'i) deterministikleşmeye karşı güçlü bariyer sağladı; 610k boyunca hiç alarm gelmedi.
+- **Fast-sim dersi (kritik):** ent_coef artırmak trade-off'u kıramadı. v4.2'de ent_coef çok yüksek → collision %85. Keşif kalitesi obs tasarımından (lidar_history=2), entropi artışından değil geliyor.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi bekleniyor?**
+- Artık geçerli soru değil. Gazebo v3.0 eğitim sırasında tutarlı 7+ oda keşfetti; ek step ihtiyacı yok.
+- **Darboğaz "kaç adım daha" değil, deterministic eval-train gap:** Policy stochastic modda 6 oda, deterministic modda tutarsız. Kök neden: lidar_history=1 ile hareketli engel hızı gözlemlenemiyor. Fast-sim v4.8 (lidar_history=2) ile deterministik gap kapandı (%0 collision, rooms_mean=5.0 tutarlı).
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`lidar_history=2` Gazebo env entegrasyonu (obs: 41-d → 72-d):** Fast-sim zinciri boyunca collision %80→%1'e indiren TEK yapısal değişiklik. `drone_exploration_env.py`'de format: [t-1: 32 lidar] + [t: 32 lidar] + [durum: 8]. YAML değişikliği değil, env kodu; bu olmadan Gazebo v10 v3.0'ın tekrarı olur.
+2. **`collision_penalty: 10.0 → 25.0` (env reward satırı, yaml bağımsız):** Fast-sim 4-nokta tarama ile sweet spot kesinleşti: 22=yerel optimuma çöktü, **25=%0 collision (optimal)**, 30=%8, 50=collapse. Mevcut v3.0 config'inde penalty=10.0, fast-sim "çöküş eşiği" olan 22'nin bile altında. Değişiklik `drone_exploration_env.py`'deki tek reward satırı; ppo.yaml'da karşılığı yok.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Hyperparameter açısından: HAYIR.** Aktif eğitim süreci yok; ppo.yaml değişikliği hiçbir çalışan sürece etki edemez.
+- **CSV monitoring kalıcı bozuk:** 24+ saattir dondurulmuş. Tüm gerçek veri kaynağı interventions.jsonl + versions.jsonl + train log dosyaları. Monitor altyapısı yeniden yazılmadan düzelmeyecek.
+- **Proje karar noktası:** (A) Fast-sim v4.8 sonuçlarını nihai teslim al (collision %0, rooms=5, voxels=117) VEYA (B) Gazebo v10 başlat (env kodu: lidar_history=2 + collision_penalty=25 → ardından yaml güncelle). Bu hyperparameter kararı değil, mühendislik tasarım kararı.
+- **ppo.yaml durumu:** v3.0'da kilitli (log_dir=runs/ppo_v3_best, total=1.5M, resume_from=null). Env kodu hazır olmadan yaml güncellemesi yanıltıcı olur; `version: v10` + `log_dir: ./runs/ppo_v10` env kodu commit'iyle birlikte değiştirilmeli.
+
+### v10 Önerisi
+1. **`drone_exploration_env.py`'e lidar_history=2 ekle (obs 41→72-d):** [t-1: 32 lidar | t: 32 lidar | durum: 8]. Fast-sim v4.8 kanıtı (1.5M step: collision %0, rooms_mean=5.0, voxels=117). Env kodu hazır olunca ppo.yaml'ı güncelle: `version: v10`, `log_dir: ./runs/ppo_v10`, `resume_from: null`.
+2. **reward'da `collision_penalty: 10.0 → 25.0` (env kodu):** Fast-sim 4-nokta tarama ile sweet spot kesinleşti. Sadece bu iki değişiklik (env kodu düzeyinde) Gazebo v10'u fast-sim v4.8 seviyesine taşır. ppo.yaml'daki hyperparameter'lar (lr schedule, ent_coef=0.008, net_arch=[256,256]) v3.0'daki haliyle v10 için de optimal.
+
+### Müdahale
+**Yok** — configs/ppo.yaml v3.0'da, tarihsel olarak kanıtlanmış (peak=110.3 @ 610k, v8 all-time +113'ün %97'si yalnızca %41 budget'ta). Aktif eğitim süreci yok; %80+ güven eşiğini aşan hyperparameter sorunu tespit edilmedi. v10 için gerekli değişiklikler (lidar_history=2, collision_penalty=25) env kodu düzeyinde; yaml-only müdahale gerçekleri yansıtmaz ve yanıltıcı olur. Env kodu commit'i bekleniyor.
+---
