@@ -1,0 +1,44 @@
+# v4.2 — GENİŞLİK PUSH: uzak-voxel bonusu + güçlü idle + yüksek entropi (keşif).
+#   v4.1 dersi: room_bonus tek başına 2-oda yerel optimumundan çıkaramadı (keşif problemi).
+#   v4.2 stack: far_voxel (uza git) + idle (yerel taramayı bitir) + ent_coef (uzak odayı keşfet).
+env:
+  max_episode_steps: 2500
+  seed: 42
+  lidar_history: 2
+  room_bonus: 30.0
+  idle_penalty: 0.15        # 0.05 -> 0.15 (yerel taramayı bitir, yeni alana git)
+  idle_grace: 20            # 40 -> 20 (daha erken zorla)
+  collision_penalty: 10.0
+  far_voxel_bonus: 2.5      # 0 -> 2.5 (başlangıçtan uzak hücre +1 yerine +3.5'e kadar)
+ppo:
+  policy: MlpPolicy
+  learning_rate: 0.0003
+  lr_schedule: linear
+  lr_final: 1.0e-05
+  n_steps: 1024
+  batch_size: 512
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.02            # 0.008 -> 0.02 (daha çok keşif -> uzak odaları keşfet)
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+train:
+  version: fast_v4_2
+  n_envs: 8
+  total_timesteps: 2000000
+  save_freq: 100000
+  resume_from: null
+  log_dir: ./runs/fast_v4_2
+  ckpt_dir: ./runs/fast_v4_2/checkpoints
+  tb_log: ./runs/fast_v4_2/tb
+  vec_normalize:
+    enabled: true
+    norm_obs: false
+    norm_reward: true
+    clip_reward: 10.0
