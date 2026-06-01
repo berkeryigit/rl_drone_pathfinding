@@ -35,6 +35,7 @@ pgrep -f "ros2 launch rl_drone_pathfinding sim_launch.py" >/dev/null || {
     trap "kill $SIM_PID 2>/dev/null; pkill -f 'gz sim' 2>/dev/null; pkill -f parameter_bridge 2>/dev/null" EXIT INT TERM
 }
 
+export PYTHONPATH="$PYTHONPATH:$(pwd)/ros2_ws/src/rl_drone_pathfinding"
 python3 -m rl_drone_pathfinding.agents.$AGENT_MODULE \
     --config "$CONFIG" \
     --model "$MODEL" \

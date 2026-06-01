@@ -54,7 +54,7 @@ def generate_launch_description():
         arguments=[
             '-name', 'rl_drone',
             '-file', drone_sdf,
-            '-x', '4.0', '-y', '-4.0', '-z', '0.6',
+            '-x', '-4.0', '-y', '-4.0', '-z', '0.6',
             '-Y', '1.57',
         ],
     )
