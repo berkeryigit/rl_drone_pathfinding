@@ -18,6 +18,7 @@ Hedef: **çarpışmadan MAKSİMUM voxel tara.**
 | v4.7 | v4.5 + idle↑ (0.08/grace20) + 4M | %72 ❌ | 72 | 79 | 5.0 | %9.4 | %85 (idle backfire) |
 | **v4.8** | **far 1.0 + collision 25** | **%0** ✅✅ | 117 | 123 | **5.0** | %13.8 | **%100** |
 | v4.9 | far 1.0 + collision 22 | %37 ❌ | 119 | 138 | 2.0 (çöktü) | %18.2 | %89 |
+| v4.10 | v4.8 ayarı + **5M eğitim** | %54 | **281** | **328** | **5.76 (max 6!)** | **%44.5** | %95 |
 
 ## Ana Bulgular (rapor için)
 
@@ -35,6 +36,8 @@ Hedef: **çarpışmadan MAKSİMUM voxel tara.**
 5. **Ödül-şekillendirme yakınsamayı kırabilir.** v4.3 (agresif çoklu değişiklik) %100 çarpışma + voxel çöküşü → PPO kötü local optimum. Tek-değişken, kademeli ilerleme daha güvenli.
 
 6. **Yumuşak idle cezası güvenlik için kritik.** v4.7'de idle_penalty 0.06→0.08 + grace 30→20 ile ajanı sürekli harekete zorlamak GERİ TEPTİ: engel yanında yavaşlayıp/duramadığından çarpışma %8→%72, voxel 114→71. v4.5'in düşük idle'ı ajanın güvenli durup-bekleme manevrasına izin veriyor.
+
+7. **EĞİTİM SÜRESİ kendisi bir trade-off kaldıracı.** Aynı ödül (collision 25), 2M→5M: voxel 117→281 (2.4x!), union kapsama %13.8→%44.5, oda 5.0→5.76 (TÜM 6 ODA) — AMA çarpışma %0→%54. Daha uzun eğitim politikayı keşif-sömürüsüne (exploit) itiyor: per-voxel ödül birikimi çarpışma cezasını yine eziyor. Checkpoint sweep (2.6M %43, 3.2M %100, 4.4M %72): 2M'den sonra güvenlik anında bozuluyor, "hem kapsamlı hem güvenli" tek bir ara nokta YOK. Çözüm yolu: 5M kapsamlılığı + ÖLÇEKLENMİŞ çarpışma cezası (v4.11+).
 
 ## EN İYİ POLİTİKA → **v4.8** (SIFIR çarpışma)
 

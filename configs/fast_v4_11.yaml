@@ -1,0 +1,46 @@
+# v4.11 — 5M KAPSAMLILIĞINI KORU + GÜVENLİĞİ ZORLA: collision 25->50, 5M.
+#   v4.10 dersi: 5M eğitim voxel'i 117->281 patlatti (6 oda, %44.5 kapsama) AMA çarpışma %0->%54
+#     (per-voxel ödül birikimi çarpışma-25'i eziyor). Checkpoint sweep: 2M sonrası anında bozuluyor.
+#   v4.11 fikri: cezayı ÖLÇEKLE (25->50) ki uzun eğitimin kapsamlı politikası güvenli kalsın.
+#     Hedef: 200+ voxel + çarpışma <%20 (v4.8'in %0/117'sini kapsamada KATBEKAT geç, güvenliği koru).
+env:
+  max_episode_steps: 2500
+  seed: 42
+  lidar_history: 2
+  room_bonus: 30.0
+  idle_penalty: 0.06
+  idle_grace: 30
+  collision_penalty: 50.0   # 25 -> 50 (5M sömürüsünü dengele)
+  far_voxel_bonus: 1.0
+ppo:
+  policy: MlpPolicy
+  learning_rate: 0.0003
+  lr_schedule: linear
+  lr_final: 1.0e-05
+  n_steps: 1024
+  batch_size: 512
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.008
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+train:
+  version: fast_v4_11
+  n_envs: 8
+  total_timesteps: 5000000
+  save_freq: 200000
+  resume_from: null
+  log_dir: ./runs/fast_v4_11
+  ckpt_dir: ./runs/fast_v4_11/checkpoints
+  tb_log: ./runs/fast_v4_11/tb
+  vec_normalize:
+    enabled: true
+    norm_obs: false
+    norm_reward: true
+    clip_reward: 10.0
