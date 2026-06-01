@@ -1,0 +1,45 @@
+# v4.4 — GÜVENLİ tabana HAFİF breadth (v4.1 safe base + ılımlı far_voxel).
+#   v4.3 dersi: agresif denge -> 100% çarpışma (kötü yakınsama). Geri çekil.
+#   v4.4: v4.1'in güvenli ayarı (ent 0.008, collision 10, idle 0.05) + far_voxel 1.0
+#         (hafif uza-git dürtüsü). Hedef: 3-4 oda + çarpışma düşük kalsın.
+env:
+  max_episode_steps: 2500
+  seed: 42
+  lidar_history: 2
+  room_bonus: 30.0
+  idle_penalty: 0.06
+  idle_grace: 30
+  collision_penalty: 10.0
+  far_voxel_bonus: 1.0      # ılımlı (v4.2'nin 2.5'i değil)
+ppo:
+  policy: MlpPolicy
+  learning_rate: 0.0003
+  lr_schedule: linear
+  lr_final: 1.0e-05
+  n_steps: 1024
+  batch_size: 512
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.008          # güvenli (v4.2'nin 0.02'si değil)
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+train:
+  version: fast_v4_4
+  n_envs: 8
+  total_timesteps: 2000000
+  save_freq: 100000
+  resume_from: null
+  log_dir: ./runs/fast_v4_4
+  ckpt_dir: ./runs/fast_v4_4/checkpoints
+  tb_log: ./runs/fast_v4_4/tb
+  vec_normalize:
+    enabled: true
+    norm_obs: false
+    norm_reward: true
+    clip_reward: 10.0
