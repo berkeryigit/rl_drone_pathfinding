@@ -81,13 +81,8 @@
           <material><ambient>0.75 0.75 0.75 1</ambient><diffuse>0.75 0.75 0.75 1</diffuse></material></visual>
       </link>
 
-      <!-- Tavan -->
-      <link name="roof">
-        <pose>0 0 2.5 0 0 0</pose>
-        <collision name="c"><geometry><box><size>16 16 0.1</size></box></geometry></collision>
-        <visual name="v"><geometry><box><size>16 16 0.1</size></box></geometry>
-          <material><ambient>0.3 0.3 0.3 1</ambient><diffuse>0.35 0.35 0.35 1</diffuse></material></visual>
-      </link>
+      <!-- Tavan KALDIRILDI: odaları üstten izleyebilmek için (lidar yatay olduğundan
+           davranışı etkilemez; drone z=0.6'da hover, tavan z=2.5'taydı). -->
 
       <!-- Sol dikey duvar (x=-2), kapi y in [-4,-2]
            Alt segment: y in [-8,-4], uzunluk=4, merkez=-6
