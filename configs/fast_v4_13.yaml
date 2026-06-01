@@ -1,0 +1,45 @@
+# v4.13 — KAPSAM UCUNU ZORLA (MAX VOXEL): v4.10 ayarı (collision 25) + 8M eğitim.
+#   v4.10 (5M) = 281 voxel / 6 oda / %44.5 kapsama (kapsam ucu). 5M'de hâlâ kapsama artıyordu.
+#   v4.13: 8M -> kapsama tavanını gör (MAX VOXEL hedefi). Çarpışma ~%50 kalır (kapsam ucu, deploy değil).
+#   Bu, "güvenli=v4.8" yanında "ham keşif kapasitesi tavanı" kanıtını uçlaştırır.
+env:
+  max_episode_steps: 2500
+  seed: 42
+  lidar_history: 2
+  room_bonus: 30.0
+  idle_penalty: 0.06
+  idle_grace: 30
+  collision_penalty: 25.0
+  far_voxel_bonus: 1.0
+ppo:
+  policy: MlpPolicy
+  learning_rate: 0.0003
+  lr_schedule: linear
+  lr_final: 1.0e-05
+  n_steps: 1024
+  batch_size: 512
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.008
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+train:
+  version: fast_v4_13
+  n_envs: 8
+  total_timesteps: 8000000   # MAX VOXEL: kapsama tavanını gör
+  save_freq: 500000
+  resume_from: null
+  log_dir: ./runs/fast_v4_13
+  ckpt_dir: ./runs/fast_v4_13/checkpoints
+  tb_log: ./runs/fast_v4_13/tb
+  vec_normalize:
+    enabled: true
+    norm_obs: false
+    norm_reward: true
+    clip_reward: 10.0

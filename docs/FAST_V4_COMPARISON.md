@@ -19,6 +19,8 @@ Hedef: **çarpışmadan MAKSİMUM voxel tara.**
 | **v4.8** | **far 1.0 + collision 25** | **%0** ✅✅ | 117 | 123 | **5.0** | %13.8 | **%100** |
 | v4.9 | far 1.0 + collision 22 | %37 ❌ | 119 | 138 | 2.0 (çöktü) | %18.2 | %89 |
 | v4.10 | v4.8 ayarı + **5M eğitim** | %54 | **281** | **328** | **5.76 (max 6!)** | **%44.5** | %95 |
+| v4.11 | 5M + collision 50 | %100 ❌ | 147 | 197 | 4.9 | %27.3 | %29 |
+| v4.12 | v4.8'den resume + lr1e-4 + coll45 (3M) | %24 | 90 | 115 | 4.52 | %13.2 | %77 |
 
 ## Ana Bulgular (rapor için)
 
@@ -55,5 +57,28 @@ Hedef: **çarpışmadan MAKSİMUM voxel tara.**
 
 v4.4/v4.6 ham keşifte daha yüksek (167–176 voxel) ama %93–97 çarpışma → gerçek görevde drone düşer, "çarpışmadan" kısıtını ihlal eder. v4.8 hem güvenli hem tam kapsamlı (5 oda).
 
+8. **Curriculum (resume) trade-off'u kıramadı.** v4.12'de v4.8'in %0-çarpışma politikasından devam + nazik fine-tune (lr 1e-4) + collision 45 ile genişletmek İKİ EKSENDE de geriletti: çarpışma %0→%24, voxel 117→90. Güvenli taban bile daha çok keşfetmeye zorlanınca temkinini kaybediyor.
+
+---
+
+## NİHAİ SONUÇ — Optimizasyon Yakınsadı (13 versiyon)
+
+Üç bağımsız yaklaşım denendi ve hepsi aynı sonuca vardı:
+- **Ödül-şekillendirme** (room_bonus, far_voxel, idle, collision_penalty, entropy): v4.1–v4.9
+- **Eğitim süresi** (2M / 3M / 5M): v4.6, v4.10, v4.11
+- **Curriculum / resume** (güvenli tabandan nazik genişletme): v4.12
+
+**Bu ortam + ödül + 2D-aksiyon + lidar_history=2 kurulumunda keşif-kapsamı ↔ güvenlik ödünleşimi TEMELDİR.** İki Pareto-optimal uç var; arada "hem yüksek kapsam hem sıfır çarpışma" noktası yok (bkz. `docs/figures/fast_pareto.png`).
+
+### Teslim edilen iki politika
+
+| Politika | Dosya | Çarpışma | Voxel | Oda | Kapsama | Ne zaman |
+|---|---|---|---|---|---|---|
+| **GÜVENLİ** (v4.8) | `runs/fast_v4_8/checkpoints/fast_drone_final.zip` | **%0** | 117 | 5.0 | %13.8 | "çarpışmadan keşif" — gerçek görev / deploy |
+| **KAPSAM** (v4.10) | `runs/fast_v4_10/checkpoints/fast_drone_final.zip` | %54 | **281** | **5.76** | **%44.5** | "max voxel" — ham keşif kapasitesi |
+
+**Önerilen ana sonuç: v4.8** — proje hedefi "çarpışmadan maksimum voxel" olduğu için, görevi güvenle tamamlayan tek politika. v4.10 ise modelin kapasite tavanını (6 odanın hepsi, 281 voxel) gösteren tamamlayıcı kanıt.
+
 > Gazebo (yavaş, gerçekçi fizik) vs numpy/Gymnasium (hızlı, ~100x): aynı ortam, iki ayaklı kanıt.
-> Gazebo'da ~157 voxel/2 oda referansı; hızlı sim'de v4.5 ile %8 çarpışma + 5 oda güvenli kapsama.
+> Gazebo'da ~157 voxel/2 oda referansı; hızlı sim'de v4.8 ile %0 çarpışma + 5 oda güvenli kapsama,
+> v4.10 ile %44.5 kapsama / 6 oda kapasite tavanı.
