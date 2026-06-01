@@ -76,12 +76,17 @@ class FastDroneEnv(gym.Env):
     """Gazebo DroneExplorationEnv'in hızlı numpy analoğu (v2.0 ödülü)."""
     metadata = {"render_modes": []}
 
-    def __init__(self, max_episode_steps=2500, seed=None, env_id=0):
+    def __init__(self, max_episode_steps=2500, seed=None, env_id=0, lidar_history=1):
         super().__init__()
         self.max_episode_steps = max_episode_steps
+        # lidar_history>1: son K lidar karesi gözleme eklenir -> ajan ENGEL HAREKETINI
+        # (hizini) cikarip hareketli engelden kacinabilir. =1: orijinal 40-d.
+        self.lidar_history = max(1, int(lidar_history))
         self.action_space = spaces.Box(low=np.array([-1, -1], np.float32),
                                        high=np.array([1, 1], np.float32), dtype=np.float32)
-        self.observation_space = spaces.Box(-1.0, 1.0, shape=(40,), dtype=np.float32)
+        obs_dim = LIDAR_BINS * self.lidar_history + 8
+        self.observation_space = spaces.Box(-1.0, 1.0, shape=(obs_dim,), dtype=np.float32)
+        self._lidar_hist = None
         # ışın açıları (gövde çerçevesi): -pi..pi, ray~180 = ileri (Gazebo ile aynı)
         self._ray_body = np.linspace(-math.pi, math.pi, LIDAR_RAYS, dtype=np.float64)
         self._np_random, _ = gym.utils.seeding.np_random(seed)
@@ -145,12 +150,12 @@ class FastDroneEnv(gym.Env):
         out = ranges[:bs * LIDAR_BINS].reshape(LIDAR_BINS, bs).min(axis=1)
         return np.clip(out / LIDAR_MAX, 0.0, 1.0).astype(np.float32)
 
-    def _make_obs(self, lidar_obs, scan_min):
+    def _make_obs(self, scan_min):
         progress = self._explored.sum() / float(GRID_NXY * GRID_NXY)
         rooms_sc = (max(1, len(self._rooms)) - 1) / float(max(1, N_ROOMS - 1))
         idle_n = min(1.0, self._idle / float(self.max_episode_steps))
         return np.concatenate([
-            lidar_obs,
+            np.concatenate(self._lidar_hist),            # 32*lidar_history (en yeni .. en eski)
             np.array([math.cos(self.yaw), math.sin(self.yaw)], np.float32),
             np.array([np.clip(self.v / V_MAX, -1, 1), np.clip(self.w / W_MAX, -1, 1)], np.float32),
             np.array([progress, rooms_sc], np.float32),
@@ -171,8 +176,10 @@ class FastDroneEnv(gym.Env):
         self._reset_state()
         oc, orad = self._obstacles()
         lidar = self._lidar(oc, orad)
+        lidar_obs = self._bin_lidar(lidar)
+        self._lidar_hist = [lidar_obs.copy() for _ in range(self.lidar_history)]
         self._mark_voxel(); self._rooms.add(_room_id(self.x, self.y))
-        return self._make_obs(self._bin_lidar(lidar), float(lidar.min())), {}
+        return self._make_obs(float(lidar.min())), {}
 
     def step(self, action):
         a = np.asarray(action, np.float32).reshape(-1)
@@ -188,6 +195,8 @@ class FastDroneEnv(gym.Env):
         lidar = self._lidar(oc, orad)
         scan_min = float(lidar.min())
         lidar_obs = self._bin_lidar(lidar)
+        self._lidar_hist.append(lidar_obs)                       # lidar geçmişi (engel hareketi için)
+        self._lidar_hist = self._lidar_hist[-self.lidar_history:]
 
         new_voxel = self._mark_voxel()
         groom = _room_id(self.x, self.y)
@@ -220,7 +229,7 @@ class FastDroneEnv(gym.Env):
                 "visited_rooms": len(self._rooms),
                 "min_lidar": scan_min, "x": self.x, "y": self.y,
                 "collision": bool(terminated)}
-        return self._make_obs(lidar_obs, scan_min), float(reward), terminated, truncated, info
+        return self._make_obs(scan_min), float(reward), terminated, truncated, info
 
 
 if __name__ == "__main__":

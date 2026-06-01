@@ -33,9 +33,10 @@ def main(argv=None):
     ap.add_argument("--episodes", type=int, default=100)
     ap.add_argument("--version", default="fast_v1")
     ap.add_argument("--max-steps", type=int, default=2500)
+    ap.add_argument("--lidar-history", type=int, default=1)
     a = ap.parse_args(argv)
 
-    env = FastDroneEnv(max_episode_steps=a.max_steps)
+    env = FastDroneEnv(max_episode_steps=a.max_steps, lidar_history=a.lidar_history)
     model = PPO.load(a.model)   # norm_obs=False -> ham obs, vecnormalize gerekmez
     print(f"[eval_fast] {a.model} | {a.episodes} ep")
 

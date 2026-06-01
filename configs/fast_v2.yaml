@@ -1,0 +1,44 @@
+# ============================================================================
+# HIZLI sim v2 — LİDAR GEÇMİŞİ (engel hareketi) ile çarpışma çözümü, 5M
+#   * fast_5m: deterministik çarpışma %80 (hareketli engel sınırı; engel hızı obs'te yok).
+#   * v2 FIX: lidar_history=2 -> son 2 kare obs'te (72-d) -> ajan engel HIZINI çıkarır.
+#   * Aynı v2.0 ödülü, episode 2500, net [256,256], n_envs=8, FRESH 5M (~20 dk).
+# ============================================================================
+env:
+  max_episode_steps: 2500
+  seed: 42
+  lidar_history: 2          # son 2 lidar karesi -> obs 72-d (engel hareketi)
+
+ppo:
+  policy: MlpPolicy
+  learning_rate: 0.0003
+  lr_schedule: linear
+  lr_final: 1.0e-05
+  n_steps: 1024
+  batch_size: 512
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.008
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  policy_kwargs:
+    net_arch:
+      pi: [256, 256]
+      vf: [256, 256]
+
+train:
+  version: fast_v2
+  n_envs: 8
+  total_timesteps: 5000000
+  save_freq: 100000
+  resume_from: null
+  log_dir: ./runs/fast_v2
+  ckpt_dir: ./runs/fast_v2/checkpoints
+  tb_log: ./runs/fast_v2/tb
+  vec_normalize:
+    enabled: true
+    norm_obs: false
+    norm_reward: true
+    clip_reward: 10.0

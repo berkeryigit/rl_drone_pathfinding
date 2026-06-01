@@ -38,7 +38,8 @@ def _make_env(env_cfg, i=0):
     def f():
         return Monitor(
             FastDroneEnv(max_episode_steps=env_cfg["max_episode_steps"],
-                         seed=(env_cfg.get("seed") or 0) + i, env_id=i),
+                         seed=(env_cfg.get("seed") or 0) + i, env_id=i,
+                         lidar_history=int(env_cfg.get("lidar_history", 1))),
             info_keywords=("explored_voxels", "visited_rooms"))
     return f
 
