@@ -666,3 +666,48 @@ Aktif eğitim süreci yok. `training_metrics.csv` 2026-05-30 22:00'dan beri 14 �
 ### Müdahale
 **Yok** — configs/ppo.yaml v3.0'da, tarihsel olarak kanıtlanmış (peak=110.3 @ 610k, v8 all-time +113'ün %97'si yalnızca %41 budget'ta). Aktif eğitim süreci yok; %80+ güven eşiğini aşan hyperparameter sorunu tespit edilmedi. v10 için gerekli değişiklikler (lidar_history=2, collision_penalty=25) env kodu düzeyinde; yaml-only müdahale gerçekleri yansıtmaz ve yanıltıcı olur. Env kodu commit'i bekleniyor.
 ---
+
+## [2026-06-02 11:15 UTC]
+**Step:** ~1,147k (son güvenilir — train_v3_resume_310k.log, %68 tamamlandı) | **ep_rew_mean:** 99.84 @ 434k (interventions.jsonl) / 47.1 @ 312k (train_v3_2m.log) | **entropy:** -5.67 @ 312k | **std:** 1.63 @ 312k
+
+### Durum
+v3.0 Gazebo eğitimi 1.147M/1.69M (%68) adımda interrupt edilmiş — peak 102.54 @ 430k kayıtlı. fast_sim sweep serisi (v4.1→v5.0, 1 Haziran 2026) TAMAMLANDI ve temel trade-off kesinleşti: v4.8 ŞAMPIYON (collision_penalty=25, %0 çarpışma, 5 oda, 117 voxel) vs v4.10 KAPSAM UÇU (6 oda, 281 voxel, %54 çarpışma). Mevcut Gazebo çevresi hâlâ collision_penalty=10 kullanıyor — bu değişmeden bir sonraki run başlatılırsa v4 fast_sim bulgularından yararlanılamaz.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- v3.0 Gazebo eğrisi: 47.1 @ 312k → 99.84 @ 434k → peak 102.54 @ ~430k. Aktif yükseliş fazı, v8 all-time peak'i olan 113'ün yalnızca %9 altında ve v8'in 1.63M adım aldığı konuma 434k adımda ulaşıldı — 3.7× daha hızlı.
+- Plato işareti görülmüyor; 1.147M noktasında büyük olasılıkla 110-120 aralığında.
+- **+15 oda sıçraması kanıtı:** 99.84 ≈ 6 oda bonusu (6×15=90) + voxel + frontier katkısı. fast_sim v4.8 konsistant 5 oda, v4.10 tüm 6 oda gösterdi; Gazebo'da da oda keşfi gerçekleşmiş.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- GEÇERSIZ: Bu config v9'da terk edildi. v3.0 mevcut schedule: 3e-4→1e-5 linear (1.5M/1.69M boyunca). v9 plato kanıtı güçlü: 142k→599k arası ep_rew_mean -290→-270 (457k adımda yalnızca +20), entropy -3.88→-3.32 (kritik deterministikleşme), std 0.888→0.746 (0.7 eşiğine yaklaşma). Linear decay kararı kesinlikle doğruydu.
+- v3.0 @ 312k: lr ≈ 2.38e-4 (decay henüz erken fazda), approx_kl=0.008, clip_fraction=0.099 — güvenli politika güncellemesi.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- @ 312k: entropy=-5.67 (eşik -4.0, GAYRİSAFİ üstünde ✓), std=1.63 (eşik <0.7, alarm uzak ✓).
+- ent_coef=0.008 (v8'in 0.0015'inin 5.3×'i) çalışıyor: v9'da deterministikleşen entropy eğrisi v3.0'da tersine döndü. Bu en kritik konfigürasyon farkı.
+- explained_variance=0.408 @ 312k: value fonksiyonu henüz tam öğrenmedi ama approx_kl=0.008 stabil. 600k+ adımda explained_variance 0.6+ beklenir.
+- **Uyarı:** 5M eğitimde bile (fast_sim v4.10) güvenlik çöktüğü görüldü; 3.2M adımda %100 çarpışma. Gazebo v3.0 1.69M hedefini aşmamalı.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- fast_sim sweep kesin veri verdi: v4.8 config ile 5 oda tutarlı, v4.10 ile 6 oda mümkün.
+- Gazebo v3.0 @ 434k zaten 6 oda seviyesinde reward üretiyor (99.84 ≈ 6×15+voxel). Kritik soru: eval.sh ile deterministic policy doğrulanmadı. Stochastic training'de 6 oda keşfediyor olabilir ama deterministic eval'de 3-4 oda görülebilir.
+- Öneri: 1.15M checkpoint (train_v3_resume_310k.log son noktası) ile eval.sh çalıştır.
+
+**e) v10/sonraki Gazebo run için en kritik 1-2 öneri:**
+1. **collision_penalty 10→25 (çevre dosyasında):** fast_sim v4.8 kanıtı: penalty=25 → %0 çarpışma (100 bölüm, 2500 adım hayatta). penalty=30 aşırı-tedirgin tutum, penalty=22 yerel optimuma düştü → sweet spot 25. Bu ENV değişikliği, ppo.yaml değil, ama bir sonraki run başlamadan uygulanmalı.
+2. **total_timesteps sınırı: 1.8M üzerine çıkma:** fast_sim checkpoint sweep kritik bulgu: v4.10 (coverage config) @ 2.6M → %43 çarpışma, @ 3.2M → %100 çarpışma. 2M sonrası keşif reward kümülatif voxel kazancını aşıyor ve politika crash rejimine giriyor. Gazebo için güvenli üst sınır: 1.8-2M. Mevcut 1.69M hedefi bu açıdan doğru.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- Hyperparameter: HAYIR. v3.0 config tüm eşikleri karşılıyor (entropy ✓, std ✓, kl ✓, clip_fraction ✓).
+- Eğitim sürekliliği: OLASI SORUN. train_v3_resume_310k.log "interrupted" ile bitti (1.147M/1.69M, %68). Process'in çalışıp çalışmadığı bilinmiyor. Eğer durmuşsa: `resume_from: runs/ppo_v3_floors/checkpoints/ppo_drone_interrupted.zip` ile kalan ~542k adımı tamamla.
+- fast_sim araştırması: KAPATILDI. v4.1-v5.0 sweep tamamlandı, 4 kaldıraç kategorisi (reward/eğitim-süresi/curriculum/obs) tüketildi, fundamental trade-off kesinleşti. Daha fazla fast_sim sweep gerekmez.
+
+### v10 Önerisi
+1. **collision_penalty=25 env değişikliği ŞART:** Sonraki Gazebo run başlamadan `drone_exploration_env.py`'de `self.collision_penalty = 25` (mevcut 10). Bu tek değişiklik v4.8 kanıtına göre çarpışmayı %70+ → %0'a düşürecek.
+2. **1.69M hedefinde kal, resume tamamla:** Eğitim durmuşsa `ppo_drone_interrupted.zip` ile kalan 542k adımı tamamla. 2M üzerine çıkma — fast_sim sweep 2.6M+ checkpoint'lerinde güvenlik kollapsını doğruladı. 1.15M-1.69M aralığı (şu an en yüksek checkpoint) için eval.sh çalıştır: bu v4.8 benchmark'ına karşı gerçek Gazebo performansını ölçer.
+
+### Müdahale
+**YOK (ppo.yaml)** — v3.0 config %80 güven eşiğini aşan bir hyperparameter sorunu içermiyor. Ent_coef=0.008, lr=3e-4→1e-5 linear, n_epochs=10, net_arch=[256,256] hepsi fast_sim ve Gazebo verisine göre iyi kalibre edilmiş. **Önerilen aksiyon ENV düzeyinde:** drone_exploration_env.py'de collision_penalty 10→25 (ppo.yaml dışı değişiklik).
+---
