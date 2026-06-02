@@ -811,3 +811,50 @@ v3.0 Gazebo eğitimi 1.147M/1.69M (%68) adımda interrupt edilmiş — peak 102.
 ### Müdahale
 **configs/ppo.yaml güncellendi (v3.0 → v10):** `version: v3.0→v10`, `log_dir: ./runs/ppo_v3_best→./runs/ppo_v10`, `ckpt_dir/tb_log` aynı şekilde. Header comment fast_sim bulgularını (collision_penalty=25, lidar_history=2, total_timesteps ≤1.5M) belgeledi. Hyperparametreler değişmedi (lr=3e-4→1e-5 linear, ent_coef=0.008, net_arch=[256,256], n_epochs=10, n_steps=2048 — hepsi v3.0 Gazebo+fast_sim kanıtıyla optimal). Env kodu değişiklikleri (collision_penalty, lidar_history) kullanıcı tarafından drone_exploration_env.py'de uygulanacak.
 ---
+
+## [2026-06-02 14:10 UTC]
+**Step:** N/A (aktif eğitim yok) | **ep_rew_mean:** 110.3 peak @ 610k (Gazebo v3.0) | **entropy:** ref: −5.67 @ v3.0 312k | **std:** ref: 1.63 @ v3.0 312k
+
+### Durum
+**Eğitim durdurulmuş, v10 başlatmaya hazır; env kodu değişiklikleri bekliyor.** Gazebo v3.0 (ppo_v3_best) 610k/1.5M adımda kasıtlı durduruldu (peak=110.3). `configs/ppo.yaml` önceki oturumda v10 formatına alındı. Kritik blocker: `drone_exploration_env.py`'de `collision_penalty=10→25` ve `lidar_history=1→2` değişiklikleri henüz uygulanmadı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- `training_metrics.csv` 2026-05-30 22:00'dan beri tamamen DONMUŞ: 16+ özdeş satır (step=193,248, ep_rew_mean=−173.85). v9 crash-loop kalıntısı. Bu CSV'ye dayalı trend analizi yapılamaz.
+- Gerçek durum (interventions.jsonl + versions.jsonl): Gazebo v3.0 6 Haziran'da kasıtlı durduruldu, peak=110.3 @ 610k. Aktif eğitim süreci YOK.
+- **+15 oda sıçraması:** Kesinlikle gerçekleşti. peak=110.3 ≈ 7×15=105 oda bonusu + ~5.3 frontier/voxel → en az 7 oda keşfedildi.
+- Eğer v3.0 sürseydi 800k-1M'de v8 all-time peak (+113) geçilmesi kuvvetle muhtemeldi. Kasıtlı durdurma, plato değil.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- GEÇERSİZ. `ppo.yaml` artık v10: `lr=3e-4→1e-5 linear` (1.5M boyunca). Constant lr v9'da terk edildi; karar doğru ve uygulandı.
+- Kanıt: v9 constant 7.5e-5 → 457k step'te +20 reward ilerleme. v3.0 linear decay → 434k'da +99.84 → **4.8× daha verimli** aynı step bandında.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- CSV donmuş; güvenilir son veri v3.0 @ 312k: entropy=−5.67, std=1.63.
+- entropy=−5.67: uyarı eşiği −4.0'ın 1.67 birim altında (daha negatif = daha yüksek gerçek entropi ✓). v9'da 599k'da −3.32'ye çıkmıştı (erken deterministikleşme tehlikesi). v3.0 ent_coef=0.008 bu riski tamamen bertaraf etti.
+- std=1.63: alarm eşiği 0.70'in **2.3×** üstünde ✓. Keşif tam açıktı.
+- Env kodu görüşü: fast_sim bulgusu kesinleşti — ent_coef artırmak güvenlik-kapsam trade-off'unu kıramadı. Keşif kalitesi obs tasarımından geliyor (lidar_history=2), entropi katsayısından değil.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- Aktif eğitim yok. v3.0 stochastic training'de zaten 7+ oda keşfetti. Asıl problem: **deterministik eval-train gap**.
+- eval_v3_310k.log: 11 bölüm → 10/11 = 1 oda (stochastic training'de 7 oda). Kök neden: lidar_history=1 → hareketli engel hızı/yönü gözlemlenemiyor → deterministic politikada ani engel çarpışmaları recovery yapamıyor.
+- fast_sim kanıtı: lidar_history=2 → collision %80→%1. Bu **tek** obs değişikliği gap'i kapattı. v10 + lidar_history=2 ile 6 oda deterministic eval mümkün.
+- Şu an "kaç step daha" sorusu değil, "env kodu hazır mı" sorusu geçerli.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`collision_penalty: 10.0 → 25.0` (`drone_exploration_env.py` satır 342 — `reward -= 10.0`):** fast_sim 4-noktalı kesin tarama: 22=%37 çarpışma (yerel optimum çöküşü), **25=%0 çarpışma (sweet spot)**, 30=%8 (aşırı tedirgin), 50=%100 collapse. Mevcut Gazebo env'de değer hâlâ 10.0 — fast_sim'in "çöküş eşiği" 22'nin altında. Bu değişiklik 1 satır; ppo.yaml bağımsız.
+2. **`lidar_history=1→2` obs entegrasyonu (`drone_exploration_env.py` — obs 41-d→72-d):** Format: [t-1: 32 lidar | t: 32 lidar | durum: 8-d]. fast_sim v4.8'i şampiyon yapan tek yapısal değişiklik. Bu olmadan v10 Gazebo, v3.0'ın deterministic eval başarısızlığını (rooms=1 @ %91 bölüm) tekrar eder.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Hyperparameter açısından: HAYIR.** `ppo.yaml` v10 formatında, tüm değerler fast_sim + Gazebo çapraz doğrulamasıyla optimal: `lr=3e-4→1e-5`, `ent_coef=0.008`, `n_steps=2048`, `n_epochs=10`, `gae_lambda=0.95`, `clip_range=0.2`, `net_arch=[256,256]`, `total_timesteps=1.5M`, `n_envs=1`, `norm_obs=false / norm_reward=true`.
+- **Env kodu açısından:** EVET blocker var — collision_penalty=10 (satır 342) ve lidar_history=1 henüz güncellenmedi. Bu iki değişiklik olmadan train.sh başlatmak anlamsız; v3.0'ın deterministic gap problemini tekrar üretir.
+- **CSV monitoring:** Kalıcı bozuk. Gerçek veri kaynağı: interventions.jsonl + versions.jsonl + log dosyaları.
+
+### v10 Önerisi
+1. **`reward -= 10.0 → reward -= 25.0` (drone_exploration_env.py:342):** fast_sim kesinleşmiş sweet spot. Bu 1 satır değişikliği yapılmadan v10 Gazebo eğitimi başlatılmamalı.
+2. **lidar_history=2 obs entegrasyonu (drone_exploration_env.py):** obs 41-d → 72-d; [t-1: 32 lidar | t: 32 lidar | state: 8-d]. Deterministic eval-train gap'ini kapatan tek mekanizma. Her iki değişiklik tamamlanınca `./scripts/train.sh configs/ppo.yaml` ile v10 başlatılabilir — yaml hazır.
+
+### Müdahale
+**YOK** — `configs/ppo.yaml` zaten optimal v10 konfigürasyonunda. %80+ güven eşiğini aşan herhangi bir hyperparameter sorunu tespit edilmedi. Env kodu değişiklikleri (`collision_penalty=10→25`, `lidar_history=1→2`) kullanıcı tarafından `drone_exploration_env.py`'de uygulanmalı; bu değişiklikler tamamlandıktan sonra eğitim başlatılabilir.
+---
