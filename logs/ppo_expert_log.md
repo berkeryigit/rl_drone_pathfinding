@@ -1046,3 +1046,48 @@ Bu oturumda **yeni veri kaynakları analiz edildi:** `logs/train_v6_normalized.l
 ### Müdahale
 **Yok** — `configs/ppo.yaml` v10 optimal konfigürasyonunda. v6/v7 entropy bulgusu %80+ güvenle v10'da ent_coef=0.008 tarafından zaten karşılanıyor; erken müdahale (tetik şartı olmaksızın) geri tepme riski taşır. Env kodu değişikliklerini (collision_penalty ve lidar_history) kullanıcı uygulamalı.
 ---
+
+## [2026-06-03 15:06 UTC]
+**Step:** 193,248 (CSV STALE — v9 crash-loop kalıntısı, 2026-05-30 22:00'dan donmuş) | **ep_rew_mean:** Aktif Gazebo run YOK (ref: v3.0@610k=+110.3 kasıtlı durduruldu) | **entropy:** Mevcut değil — son güvenilir: v6@236k=−3.83 / v7@223k=−3.81 | **std:** 0.868 (v6) / 0.860 (v7)
+
+### Durum
+**Aktif Gazebo eğitimi yok.** `configs/ppo.yaml` v10 olarak hazır ve optimal. fast_sim 18-config süpürme tamamlandı (v1→v5.0); tüm kaldıraçlar tükendi. Kalan tek blocker: `drone_exploration_env.py`'de `collision_penalty=10.0` (sweet spot: 25.0) ve `lidar_history=1` (optimal: 2, obs 41-d→72-d).
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV kalıcı olarak stale — v9 crash-loop artifact, Mayıs 30 22:00'dan itibaren sabit. Gerçek veri kaynağı: `logs/versions.jsonl` + `interventions.jsonl`.
+- Anlamlı Gazebo çizgisi: v3.0 → peak **+110.3 @ 610k** (kasıtlı durduruldu, plato/kırılım tartışması geçersiz).
+- fast_sim nihai durum: v4.8 = **güvenli şampiyon** (%0 çarpışma, 117 voxel, 5 oda, 2500 adım hayatta); v4.10 = **kapsam şampiyonu** (%54 çarpışma, 281 voxel, 5.76 oda). v5.0 (lidar_history=3) her iki metrikte v4.8 tarafından domine edildi; sweep kapandı.
+- v10 henüz başlamadı → reward eğrisi değerlendirilemez.
+
+**b) lr=7.5e-5 constant seçimi doğru mu?**
+- **Geçersiz soru.** ppo.yaml artık `lr=3e-4→1e-5 linear` (1.5M boyunca). Sabit lr v9 döneminde analiz edildi ve terk edildi.
+- Kanıt: v9 sabit 7.5e-5 → 457k adımda yalnızca +20 reward artışı. v3.0 linear decay → 434k'da +99.84. **4.8× verimlilik farkı.** Karar kesinleşmiş, geri dönüş yok.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Aktif run yok; anlık değer ölçülemiyor. Tarihsel tehlike penceresi: ~220-260k adımda entropy_loss > −4.0 (v6=−3.83 @ 236k, v7=−3.81 @ 223k). Her ikisi de o bandda deterministikleşti.
+- v10 mitigasyon: `ent_coef=0.008` (v6/v7'nin ~0.003-0.005 kullandığı tahmininin 1.5-2.7 katı). **%85+ güven:** bu buffer 220-260k penceresini aşmaya yeterli.
+- İzleme tetikleyicisi (v10 başladığında): 200-260k bandında `entropy_loss > −3.5` VE `std < 0.75` eş zamanlı → `ent_coef: 0.008→0.012`. Tetik olmadan değiştirme.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 referansı: ~150-200k ilk oda, ~400k'da 4-5 oda.
+- fast_v2 kanıtı: lidar_history=2 → collision %80→%1 (aynı oda bonusu, aynı adım bandı). Bu düzeltmeyle v10'da **100-180k** ilk oda sıçraması beklenir.
+- **Asıl darboğaz step sayısı değil env code:** `collision_penalty=10.0` ve `lidar_history=1` bu düzeltme olmadan v10'u fast_v1 rejiminde (%47 çarpışma, 2 oda) tutacak.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py`: `collision_penalty: reward−=10.0 → reward−=25.0` (1 satır).** fast_sim 4-noktalı kesin tarama: 22=çöküş (%37 çarpışma), **25=sweet spot (%0 çarpışma)**, 30=%8 (aşırı tedirgin), 50=collapse. Mevcut 10.0 bu spektrumun çok altında; drone çarpışma riskini sistematik olarak hafife alıyor.
+2. **`drone_exploration_env.py`: `lidar_history: 1→2` (obs 41-d→72-d).** Format: `[t-1: 32_lidar | t: 32_lidar | yaw×2 | vel×3 | explore+room | min_lidar | idle]`. fast_v2 kanıtı: tek değişiklik collision %80→%1 (fast_v4.8: %0). ppo.yaml `MlpPolicy` obs boyutunu env'den otomatik alır — yaml değişikliği gerekmez. Bu iki env fix tamamlanmadan `./scripts/train.sh` çalıştırmak fast_sim bulgularını göz ardı eder.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml açısından: HAYIR.** `lr=3e-4→1e-5 linear`, `ent_coef=0.008`, `n_steps=2048`, `batch_size=256`, `n_epochs=10`, `gae_lambda=0.95`, `clip_range=0.2`, `net_arch=[256,256]`, `total_timesteps=1.5M`, `n_envs=1`, `VecNormalize(norm_obs=false, norm_reward=true, clip=10.0)` — v3.0 Gazebo + 18-config fast_sim çapraz doğrulamasıyla optimal. Tüm 4 kaldıraç kategorisi (ödül şekillendirme, eğitim süresi, curriculum, obs yapısı) tükendi; yeni hipotez yok.
+- **fast_sim kesinleşmiş bulgular:** `collision_penalty` sweet spot = 25 (v4.8=%0, v4.9/22=%37, v4.5/30=%8, v4.11/50=collapse). `lidar_history` blocker (v2=%1 vs v1=%47). `total_timesteps` üst sınır ~1.5M (v4.10/v4.11: 3.2M-5M'de güvenlik kolapsı). Tüm bunlar env koduna yansıtılmalı.
+- **Süregelen CSV sorunu:** Mayıs 31'den bu yana hiç güncellenmedi. Aktif eğitim olmadığı için bu normal; ancak v10 başladığında monitor_agent.py yeniden çalışmak zorunda.
+
+### v10 Önerisi
+1. **`collision_penalty: 10.0→25.0`** — fast_sim v4.8 sweet spot (%0 çarpışma). Bu 1 satır değişiklik olmadan v10 fast_v1 rejimini (%47 çarpışma) taklit eder; tüm voxel/oda kazanımları çarpışmayla sıfırlanır.
+2. **`lidar_history: 1→2` (obs 41-d→72-d)** — fast_v2 blocker fix. Hareketli engellerin hızını çıkarma kapasitesi olmadan deterministic eval'de v3.0 gap'i (training=7 oda / eval=1 oda) tekrar üretilir. Her iki env fix ardından ppo.yaml ile `./scripts/train.sh` v10 için hazır.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` v10 optimal konfigürasyonunda; %80+ güven eşiğini geçen herhangi bir hyperparameter sorunu tespit edilmedi. fast_sim 18-config sweep'in tüm bulguları mevcut v10 yaml'ı destekliyor ve onaylıyor. Env kodu değişikliklerini (collision_penalty ve lidar_history) kullanıcı `drone_exploration_env.py`'de uygulamalı.
+---
