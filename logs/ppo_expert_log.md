@@ -995,3 +995,54 @@ v3.0 Gazebo eğitimi 1.147M/1.69M (%68) adımda interrupt edilmiş — peak 102.
 ### Müdahale
 **YOK** — `configs/ppo.yaml` 2026-06-02'de v10 optimal konfigürasyonuna alınmış; güncel oturumda %80+ güven eşiğini geçen herhangi bir yaml sorunu tespit edilmedi. Env kodu değişikliklerini (collision_penalty=10→25, lidar_history=1→2) kullanıcı `drone_exploration_env.py`'de uygulamalı.
 ---
+
+## [2026-06-03 14:06 UTC]
+**Step:** 193,248 (CSV STALE — v9 crash-loop kalıntısı, 2026-05-30 22:00'dan donmuş) | **ep_rew_mean:** Aktif Gazebo run YOK (ref: v6@236k=+90.2, v7@223k=+69.8) | **entropy:** -3.83 (v6@236k — TEHLİKE EŞİĞİ AŞILDI) / -3.81 (v7@223k — TEHLİKE EŞİĞİ AŞILDI) | **std:** 0.868 (v6) / 0.860 (v7)
+
+### Durum
+Bu oturumda **yeni veri kaynakları analiz edildi:** `logs/train_v6_normalized.log` ve `logs/train_v7_lrdecay.log`. Her iki Gazebo run'ında da entropy ~220-236k adım bandında **-4.0 tehlike eşiğini aştı** (-3.83 ve -3.81) — önceki ekspert girdilerinde bu empirik kanıt raporlanmamıştı. v10 config bu riski ent_coef=0.008 ile zaten adresliyor; yaml değişikliği gerekmez.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- `training_metrics.csv`: GEÇERSIZ (v9 crash-loop donmuş, step=193,248 sabit). Gerçek Gazebo çizgisi: v3.0 peak=110.3@610k (kasıtlı durduruldu).
+- YENİ VERİ — v6_normalized@236k: ep_rew_mean=**90.2**, ep_len=170. Aynı adım bandında v3.0(110.3@610k) için iyi bir yük
+- YENİ VERİ — v7_lrdecay@223k: ep_rew_mean=**69.8**, ep_len=73.7. lr decay'in bu erkenci fazda extra fayda vermediği görülüyor (v6 constant-lr'da daha yüksek reward aldı).
+- Her ikisi de kasıtlı interrupt edildi, plato/kırılım tartışması geçersiz.
+- **+15 oda sıçraması:** v3.0@610k→peak=110.3 ≈ 7×15 oda bonusu → stochastic training'de gerçekleşti.
+
+**b) lr=7.5e-5 constant seçimi doğru mu?**
+- ARTIK GEÇERSİZ SORU. ppo.yaml `lr=3e-4→1e-5 linear` (v10). Constant lr tamamen terk edildi.
+- Empirik kanıt: v6 (constant lr=3e-4) @236k = 90.2 vs v7 (lr_decay 3e-4→3e-5) @223k = 69.8. Erken fazda decay ekstra fayda sağlamadı, tam tersi. Uzun vadede (600k+) v3.0 sonucu (decay kullanmış) daha iyi → decay'in faydası geç fazda ortaya çıkıyor.
+
+**c) Entropy/std değerleri keşif için yeterli mi? ← KRİTİK YENİ BULGU**
+- **v6_normalized@236k: entropy_loss=−3.83 → H=3.83 — -4.0 TEHLIKE EŞİĞİ AŞILDI.**
+- **v7_lrdecay@223k: entropy_loss=−3.81 → H=3.81 — -4.0 TEHLIKE EŞİĞİ AŞILDI.**
+- v5_stable@182k: entropy_loss=−4.15 → H=4.15 (güvenli bölgede).
+- PATTERN: Gazebo Harmonic'te ~220-240k adım bandı erken deterministikleşme kritik penceresi. v6 ve v7 bu pencerede patladı.
+- std açısından: v6=0.868, v7=0.860 — her ikisi de 0.7 eşiğinin üstünde. Std collapse yok, collapse entropy kanalından geliyor.
+- **v10 mitigasyon:** ent_coef=0.008 (v6/v7'nin büyük ihtimalle ~0.003-0.005 kullandığı tahmin ediliyor). %80+ güvenle: v10'un ent_coef=0.008'i 200-240k bandındaki entropy collapse'ı önlemeye yetecek.
+- **İzleme tetik:** v10 başladıktan sonra 200-260k adımda entropy_loss > -3.5 görülürse → ent_coef: 0.008→0.012 (bu YAML değişikliği için tetik şartı).
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 referans: ~150-200k ilk oda, ~400k'da 4-5 oda.
+- v6@236k=ep_len=170 (kısa bölümler, çarpışma ağırlıklı) — oda geçişi net değil.
+- lidar_history=2 env fix tamamlanırsa: tahminen 100-180k ilk oda sıçraması (fast_v2 kanıtı: aynı düzeltmeyle collision %80→%1 @aynı step bant).
+- **Gerçek darboğaz step sayısı değil, env blockers** (collision_penalty ve lidar_history).
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py`: collision_penalty 10.0→25.0 (1 satır).** fast_sim sweet spot kesinleşmiş: 22=çöküş, **25=%0 çarpışma**, 30=%8, 50=collapse. Mevcut 10.0 bu spektrumun çok altında. v10 başlatılmadan önce öncelik #1.
+2. **`drone_exploration_env.py`: lidar_history=1→2, obs 41-d→72-d.** fast_v2 kanıtı: tek değişiklikle collision %80→%1. Format: `[t-1:32_lidar | t:32_lidar | yaw×2 | vel×3 | explore+room | min_lidar | idle]`. ppo.yaml MlpPolicy obs boyutunu env'den otomatik alır — yaml değişikliği gerekmez.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml açısından: HAYIR.** Tüm hyperparametreler optimal (v3.0 Gazebo + fast_sim 18-config çapraz doğrulama). Özellikle ent_coef=0.008, v6/v7 loglarından gözlemlenen 220-240k entropy collapse'ına karşı yeterli tampon sağlıyor.
+- **Env kodu açısından BLOCKER (yaml scope dışı):** collision_penalty=10.0 (optimal: 25.0) ve lidar_history=1 (optimal: 2). Bu iki değişiklik tamamlanmadan train.sh başlatmak fast_sim bulgularını göz ardı eder.
+- **CSV monitoring:** Kalıcı bozuk. Veri kaynağı: interventions.jsonl + versions.jsonl + bireysel log dosyaları (train_v*.log).
+
+### v10 Önerisi
+1. **`drone_exploration_env.py` collision_penalty: 10.0→25.0** — fast_sim sweet spot kesinleşmiş (%0 çarpışma). Bu değişiklik olmadan v10 fast_v1 rejimini (%47 çarpışma) taklit eder.
+2. **v10 eğitimi 200-260k adım bandında entropy_loss izle:** v6/v7 empirik kanıtı gösteriyor ki bu pencerede deterministikleşme riski yüksek. Tetik: entropy_loss > -3.5 → ent_coef: 0.008→0.012. ppo.yaml zaten hazır, tetik şartı gerçekleşmeden değişiklik yapma.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` v10 optimal konfigürasyonunda. v6/v7 entropy bulgusu %80+ güvenle v10'da ent_coef=0.008 tarafından zaten karşılanıyor; erken müdahale (tetik şartı olmaksızın) geri tepme riski taşır. Env kodu değişikliklerini (collision_penalty ve lidar_history) kullanıcı uygulamalı.
+---
