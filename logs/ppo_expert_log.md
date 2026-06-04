@@ -1311,3 +1311,56 @@ CSV 2026-05-30 22:00'dan beri tamamen frozen (step=193248, v9/v10 crash-loop kal
 ### Müdahale
 **Yok** — configs/ppo.yaml 2026-06-02'den bu yana v10 optimal konfigürasyonunda; %80+ güven eşiğini aşan hyperparameter sorunu tespit edilmedi. Env kodu değişiklikleri (collision_penalty=10→25, lidar_history=1→2) kullanıcı tarafından drone_exploration_env.py'de uygulanmalı; ardından ./scripts/train.sh configs/ppo.yaml ile v10 başlatılabilir.
 ---
+
+## [2026-06-04 16:07 UTC]
+**Step:** 193,248 (CSV SON DEĞER — v9 crash kalıntısı, STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV 2026-05-30 22:00'dan 03:01'e kadar 20 özdeş satırla DONMUŞ — v9 training ~193k step'te kalıcı crash sonrası monitor crash-loop'a girmiş. Güncel Gazebo eğitimi YOK; ppo.yaml 2026-06-02'de v10'a tamamen revize edilmiş (fast_sim v4.1-v5.0 bulgularını içeriyor). v10 başlamış mı bilinmiyor; env kodundaki (drone_exploration_env.py) fast_sim değişikliklerinin uygulanıp uygulanmadığı onaylanmalı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV 46 satırı iki net faz gösteriyor:
+  - **Faz 1 (satır 1-4, STALE):** Checkpoint ppo_drone_80000_steps.zip hiç değişmedi → TB verisi donduyken monitor yazmaya devam etti. ep_rew_mean -290→-270 (çok yavaş iyileşme, 142k→599k step gösteriliyor ama sahte). Entropy -3.886→-3.324 (her ikisi de -4 ÜSTÜNDE = tehlike bölgesi). std 0.888→0.746 (0.7 eşiğine yaklaşıyor).
+  - **Faz 2 (satır 5-46, crash-recovery loop):** Her crash sonrası monitor 49k-140k arası step'lerden yeniden başlatmış. ep_rew_mean -25→-174 (tutarsız, oscile ediyor, hiç pozitif değer yok). Entropy -4.21 ila -4.26 (kabul edilebilir bandda, eşiğin hemen altında). std ~0.985 (sağlıklı).
+  - **Son durum (satır 27-46):** Step=193248 tamamen donmuş, training kalıcı olarak ölmüş.
+- **+15'lik oda sıçraması**: CSV'de HİÇ görülmedi. ep_rew_mean 0'ın üzerine hiç çıkmadı — v9 6-oda haritasında oda keşfini hiç başaramadı.
+- **Referans: v3.0 Gazebo run** (interventions.jsonl): step 312k→ep_rew=+47.1, step 434k→peak +102.54, step 501k→reward +123.25. v3.0 config (lr 3e-4→1e-5, ent_coef=0.008) v9'dan çok daha başarılı oldu.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- HAYIR — ve zaten terk edildi. v9 constant lr kullanırken erken faz keşfi yetersiz kaldı: yüksek LR'e ihtiyaç duyulan 0-200k bandında düşük LR (7.5e-5) politikanın reward yüzeyini keşfetmesini engelledi.
+- v10'da doğru yol: lr 3e-4 → 1e-5 doğrusal (v3.0'ın kanıtlanmış şeması). 1.5M step için: 0-500k'da ~2.5e-4 (yüksek, aktif keşif), 500k-1M'da ~1.7e-4 (orta), 1M-1.5M'da ~1e-4→1e-5 (fine-tune). v8'in 3e-4→3e-5 şemasına yapısal olarak benzer.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- **v9 Faz 1'de KRİTİK UYARI**: entropy -3.3 ila -3.9 (-4 ÜSTÜNDE) + std 0.74-0.89 → ent_coef=0.0015 yetersiz. Policy, reward yüzeyi henüz öğrenilmeden deterministikleşti. Bu v9'un temel başarısızlık mekanizmasından biri.
+- **v9 Faz 2'de**: entropy -4.21 (yeni başlatma, frech std ~1.0) → crash-restart'lar her seferinde entropi resetledi, ama eğitim ilerleyemeden tekrar kilitlendi.
+- **v10'da beklenti**: ent_coef=0.008 (v9'un 5.3×'ı) + n_steps=2048 (daha büyük rollout). 500k step'e kadar entropy -5 ile -4 arası tutulabilir. std için 1.5M boyunca 0.8-1.4 bekleniyor; 0.7'nin altına düşerse ent_coef=0.01'e artışı değerlendir.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v9 başarısız olduğundan bu soruyu v3.0 referansıyla yanıtlamak gerekiyor:
+  - v3.0 @ 312k: ep_rew=+47.1 (ilk oda bonusları alınıyor, tutarsız)
+  - v3.0 @ 434k: peak +102.54 (≈6 oda × 15 + voxel ≈ 90+12; çoğu odaya giriyor)
+  - v3.0 @ 501k: reward +123.25 (en iyi performans)
+- **v10 tahmini** (aynı config, fast_sim bulgularıyla iyileştirilmiş env):
+  - İlk oda (tutarsız): 150-250k step
+  - 3-4 oda tutarlı: 300-500k step
+  - 5-6 oda tutarlı: 600-900k step
+  - collision_penalty=25 (fast_sim v4.8 bulgusu) güvenliği korurken 5 odayı mümkün kılıyor
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **ÖNCE drone_exploration_env.py doğrula**: fast_sim'in iki kanıtlanmış bulgusu Gazebo env koduna YANSITILMALI — (a) `collision_penalty: 10 → 25` (v4.8: %0 çarpışma, sweet spot kesin; 22=çöküş, 30=aşırı temkin→hatalı manevra, 25=OPTIMAL), (b) `lidar_history: 1 → 2` (obs 41-d→72-d, eval gap fix). Bu iki değişiklik olmadan v10 eğitimi v9'un tekrarı olacak.
+2. **GZ transport stabilite fix'ini koru**: interventions.jsonl'deki "freeze_rootcause_fix" (GZ_IP=127.0.0.1 + python timeout set_pose 3s + obstacle 1s + updater 4Hz). Bu fix olmadan training 2048-step rollout sonrası bloklayacak. Ayrıca n_envs=1 (SubprocVecEnv deadlock'u kesin çözümü) v10'da zaten uygulanmış — DOKUNMA.
+
+**f) Acil müdahale gerekiyor mu?**
+- v9 uzun süredir ölü (May 30 22:00'den beri). Eğitim makinesi (kullanıcının desktop'u) v10 çalıştırıyor mu bilinmiyor.
+- **ppo.yaml'a müdahale gereksiz** — v10 config kanıtlanmış optimal parametreleri içeriyor.
+- Acil eylem gerektiren tek husus: env kodu doğrulaması (yukarıda madde 1).
+
+### v10 Önerisi
+1. `drone_exploration_env.py`'de `collision_penalty=25` ve `lidar_history=2` onaylandıktan sonra `./scripts/train.sh configs/ppo.yaml` ile v10 başlatılmalı.
+2. 300k step sonrası `ep_rew_mean > 0` görülmezse tek alarm noktası: entropy izle (-4'ün üstüne çıkıyorsa ent_coef=0.01'e artır), yoksa config'e dokunma.
+
+### Müdahale
+**Yok** — ppo.yaml v10'da zaten optimal. CSV'deki v9 ölüsü için config değişikliği anlamlı değil; %80+ güven eşiğini aşan aktif sorun yok.
+---
