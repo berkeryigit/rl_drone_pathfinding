@@ -1229,3 +1229,44 @@ Bu oturumda **yeni veri kaynakları analiz edildi:** `logs/train_v6_normalized.l
 ### Müdahale
 **Yok** — `configs/ppo.yaml` 2026-06-02'den bu yana v10 optimal konfigürasyonunda; %80+ güven eşiğini geçen hyperparameter sorunu tespit edilmedi. Env code değişikliklerini (`collision_penalty=10→25`, `lidar_history=1→2`) kullanıcı `drone_exploration_env.py`'de uygulamalı; ardından `./scripts/train.sh configs/ppo.yaml` ile v10 başlatılabilir.
 ---
+
+## [2026-06-04 14:15 UTC]
+**Step:** N/A — v10 fresh start henüz başlatılmadı | **Son güvenilir veri:** v3.0 @ 610k (peak=110.3, kasıtlı durduruldu) | **ep_rew_mean:** N/A | **entropy:** N/A | **std:** N/A
+
+### Durum
+CSV 2026-05-30 22:00'dan beri tamamen frozen (step=193248, v9/v10 crash-loop kalıntısı). Gerçek son durum: v3.0 Gazebo run 610k/1.5M adımda kasıtlı durduruldu (peak=110.3); ardından 18 fast_sim deneyi (v4.1→v5.0) tamamlandı ve bulgular ppo.yaml v10 config'ine entegre edildi (2026-06-02). **v10 eğitimi henüz başlamadı** — log'da v10 train logu yok, versions.jsonl son entry 2026-06-01 08:05 (fast_sim kapanışı).
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV verisi geçersiz (frozen, stale). v3.0 gerçek eğri: 434k'da peak=102.54 (2026-06-01 01:30), 610k'da peak=110.3 (kasıtlı durdurma).
+- v8 all-time best: +113 @1.6M step. v3.0 bunu 610k'da neredeyse yakaladı (+110.3) — v3.x tasarımı kanıtlandı.
+- v10 için eğri: sıfır. Henüz veri yok.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz soru: ppo.yaml v10'da `lr=3e-4 → 1e-5 linear` schedule uygulanıyor. Sabit lr kullanımı terk edildi. v3.0'ın kanıtlanmış hyperparametreleri baz alınarak yazılmış — doğru seçim. SB3 resume'da progress_remaining sıfırlandığından constant lr kullansaydık 5e-5 sabit daha güvenli olurdu; fakat v10 fresh start olduğundan bu risk yok.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Ölçüm yok (eğitim başlamadı). Ancak v10 config'de `ent_coef=0.008` — bu v2.1/v3.x'in 0.005'inden %60 daha yüksek. fast_sim v4.8 champion da yüksek entropi korumasıyla 5 odayı tutarlı keşfetti (%0 çarpışma). ent_coef=0.008 erken deterministikleşmeye (entropy>-4.0) karşı iyi bir tampon. Risk: 600k+ bandında std<0.7 ve entropy>-3.5 birlikteliği; şu an alarm yok.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- fast_sim v4.8 benchmark: 0% çarpışma, 5 oda, 117 voxel — bu performans collision_penalty=25 ve lidar_history=2 ile elde edildi.
+- v10 env'de aynı bulgular yansıtılacaksa (41-d→72-d obs, coll_penalty=25), ilk oda geçişi ~80-150k step aralığında bekleniyor. Tutarlı 4-5 oda: 300-600k. 6 odanın tamamı: belirsiz (fast_sim'de 5M'de bile garantili değildi, v4.10 6 odaya ulaşmak için 5M+%54 çarpışma trade-off'u yarattı).
+- **KRİTİK:** fast_sim'de 1.5M sonrası safety collapse gözlemlendi (v4.10: 3.2M'de %100 çarpışma). ppo.yaml'daki `total_timesteps: 1500000` sınırı bu yüzden zorunlu — aşılmamalı.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **Env kodu doğrulaması (ÖNCE EĞİTİM BAŞLATMADAN):** ppo.yaml header'ı "fast_sim kesinleşmiş bulgular v10 env koduna yansıtılacak" diyor. drone_exploration_env.py'de `collision_penalty: 10→25` ve `lidar_history: 1→2 (41-d→72-d obs)` değişikliklerinin yapılıp yapılmadığını doğrula. Obs boyutu 41-d yerine 72-d olursa ağ mimarisi değişmez (256x256 net_arch yeterli) ama env ile policy boyut uyumsuzluğu eğitimi başlar başlamaz patlatır.
+2. **norm_obs=false risk izleme:** VecNormalize'da `norm_obs: false` — raw lidar değerleri (0-12m aralığı) ile IMU/velocity değerleri (~0-1 normalize) aynı ağa girerse büyük ölçek farkı oluşur. fast_sim bunu tolere etti (%0 çarpışma, 5 oda), ancak Gazebo gerçek ortamında lidar gürültüsü farklı. İlk 50k adımda ep_len trend'i izle: ep_len < 30 sabitleniyor ve ep_rew_mean iyileşmiyorsa norm_obs=true'ya geç (konfigürasyon tek satır değişiklik).
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Hyperparameter açısından: HAYIR.** v10 config (lr=3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, gae_lambda=0.95, n_envs=1, 1.5M limit) fast_sim bulgularıyla tam tutarlı. %80+ güven eşiğini aşan bir config sorunu yok.
+- **Operasyonel açıdan:** v10 eğitimi hâlâ başlatılmamış. Başlatılmadan önce env kodu (collision_penalty=25, lidar_history=2) ve obs boyutu (72-d) doğrulanmalı.
+- **CSV monitoring:** Frozen, zaten biliniyor. v10 için yeni TB dizini açılacak (`./runs/ppo_v10/tb`) — oradan izleme devam edecek.
+
+### v10 Önerisi
+1. **Env kodu (drone_exploration_env.py) → collision_penalty=25, lidar_history=2:** fast_sim'in tek en yüksek ROI bulgusu. Bu değişiklik olmadan v10 eğitimi, v3.0'ın collision_penalty=10 ile başladığı eski ortamda çalışır — fast_sim avantajı kaybolur.
+2. **1.5M hard stop:** `total_timesteps: 1500000` sınırını aşma. v4.10/v4.11 kanıtı: 2M+ sonrası policy safety collapse geliyor, ne kadar ceza artırılsa da önlenemiyor (v4.11'de ceza 50'ye çıkarıldı, %100 çarpışma oldu). 1.5M'de durdurup eval yap, rooms_mean≥4 ise deploy et.
+
+### Müdahale
+**YOK** — configs/ppo.yaml v10 konfigürasyonu fast_sim bulgularıyla (collision_penalty=25, lidar_history=2, 1.5M limit) örtüşüyor; lr schedule, ent_coef, clip_range, n_epochs hepsi kanıtlanmış değerlerde. %80+ güven eşiğini aşan bir hyperparameter sorunu tespit edilmedi. Müdahale env kodu doğrulaması (trainer'ın değil env'in sorumluluğu) ve operasyonel başlatma kararına bırakıldı.
+---
