@@ -1489,3 +1489,45 @@ Eğitim tamamen durmuş: v9 step 193k'da kalıcı crash, CSV 6 gündür güncell
 ### Müdahale
 **Yok** — configs/ppo.yaml 2026-06-02'den bu yana v10 optimal konfigürasyonunda. %80+ güven eşiğini aşan hyperparameter sorunu yok. CSV stale olması ppo.yaml müdahalesini gerektirmiyor; aktif eğitim verisi olmaksızın config değişikliği veri dışı karar olur. Bloker: env kodu (kullanıcı tarafında, yukarıdaki 1-2 madde).
 ---
+
+## [2026-06-05 15:08 UTC]
+**Step:** 193,248 (CSV STALE — v9 crash kalıntısı, 2026-05-31 03:01'den beri donmuş, 6 gün) | **ep_rew_mean:** -173.85 (stale/geçersiz) | **entropy:** -4.212 (stale) | **std:** 0.985 (stale)
+
+### Durum
+Aktif eğitim yok. CSV 6 gündür donmuş; v9 step 193k'da kalıcı crash-loop'la ölmüş. ppo.yaml 2026-06-02'den beri v10 optimal konfigürasyonunda (fast_sim 18-config sweep + v3.0 Gazebo çapraz doğrulamalı). v10 Gazebo eğitimi hâlâ başlamamış; tek bloker drone_exploration_env.py'deki iki satır env kodu değişikliği.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV'deki son 30 satırın anatomisi (tam veri seti tarandı):
+  - **İlk 4 satır (11:02-12:32, v9 orijinal run):** step 142k→599k, ep_len sabit 1000 (max), ep_rew: -290→-270. Klasik plato. entropy: -3.886→-3.324 (deterministikleşme trendi), std: 0.888→0.746. 0.7 eşiğine yaklaşıyordu.
+  - **13:00-20:55 (crash-loop, 15+ yeniden başlatma):** step 49k-145k arası kaotik. ep_rew: -102→-47 (ppo.yaml değişikliği sonrası daha iyi LR ile hızlı iyileşme). Monitor hatalı biçimde 80k checkpoint'e tekrar tekrar döndü.
+  - **21:00-22:00 (son geçerli faz):** Checkpoint ilerlemesi: 80k→120k→140k→180k. ep_rew: -37 → -47 → -173. FPS: 107→67 (düşüş, süreç yorgunluğu).
+  - **22:00-03:01 (son dondurma):** step=193,248, ep_rew=-173.85, ep_len=637, fps=72. Özdeş 14 satır → süreç hayatta ama ilerlemiyordu; sonunda ölmüş.
+- **+15'lik oda sıçraması görüldü mü?** Hayır — v9 run'ında hiçbir zaman pozitif reward bölgesine ulaşılamadı. En iyi değer -37 (21:20 UTC, 149k step), bu da oda bonusu değil (oda olsaydı +15 ile pozitife geçerdi). Tüm iyileşme idle/çarpışma cezalarının azalmasından.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Tartışma kapandı. KICKOFF.md'de 7.5e-5 yazsa da ppo.yaml zaten 2026-06-02'den beri lr=3e-4→1e-5 linear'a yeniden yazıldı. V9 plateau verisi bu kararı doğrular: constant low-LR altında 599k step boyunca hiçbir breakthrough gelişmedi. V3.0 Gazebo (aynı linear şema) 610k'da peak=110.3 üretti — kanıtlanmış.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- CSV değerleri (entropy=-4.212, std=0.985) v9 crash kalıntısı, güvensiz. V10 için izleme eşiği: entropy_loss > -3.5 VE std < 0.75 EŞ ZAMANLI → ent_coef 0.008→0.010 değerlendir. ent_coef=0.008 (v9'un 5.3×'ı, v3.0 Gazebo'nun 1.6×'ı) ile 500k+ step boyunca keşif kapasitesi yeterli. Alarm eşiklerine ayrı ayrı tepki verme: ikisi birden tetiklenmelidir.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V10 başlamadı. Referans: v3.0 Gazebo (aynı ppo.yaml şeması, collision_penalty=10, lidar_history=1) @ 300-430k adım: 5-6 oda tutarlı. **Env kodu değişiklikleri uygulanırsa** (collision_penalty=25, lidar_history=2): fast_v2 breakthrough analoğu ile 150-250k adımda 5-6 oda mümkün. Uygulanmazsa: v3.0 referansı (300-430k) geçerli; ve fast_v1 (%47 çarpışma) tekrarlanma riski yüksek.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **drone_exploration_env.py: collision_penalty 10 → 25** — fast_sim 4-nokta kesin sweeping: coll=22→%37 çarpışma (5 oda→2 oda collapse), coll=25→%0 (OPTIMAL, 5 oda), coll=30→%8 (aşırı temkin). Mevcut 10.0 ile v10 fast_v1 rejimini tekrarlayacak.
+2. **drone_exploration_env.py: lidar_history 1 → 2 (obs 41-d → 72-d)** — fast_v2 tek-değişken kanıtı: çarpışma %80→%1. 3 hareketli engel ortamında politika engel hızını göremez; 2 frame farkı hız vektörünü çıkarılabilir yapar. ppo.yaml değişikliği gerekmez (MlpPolicy obs boyutunu env'den alır).
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml açısından: HAYIR.** Config 2026-06-02'den beri dokunulmaz ve çapraz doğrulamalı.
+- **Kritik hard cap: total_timesteps=1.5M aşılmamalı.** Fast_sim v4.10 @3.2M: %100 çarpışma; v4.13 @8M: regularize ama voxel tepesinin altında. 2M+ sonrası safety collapse kaçınılmaz — deneysel olarak 4 bağımsız noktayla kanıtlandı.
+- **Acil eylem (kullanıcı tarafı):** collision_penalty=25 + lidar_history=2 → ./scripts/train.sh configs/ppo.yaml. Bu iki satır olmadan eğitim başlasa bile fast_v1 çarpışma rejimi tekrarlanır.
+
+### v10 Önerisi
+1. **collision_penalty: 10.0 → 25.0** (drone_exploration_env.py) — 4-nokta sweet spot kanıtlandı: 22=collapse, 25=optimal, 30=aşırı temkin. Bu olmadan v10 fast_v1 rejimini (%47 çarpışma) tekrarlayacak.
+2. **lidar_history: 1 → 2** (drone_exploration_env.py, obs 41-d → 72-d) — fast_v2 breakthrough: çarpışma %80→%1. 3 hareketli engel ortamında değiştirilemez ön koşul.
+
+### Müdahale
+**Yok** — configs/ppo.yaml v10 optimal konfigürasyonunda (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, batch_size=256, n_epochs=10, gae_lambda=0.95, clip_range=0.2, net_arch=[256,256], total_timesteps=1.5M, n_envs=1). CSV tam analizi (tüm 30+ satır) yapıldı: v9 hiçbir zaman oda breakthrough'una ulaşamadı (max ep_rew=-37), eğitim 193k step'te dondu. %80+ güven eşiğini aşan config sorunu tespit edilmedi. Bloker env kodu (kullanıcı tarafı).
+---
