@@ -1406,3 +1406,45 @@ training_metrics.csv 2026-05-31 03:01'den beri güncellenmemiş (6 gün). v3.0 G
 ### Müdahale
 **Yok** — configs/ppo.yaml 2026-06-02'den bu yana v10 optimal konfigürasyonunda (fast_sim + v3.0 Gazebo çapraz doğrulamalı). %80+ güven eşiğini aşan hyperparameter sorunu tespit edilmedi. Env kodu değişiklikleri (collision_penalty=10→25, lidar_history=1→2) kullanıcı tarafından drone_exploration_env.py'de uygulanmalı; ardından ./scripts/train.sh configs/ppo.yaml ile v10 başlatılabilir.
 ---
+
+## [2026-06-05 13:09 UTC]
+**Step:** 193,248 (CSV SON DEĞER — STALE, 6 gün önce donmuş) | **ep_rew_mean:** -173.85 (stale) | **entropy:** -4.212 (stale) | **std:** 0.985 (stale)
+
+### Durum
+training_metrics.csv 2026-05-31 03:01'den itibaren tamamen stale; v9 eğitimi step 193k'da kalıcı crash ile ölmüş. ppo.yaml 2026-06-02'den bu yana v10 optimal konfigürasyonunda (fast_sim 18-config sweep + v3.0 Gazebo çapraz doğrulamalı). v10 Gazebo eğitimi henüz başlamamış; tek kalan bloker env kodu değişiklikleri.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV verisi eğitimin durumunu yansıtmıyor. Güvenilir son referans noktaları (interventions.jsonl + versions.jsonl):
+  - v3.0 Gazebo @312k: ep_rew≈+47, @434k: peak +102.54, @501k: +123.25, @610k: kasıtlı durduruldu (peak=110.3)
+  - fast_sim v4.8 @1.5M: %0 çarpışma, 5 oda, voxels=117 — güvenli deploy edilebilir politika
+  - fast_sim v4.10 @5M: voxels=281 (%44.5 kapsam), 6 oda FAKAT çarpışma %54 — aşırı eğitim çöküşü kanıtlandı
+- v10 aktif reward eğrisi YOK (eğitim başlamamış).
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Bu tartışma kapalı. ppo.yaml lr=3e-4 → 1e-5 doğrusal (1.5M boyunca) — v9'un constant 7.5e-5'inin başarısız olduğu 0-200k keşif bandında tam lr sağlıyor. v3.0 Gazebo (aynı şema) 110.3 peak ürettiği için kanıtlanmış. Müdahale gerekmiyor.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale CSV'de entropy=-4.212, std=0.985 ancak v9'a ait. v10 beklentisi: ent_coef=0.008 (v9'un 5.3×'ı) ile 500k step'e kadar entropy -4.5 ile -5.5 arası, std 0.85-1.3. Alarm tetikleyici: entropy_loss > -3.5 VE std < 0.75 EŞ ZAMANLI → ent_coef 0.008→0.010 değerlendir.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 başlamadı. Referans (v3.0 Gazebo, aynı config): 300-430k adımda 5-6 oda tutarlı. collision_penalty=25 + lidar_history=2 Gazebo env'e uygulanırsa bu süre 150-250k'ya kısalabilir (fast_v2 breakthrough). Uygulanmazsa v3.0 referansı (300-430k) geçerli.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **drone_exploration_env.py: collision_penalty=10→25** — fast_sim 4-nokta ölçümü (v4.8→v4.9 sweep) kesin: 22→rooms 5→2 collapse+%37 çarpışma, 25→%0 çarpışma (sweet spot), 30→%8 (aşırı temkin). Mevcut penalty=10.0 ile v10 eğitimi fast_v1 rejimini (%47 çarpışma) tekrarlayacak; tüm voxel/oda kazanımları çarpışmayla sıfırlanacak.
+2. **drone_exploration_env.py: lidar_history=1→2 (obs 41-d→72-d)** — fast_v2 tek değişiklik: çarpışma %80→%1. 3 hareketli engel ortamında engel hızını gizlemek v10'un en kritik kör noktası. ppo.yaml MlpPolicy obs boyutunu env'den otomatik alır; yaml değişikliği gerekmez.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- ppo.yaml açısından: **HAYIR**. v10 config v3.0 Gazebo + fast_sim sweep çapraz doğrulamalı ve optimal.
+- **total_timesteps=1.5M hard cap kritik**: fast_sim v4.10 @3.2M: %100 çarpışma (safety collapse); v4.13 @8M bile düzeltemedi. 1.5M SINIRI AŞILMAMALI.
+- **Monitor**: v10 başladığında TB dizini ./runs/ppo_v10/tb (eski ./runs/ppo_v9_newmap karıştırılmamalı).
+- Acil eylem gerektiren husus: env kodu (kullanıcı tarafında, yukarıda madde 1-2).
+
+### v10 Önerisi
+1. **collision_penalty: 10.0→25.0** (drone_exploration_env.py) — fast_sim 4-nokta sweet spot kesin. Bu olmadan v10 fast_v1 rejimini (%47 çarpışma) tekrarlayacak.
+2. **lidar_history: 1→2** (drone_exploration_env.py) — fast_v2 breakthrough; engel hız bilgisi olmadan 3 hareketli engel ortamında policy kör kalır.
+
+### Müdahale
+**Yok** — configs/ppo.yaml 2026-06-02'den bu yana v10 optimal konfigürasyonunda (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, net_arch=[256,256], total_timesteps=1.5M, n_envs=1). %80+ güven eşiğini aşan hyperparameter sorunu tespit edilmedi. Çapraz doğrulama: v3.0 Gazebo (peak 110.3) + fast_sim 18-config sweep (v4.8 champion: %0 çarpışma, 5 oda).
+---
