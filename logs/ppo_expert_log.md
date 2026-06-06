@@ -1625,3 +1625,48 @@ Aktif eğitim yok — v9 adım 193k'da kalıcı ölü, CSV 7 gündür stale. ppo
 ### Müdahale
 **Yok** — configs/ppo.yaml 2026-06-02'den beri v10 optimal konfigürasyonunda. Aktif eğitim verisi yok; stale CSV %80+ güven eşiğini aşan bir config sorunu ortaya koymaktan uzak. Tüm fast_sim sweepleri (v4.1→v5.0, 18 config) + v3.0 Gazebo (peak 110.3) mevcut ppo.yaml'ı çapraz doğruladı. Bloker: drone_exploration_env.py env kodu (kullanıcı tarafı, yukarıdaki 1-2 madde).
 ---
+
+## [2026-06-06 14:10 UTC]
+**Step:** 193,248 (CSV STALE — v9 crash kalıntısı, 2026-05-31 03:01'den beri 7 gün donmuş, geçersiz) | **ep_rew_mean:** -173.85 (geçersiz) | **entropy:** -4.212 (geçersiz) | **std:** 0.985 (geçersiz)
+
+### Durum
+Aktif eğitim süreci yok. `training_metrics.csv` 7 gündür tamamen dondurulmuş (v9 crash-loop kalıntısı). `configs/ppo.yaml` 2026-06-02'den bu yana v10 optimal formatında (fast_sim 18-config sweep + v3.0 Gazebo çapraz doğrulamalı) — hyperparameter müdahalesi gerektirmiyor. v10 Gazebo eğitimi 5. gündür başlamamış; tek bloker `drone_exploration_env.py`'deki iki satır env kodu değişikliği.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- `training_metrics.csv` son 20 satır: TAMAMEN GEÇERSİZ. Tüm satırlar 2026-05-30 22:00 – 2026-05-31 03:01 UTC arası özdeş (step=193,248, ep_rew_mean=−173.85). Bu v9_newmap crash-loop'u sırasında process ölmüş; monitor_agent aynı satırı 14 kez üst üste yazmış. Hiçbir trend analizi yapılamaz.
+- Gerçek Gazebo v3.0 son eğri (interventions.jsonl + versions.jsonl): 434k → ep_rew_mean=99.84, peak=102.54; 610k → peak=110.3 (kasıtlı durdurma, 2026-06-01 sabahı). Plato değil — olgunlaşma fazındayken intentional stop. peak=110.3 ≈ 7×15=105 oda bonusu + ~5.3 voxel/frontier → tutarlı 7+ oda keşfedildi. Eğer v3.0 sürseydi 800k-1M'de v8 all-time peak (+113 @1.6M) geçmesi kuvvetle muhtemeldi; yalnızca 610k'da %97'sine ulaşıldı.
+- v10 eğitim eğrisi YOK — başlamadı.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Kapalı tartışma. ppo.yaml artık `lr=3e-4→1e-5 linear` (1.5M boyunca). v9'un sabit 7.5e-5'i 142k–599k arası -290→-270 platosuna yol açtı (457k adımda yalnızca +20 rew). v3.0 aynı linear şemayla (434k) +99.84 üretti — 4.8× daha verimli. Entropy kanıtı: v9 @599k −3.32 (tehlikeli), v3.0 @312k −5.67 (mükemmel). Sabit lr seçimi terk edildi ve doğrulanan kararı tersine çevirmek için hiçbir gerekçe yok.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- CSV değerleri (entropy=−4.212, std=0.985) v9 crash kalıntısı — güvensiz, kullanılamaz. v10 aktif olmadığından gerçek anlık ölçüm yok.
+- v10 projeksiyon: ent_coef=0.008 (v9'un 5.3×'ı) ile 500k adım boyunca entropy −4.5 ile −5.5 arası bekleniyor (referans: v3.0 @312k entropy=−5.67, std=1.63 — mükemmel). ent_coef=0.008, fast_sim v4.2'nin (ent_coef≥0.02 → %85 çarpışma) ve v9'un (ent_coef=0.0015 → deterministikleşme) ikisinden de öğrenilen tatli nokta; değiştirilmemeli.
+- İzleme tetik bandı (v10 başlayınca): entropy_loss > −3.5 VE std < 0.75 EŞ ZAMANLI — iki koşul birlikte gerekli; ayrı ayrı alarm tetiklemez.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 başlamadı; tahmin referans tabloya dayanıyor:
+  - Env kodu DEĞİŞMEZSE (mevcut collision_penalty=10, lidar_history=1): 300–430k adımda 5–6 oda (v3.0 Gazebo referansı, aynı ppo.yaml)
+  - collision_penalty=25 + lidar_history=2 uygulanırsa: 150–250k adımda 5–6 oda mümkün (fast_v2 breakthrough analoğu: çarpışma %80→%1 tek değişkenle)
+  - Potansiyel hız kazanımı: ~%40 step tasarrufu sadece iki env satırıyla
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py`: `collision_penalty 10.0 → 25.0`** — fast_sim 4-nokta sweep kesin (versions.jsonl, v4.8→v4.9 entry): coll=22→%37 çarpışma + rooms 5→2 collapse (yerel optimum), coll=25→%0 çarpışma + 5 oda (OPTIMAL), coll=30→%8 (aşırı tedirgin, keşif kısıtlı). Mevcut 10.0 sweet spot'un %60'ının altında; drone çarpışma riskini sistematik hafife alıyor. Bu değişiklik olmadan v10 fast_v1 rejimini (%47 çarpışma) tekrarlayarak 1.5M bütçeyi boşa harcayacak.
+2. **`drone_exploration_env.py`: `lidar_history 1 → 2` (obs 41-d → 72-d)** — fast_v2 tek-değişken breakthrough: çarpışma %80→%1. Format: `[t-1: 32 lidar | t: 32 lidar | yaw×2 | vel×3 | explore+room | min_lidar | idle]`. KRITIK NOT: versions.jsonl v5.0 entry, lidar_history 2→3 geçişinin başarısız olduğunu kanıtladı (voxels 281→106, v4.8 tarafından domine edildi). Bu da 1→2'nin irreversible eşik, 2→3'ün gereksiz olduğunu teyit ediyor. ppo.yaml değişikliği gerekmez (MlpPolicy obs boyutunu env'den otomatik alır).
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml açısından: HAYIR.** Config v10 optimal konfigürasyonunda ve dokunulmaz: lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, batch_size=256, n_epochs=10, gae_lambda=0.95, clip_range=0.2, net_arch=[256,256], total_timesteps=1.5M, n_envs=1, VecNormalize(norm_obs=false, norm_reward=true, clip=10.0). %80+ güven eşiğini aşan hiçbir config sorunu tespit edilmedi.
+- **HARD CAP DOKUNULMAZ: total_timesteps=1.5M.** fast_sim 4 bağımsız kanıt: v4.10 @3.2M=%100 çarpışma, v4.11 @5M=%100 çarpışma, v4.13 @8M=%26 çarpışma+voxels geriledi. 2M+ sonrası güvenlik çöküşü konfigürasyondan bağımsız — kural değil empirik kanıt.
+- **Gecikme riski:** v10 5. gündür başlamamış. n_envs=1 Gazebo ile 1.5M step ≈ 25–30 saat. Her geçen gün proje penceresini daraltıyor.
+- **Env kodu bloker (kullanıcı tarafı):** `drone_exploration_env.py` iki değişiklik → `./scripts/train.sh configs/ppo.yaml`. Bu iki satır uygulanmadan eğitim başlasa bile fast_v1 (%47 çarpışma) senaryosu tekrarlanır ve bütçe boşa gider.
+
+### v10 Önerisi
+1. **`collision_penalty: 10.0 → 25.0`** (`drone_exploration_env.py`) — fast_sim 4-nokta sweet spot, v4.8 champion (%0 çarpışma, 5 oda, voxels=117 @1.5M). Bu olmadan v10 Gazebo fast_v1 rejimini tekrarlayacak.
+2. **`lidar_history: 1 → 2`** (`drone_exploration_env.py`, obs 41-d → 72-d) — fast_v2 breakthrough (çarpışma %80→%1); v5.0 kanıtıyla 2→3 geçişi başarısız olduğundan 1→2 değiştirilemez eşik. Her iki değişiklik tamamlanınca `./scripts/train.sh configs/ppo.yaml` ile v10 başlatılabilir — yaml hazır ve optimal.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10 optimal konfigürasyonunda. `training_metrics.csv` 7 gündür stale; gerçek veri kaynağı interventions.jsonl + versions.jsonl + train log dosyaları. fast_sim 18-config sweep (v4.1→v5.0) + v3.0 Gazebo (peak=110.3) mevcut ppo.yaml'ı her açıdan çapraz doğruladı. %80+ güven eşiğini aşan hyperparameter sorunu tespit edilmedi. Bloker: `drone_exploration_env.py` env kodu (kullanıcı tarafı).
+---
