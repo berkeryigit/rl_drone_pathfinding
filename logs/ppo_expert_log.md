@@ -2067,3 +2067,58 @@ Bu iki değişiklik sonrası `./scripts/train.sh configs/ppo.yaml` — yaml haz�
 ### Müdahale
 **Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10 optimal konfigürasyonunda (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, batch=256, n_epochs=10, gae_lambda=0.95, clip_range=0.2, net_arch=[256,256], total_timesteps=1.5M, n_envs=1, VecNormalize). %80+ güven eşiğini aşan hyperparameter sorunu tespit edilmedi. Bloker ENV kodu (kullanıcı tarafı); yaml commit+push yalnızca log için yapıldı.
 ---
+
+## [2026-06-07 00:00 UTC]
+**Step:** 193,248 (CSV — 8 GÜN STALE, 30 Mayıs 22:00'dan beri donmuş) | **ep_rew_mean:** −173.85 (geçersiz) | **entropy:** −4.212 (geçersiz) | **std:** 0.985 (geçersiz)
+
+### Durum
+CSV 8+ gündür frozen (son 20+ satır birebir aynı: step=193248, reward=−173.85). Bu v9/v10 crash-loop kalıntısı; güncel veri değil. Gerçek son durum: v3.0 Gazebo run 610k/1.5M adımda kasıtlı durduruldu (peak=110.3); fast_sim v4.1→v5.0 serisi (18 config) tamamen kapandı. `configs/ppo.yaml` 2026-06-02'den beri v10 optimal konfigürasyonunda. **Aktif eğitim process'i YOK.** Config değişikliği gerekmez — yaml hazır, başlatmayı bekliyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV verileri 8+ gün eski ve anlamsız — v9 crash loop sırasında 80k→180k step arasında döngüden kalan donmuş satırlar.
+- Gerçek v2.x/v3.x eğitim zaman çizelgesi (interventions.jsonl + log dosyaları):
+  - v2.1 @ 120k: ep_rew_mean=+92.6, rooms_max=2 → aktif kırılım fazı
+  - v2.1 @ 501k: peak=+133.35 → v8 all-time best (+113@1.6M) yalnızca 500k'da geride bırakıldı
+  - v3.0 @ 434k: peak=+102.54 (milestone, Haziran 1)
+  - v3.0 → 610k/1.5M adımda kasıtlı durduruldu (peak=110.3, ppo.yaml açıklaması)
+- **+15 oda sıçraması görüldü mü?** Evet — v2.1'de +92.6 = ~6 oda bonusu eğitim sırasında; v3.0 da peak 110.3 ile benzer seviyede.
+- Şu an eğitim yok; plato/kırılım sorusu v10 fresh start için geçerli.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Artık geçersiz soru: `configs/ppo.yaml` çoktan v10'a taşındı.
+- Mevcut schedule: `learning_rate: 0.0003` → `lr_final: 1.0e-05` (linear, 1.5M boyunca = 30× azalma).
+- Bu v8'in 3e-4→3e-5 (10× azalma) şemasından 3× daha agresif annealing. İlk fazda hızlı politika güncellemesi, son fazda stabil fine-tune için doğru kalibrasyon.
+- Sabit 7.5e-5 kullanımı v9'un başarısızlık sebebiydi (v9 plato: 600k step'te ep_rew_mean=−270); doğru terk edildi.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- CSV frozen → güncel değer güvenilmez.
+- v10 config'de `ent_coef: 0.008` (v9'un 0.0015'inden 5.3×, v2.1'in 0.005'inden 1.6× yüksek).
+- fast_sim v4.1-v5.0 testlerinden kanıtlanmış: v4.8'de %0 çarpışma bu ent_coef ile sağlandı.
+- 300-400k bandında std<0.7 riski var (v4 analoji bu bandda deterministikleşti); izleme noktası korunmalı. ent_coef=0.008 bu riski v4'e göre belirgin düşürüyor.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 fresh start varsayımıyla (n_steps=2048, lr=3e-4, ent_coef=0.008, n_envs=1):
+  - İlk oda geçişi: 60-100k step (v2.1'de 120k'da rooms_max=2 görüldü; v10 yüksek ent_coef ile daha erken olabilir)
+  - Tutarlı 3-oda: 200-350k step
+  - 5-6 oda stochastic policy: 500-700k step aralığı
+  - Deterministic eval'de 3+ oda tutarlılık: 800k-1.2M step
+- Lidar history artırımı (1→2, obs 41d→72d) eval-train gap'i kapatacak; bu en kritik potansiyel iyileşme.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`norm_obs: false` korunmalı** — fast_sim v4.8'de kanıtlanmış optimal. 41-d gözlem uzayı zaten kısmi normalize: lidar [0,12m]/12m, yaw [cos,sin] ∈ [−1,1], hız v/v_max, oran [0,1]. norm_obs=true bu sınırları bozabilir (running_mean drift); mevcut ayar korunmalı.
+2. **Hareketli engel curriculum:** v10'da 3 hareketli engel aktif olacak. İlk 150-200k adımda engellerle başlamak öğrenmeyi sekteye uğratır. **Öneri:** ya ilk 150k step için obstacle velocity=0 (statik) tutup sonra aşamalı artır, ya da `drone_exploration_env.py`'de `obstacle_speed_schedule` ekle. Env kodu değişikliği gerekiyor — bu en yüksek ROI müdahalesi.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Hyperparameter açısından: HAYIR.** `configs/ppo.yaml` v10 optimal değerlerinde (2026-06-02'den beri), önceki oturum bunu doğruladı.
+- **Operasyonel: EVET (düşük aciliyet).** Eğitim process'i 8+ gündür çalışmıyor. Kullanıcının `./scripts/train.sh configs/ppo.yaml` ile v10'u başlatması gerekiyor.
+- CSV monitoring altyapısı hâlâ v9 dönemine sabitli; v10 başlayınca TB dizinini yeniden ayarlamak gerekecek.
+
+### v10 Önerisi
+1. **Hareketli engel curriculum (env kodu):** İlk 150k step obstacle velocity=0, sonra lineer artış. Bu tek değişiklik öğrenme hızını ve keşif kalitesini ciddi artırır — config değil, env kodu değişikliği.
+2. **300-400k bandında std izleme tetik:** std < 0.7 VE entropy > −3.5 → `ent_coef: 0.008 → 0.015`. v4 analoji bu bandda kesildi; v10 ent_coef yüksek ama uyarı geçerliliğini koruyor.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` v10 konfigürasyonu (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, batch=256, n_epochs=10, gae_lambda=0.95, clip_range=0.2, net_arch=[256,256], total_timesteps=1.5M, n_envs=1, VecNormalize norm_obs=false/norm_reward=true) fast_sim v4.8 ve v3.0 Gazebo run'larıyla kanıtlanmış optimal. %80+ güven eşiğini aşan hyperparameter sorunu tespit edilmedi. Acil bloker: v10 eğitim process'inin başlatılması (kullanıcı tarafı operasyonel aksiyon).
+---
