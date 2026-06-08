@@ -2122,3 +2122,57 @@ CSV 8+ gündür frozen (son 20+ satır birebir aynı: step=193248, reward=−173
 ### Müdahale
 **Yok** — `configs/ppo.yaml` v10 konfigürasyonu (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, batch=256, n_epochs=10, gae_lambda=0.95, clip_range=0.2, net_arch=[256,256], total_timesteps=1.5M, n_envs=1, VecNormalize norm_obs=false/norm_reward=true) fast_sim v4.8 ve v3.0 Gazebo run'larıyla kanıtlanmış optimal. %80+ güven eşiğini aşan hyperparameter sorunu tespit edilmedi. Acil bloker: v10 eğitim process'inin başlatılması (kullanıcı tarafı operasyonel aksiyon).
 ---
+
+## [2026-06-08 00:11 UTC]
+**Step:** 193,248 (CSV 9 GÜN STALE — 2026-05-30 22:00'dan beri donmuş) | **ep_rew_mean:** −173.85 (GEÇERSİZ) | **entropy:** −4.212 (GEÇERSİZ) | **std:** 0.985 (GEÇERSİZ)
+
+### Durum
+CSV verisi 9. gündür donmuş; aktif Gazebo eğitimi yok. Bu oturumda `train_v3_resume_310k.log` analiz edildi: v3.0 Gazebo run'u 310k'dan 1.45M step'e uzatılmış ve **politika açıkça dağılmış** — std 1.65→14, entropy −5.69→−11.5, ep_rew_mean 110.3 peak'inden +38.2'ye gerilemiş. Bu, sabit `lr=0.0003`'ün uzun eğitimdeki dağılma riskinin somut Gazebo kanıtıdır. `configs/ppo.yaml` v10 konfigürasyonuna (linear decay 3e-4→1e-5) sahip ve `train_ppo.py`'de `_build_lr()` fonksiyonu doğru implement edilmiş; v10 fresh start bu riski bertaraf eder.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- `training_metrics.csv`: 9. gündür donmuş (step=193,248, ep_rew_mean=−173.85 — v9 crash-loop kalıntısı). Geçerli veri değil.
+- `train_v3_resume_310k.log` yeni kanıt: v3.0 Gazebo 310k'dan 2M'e uzatılmaya çalışıldı. Eğitim 1.14M (68%) sonra interrupt ile bitti. Eğitim boyunca:
+  - @312k: ep_rew_mean=48.9, std=1.65, entropy=−5.69 (sağlıklı başlangıç)
+  - @1.45M: ep_rew_mean=38.2, std=14.0, entropy=−11.5 (DAĞILMIŞ politika)
+  - Peak 110.3 @610k'dan bu yana sürekli gerileme — plato değil, aktif bozulma.
+- `eval_v3_310k.log`: 11 bölüm Gazebo eval, 10/11 bölüm rooms=1, sadece 1 bölüm rooms=2. Return +45–77. 310k checkpoint henüz oda geçişini güvenilir keşfetmemişti.
+- Gerçek en iyi Gazebo peak: **+110.3 @610k** (v3.0, kasıtlı durduruldu).
+- v10: henüz başlamadı, kırılım sorusu ileriye taşındı.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Soru artık tarihsel: `ppo.yaml` 2026-06-02'den beri `lr=3e-4→1e-5 linear` (1.5M boyunca). Mevcut config doğru.
+- **Yeni Gazebo kanıtı (kritik):** `train_v3_resume_310k.log` boyunca TB `learning_rate: 0.0003` sabit gösterdi. Bu, ya eski train_ppo.py'nin schedule uygulamadığını, ya da resume sırasında SB3'ün step sayacını sıfırlaması nedeniyle `progress_remaining=1.0` kalmasını gösteriyor. Her iki durumda da etki aynı: 1.45M adım boyunca yüksek sabit lr → std 14'e dağılma → reward çöküşü.
+- `train_ppo.py` incelendi: mevcut `_build_lr()` fonksiyonu SB3 callable arayüzünü doğru implement ediyor (`f(progress_remaining)`). **v10 fresh start** için `resume_from: null` olduğundan bu resume bug'ı tetiklenmeyecek. Doğrudan `learning_rate=_build_lr(ppo_cfg)` ile model kurulacak → doğru linear decay garantili.
+- ⚠️ **Uyarı (resume senaryosu için):** Lines 235-237'de `model.policy.optimizer.param_groups[0]["lr"] = float(ppo_cfg["learning_rate"])` resume'de optimizer'ı base lr'a resetliyor; buna ek olarak SB3'ün step sayacının sıfırlanması riski var. v10 fresh olduğu için şimdi sorun değil ama ilerideki resume'ler için dikkat edilmeli.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Aktif eğitim yok; CSV değerleri kullanılamaz.
+- v3.0 floors evidence: std=14, entropy=−11.5 → dağılmış politika. Bu paterni v10 linear decay ile önlüyor.
+- v10 projeksiyonu (n_epochs=10, ent_coef=0.008, lr doğru decay): std başlangıçta ~1.0-1.5 beklenir; v4.8 referans (fast_sim, ent_coef=0.008, lidar_history=2): sağlıklı keşif rejimi gözlemlendi.
+- **Alarm tetik koşulları v10 için:** std < 0.5 VE entropy_loss > −2.5 → erken deterministikleşme; std > 5.0 → dağılma riski, lr decay doğru çalışmıyor olabilir. İkinci alarm özellikle ilk 100k step'te kritik.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- `eval_v3_310k.log`: 310k'lık Gazebo checkpoint 10/11 bölümde rooms=1. İlk güvenilir oda geçişi henüz oluşmamış.
+- v10 projeksiyonu (collision_penalty=10 ile mevcut env):
+  - İlk oda geçişi: ~250-400k step (v3.0 analoji; v3.0 @434k peak=102.54 oda geçişlerini içeriyordu)
+  - collision_penalty=25 + lidar_history=2 (önerilen env): ~150-250k step (fast_v4.8 analoji)
+  - Mevcut env ile bütçenin %20-27'si oda öğrenimi öncesinde geçebilir.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`collision_penalty: 10.0 → 25.0` (`drone_exploration_env.py`):** fast_sim v4.8 ŞAMPIYON: %0 çarpışma, 5 oda, 117 voxels @1.5M. v4.9 (22) rooms 5→2 çöktü, v4.10 (25, 5M) %54 crash. 25 = dar tatli nokta, tek veri noktası olarak değil 4-nokta sweep ile doğrulanmış. Mevcut 10.0 → drone çarpışmayı sistematik hafife alıyor → v9 rejimi (%47 crash @fast_v1) tekrarlanacak ve 1.5M bütçenin önemli kısmı boşa gidecek.
+2. **`lidar_history: 1 → 2` (obs 41-d → 72-d, `drone_exploration_env.py`):** fast_v2 breakthrough: çarpışma %80→%1. v5.0 kanıtı: 2→3 ters etki (voxels 281→106, v4.8 tarafından domine). 2 = kesinleşmiş irreversible optimal eşik. ppo.yaml değişikliği GEREKMİYOR.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml hyperparameter açısından: HAYIR.** v10 config fast_sim 18-config sweep + v3.0 Gazebo ile çapraz doğrulanmış. `_build_lr()` doğru. %80+ güven eşiğini aşan config sorunu yok.
+- **Yeni kanıt (v3.0 floors divergence) v10 config'i olumsuz etkilemiyor:** Linear decay bu riski bertaraf ediyor; fresh start resume bug'ını bypass ediyor.
+- **Operasyonel gecikme (KRİTİK):** v10 Gazebo 10. gündür başlamadı. 1.5M adım @~40 FPS ≈ 10.4 saat eğitim. Deadline baskısı artıyor. Tek bloker: `drone_exploration_env.py` ENV kodu (kullanıcı tarafı, 2 satır).
+
+### v10 Önerisi
+1. **`collision_penalty=25` (`drone_exploration_env.py`, 1 satır değişiklik):** fast_sim v4.8 kanıtı (%0 crash, 5 oda, 117 voxels). Bu olmadan v10 Gazebo %47+ crash rejimine girecek; 1.5M bütçenin büyük kısmı boşa.
+2. **`lidar_history=2` (obs 41→72-d, `drone_exploration_env.py`):** fast_v2 %80→%1 breakthrough, v5.0 kanıtıyla kesinleşmiş optimal eşik. Eng yüksek ROI müdahalesi (2 satır env kodu, ppo.yaml değişikliği gerektirmiyor).
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10 optimal konfigürasyonunda (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, batch=256, n_epochs=10, gae_lambda=0.95, clip_range=0.2, net_arch=[256,256], total_timesteps=1.5M, n_envs=1, VecNormalize norm_obs=false/norm_reward=true/clip=10). Yeni kanıt (`train_v3_resume_310k.log` divergence analizi) v10 config'in doğruluğunu pekiştirdi — sabit lr'ın dağılma riskini linear decay önlüyor, `_build_lr()` fresh start için doğru çalışıyor. %80+ güven eşiğini aşan herhangi bir hyperparameter sorunu tespit edilmedi. Bloker ENV kodu (kullanıcı tarafı); yaml commit+push analiz logu ile birlikte yapıldı.
+---
