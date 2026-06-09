@@ -2754,3 +2754,28 @@ Bu oturumda 3. analiz girişi. CSV veri yapısı tam okundu (47 satır toplam). 
 ### Müdahale
 **Yok** — configs/ppo.yaml v10 optimal konfigürasyonunda (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, n_envs=1, total_timesteps=1.5M). Canlı v10 Gazebo verisi olmadan %80+ güven eşiğini aşan hyperparameter sorunu tespit edilemez. Env kodu (lidar_history=2, collision_penalty=25) bu scope dışında.
 ---
+
+## [2026-06-09 11:15 UTC]
+**Step:** 193,248 (son gerçek ilerleme) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 eğitimi May 30 22:00'de step 193k'da donmuş ve hiç ilerlememiş; ppo.yaml çoktan v10'a (3e-4→1e-5 linear, ent_coef=0.008) geçirilmiş ve v10 Gazebo run'u 434k stepte reward=99.84 peak=102.54'e ulaşmış.
+
+### Detay
+- **training_metrics.csv freeze tespiti:** 2026-05-30 22:00'dan 2026-05-31 03:01'e kadar 25 satırın tamamı step=193,248, ep_rew_mean=-173.85, fp=72 ile identical — TB event'leri hiç ilerlememiş, eğitim tamamen bloke olmuş.
+- **monitor_agent crash döngüsü:** interventions.jsonl'de May 30 22:40–03:01 arasında her 20 dakikada crash_recovery@step=180k tetiklenmiş (14 kez) — recovery çalışıyor gibi görünmüş ama step sayacı sıfırlanıp 180k'dan ilerleme yapamamış. Kök neden: gz transport/bridge instability (KICKOFF.md'de de belgelenmiş deadlock).
+- **ep_rew_mean trendi (v9):** -290 (ilk) → -270 (100k) → -54 (en iyi, 90k stepli bir recovery sonrası) → -173 (freeze öncesi son). Düzensiz ve negatif — oda sıçraması (+15) gözlemlenmedi. 6-oda harita için yeterli step birikmeden proses öldü.
+- **entropy @ -4.212:** -4'ün altında — erken deterministikleşme riski vardı. Ancak std=0.985 (0.7 eşiğinin üstünde) keşif genişliğini koruyor. v9'un ent_coef=0.0015 değeri bu harita için düşük kalmış.
+- **lr=7.5e-5 constant analizi (v9):** Constant lr, oda keşif sıçramaları için yeterince agresif değildi. v8'in lineer decay (3e-4→3e-5) ile +113 peakına ulaşması daha güçlü erken keşif fazını mümkün kılmıştı. Ancak bu artık geçmişte — ppo.yaml v10 ile overwrite edilmiş.
+- **v10 config durumu:** ppo.yaml → version=v10, lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, n_envs=1, total_timesteps=1.5M. Fast_sim chain (v4.1→v5.0, 18 config) + Gazebo v3.0'dan kanıtlanmış optimal parametre seti.
+- **v10 Gazebo gerçek performans:** interventions.jsonl @2026-06-01 → step=434,176, reward=99.84, peak=102.54. 6-oda haritada teorik max oda bonusu 6×15=90; reward ~99 = 5-6 oda keşfedilmiş + voxel - cezalar. 700k'ya resume edilmiş.
+- **CSV logging boşluğu:** training_metrics.csv May 30 22:20'den sonra güncellenmemiş — v10 run verisi CSV'ye yansımıyor. Monitor kodu v10 TB dizinini (runs/ppo_v10/tb/) okumak üzere güncellenmemiş olabilir.
+- **FPS:** v9 başında 83-121, freeze öncesi 72'ye düşmüş. v10 n_envs=1 ile tek Gazebo → daha stabil FPS beklenir.
+
+### v10 Önerisi
+1. **CSV logging'i v10 için aktive et:** `monitor_agent.py` TB dizinini `runs/ppo_v9_newmap/tb/` yerine `runs/ppo_v10/tb/` okuyacak şekilde güncellenmeli; aksi hâlde v10 ilerleme verisi kayıt altına alınmaz ve ilerleyen oturumlarda kör analiz yapılır.
+2. **ent_coef=0.008 yerinde kal:** v9'un 0.0015 değeri entropy'yi -4.2'ye kilitledi; v10'daki 0.008 bu riski bertaraf ediyor — değiştirme. Eğer v10 500k+ sonrası entropy -5'in altına düşerse +0.003 artış (0.011'e) mantıklı olur.
+
+### Müdahale
+**Yok** — configs/ppo.yaml v10 optimal konfigürasyonunda (kanıtlanmış fast_sim + Gazebo v3.0 parametreleri). v9 run'u çoktan sonlanmış ve v10 başarıyla devam ediyor (peak 102.54 @ 434k). %80+ güven eşiğini aşan hyperparameter sorunu yok. CSV logging altyapısı sorunu env/monitor scope'unda, ppo.yaml'a dokunmak çözüm getirmez.
+---
