@@ -2531,3 +2531,48 @@ CSV 10 gündür donmuş (step=193k, özdeş 26 satır). `configs/ppo.yaml` 2026-
 ### Müdahale
 **Yok** — `configs/ppo.yaml` v10 optimal konfigürasyonunda; değişiklik için %80+ güven eşiğini aşan sorun tespit edilmedi. CSV 10 gündür donmuş, aktif Gazebo eğitimi yok. Bloker env-tarafı (`drone_exploration_env.py`), yaml değil.
 ---
+
+## [2026-06-09 05:09 UTC]
+**Step:** 193,248 (CSV son kayıt — 10 gündür STALE, v9 çöküş-döngüsü kalıntısı) | **ep_rew_mean:** -173.85 (stale) | **entropy:** -4.212 (stale) | **std:** 0.985 (stale)
+
+### Durum
+`training_metrics.csv` 2026-05-30 22:00'dan bu yana frozen; aktif Gazebo v10 eğitimi başlamadı. Configs/ppo.yaml v10 konfigürasyonu 2026-06-02'den beri hazır ve hyperparameter açısından optimal; yeni müdahale gerektirmiyor. Kritik bloker v10'un hâlâ başlatılmamış olması.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV'nin tüm son 25 satırı 2026-05-30 22:00–2026-05-31 03:01 arası özdeş (`step=193248, rew=-173.85`): v9 crash-loop'unun donmuş monitor ekosisi. Aktif Gazebo eğitimi yok.
+- Geçmiş referans (interventions.jsonl): Gazebo v3.0 run → 2026-05-31 14:54'te step=501760, peak=133.35. 2026-06-02'de v3.0 durduruldu (610k step, peak 110.3). Bu run'ın ödül eğrisi kırılım fazını geçmiş ve ~500k'da olgunluğa ulaşmış; configs/ppo.yaml zaten o run'ın kanıtlanmış hyperparametrelerini içeriyor.
+- Fast_sim zinciri (2026-06-01) tamamen kapandı: v4.8 şampiyonu (collision=25, lidar_history=2, %0 çarpışma, 5 oda, 117 voxel), v4.10 kapsam ucu (5M, 281 voxel, 6 oda, %54 çarpışma). Trade-off temel ve kesinleşti.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Hayır — ama zaten aşıldı. v10 config: `lr=3e-4 → 1e-5 linear (1.5M)`. Bu schedule Gazebo v3.0 peak 110.3'ü veren değer. lr=7.5e-5 v9 snapshot'ı, artık geçersiz.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut CSV verisi stale olduğu için v10 için projeksiyon: `ent_coef=0.008` (v9 0.0015'ten 5.3x) ile ilk 50k'da std ~1.0–1.5, entropy ~-4.5 bekleniyor.
+- v2.2 env zaten yönlü (FWD_ARC) + omnidirectional soft penalty içeriyor; collision cezası olmadan bile agent keşife yönlendiriliyor. ent_coef=0.008 bu yapıyla dengeli.
+- v3.0 Gazebo aynı ent_coef ile peak 110.3 aldı → değer kanıtlandı.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 env (drone_exploration_env.py v2.2): room_bonus=10, collision_penalty=-10 (terminal), directional soft penalties aktif.
+- v10 config (n_steps=2048, gae_lambda=0.95): v9'dan 4x uzun rollout → daha zengin gradient, kritik alan geçişleri için daha doğru kredi ataması.
+- Referans Gazebo v3.0 (n_steps=512, farklı harita) ~60–120k'da ilk oda sinyalleri verdi. v10'da n_steps=2048 ile ~40–80k'da ilk oda geçişi bekleniyor.
+- 3+ oda: ~200–400k. 5–6 oda: ~700k–1M. 1.5M bütçe yeterli.
+- **Kritik uyarı:** collision_penalty env'de hâlâ -10.0 (fast_sim kanıtlı sweet-spot: -25.0). Bu fark v3.0 Gazebo'nun collision %X ile devam etmesi anlamına geliyor. v10 Gazebo aynı sorunu yaşayabilir.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. `drone_exploration_env.py` → `-10.0 → -25.0` terminal collision penalty (satır 342: `reward -= 10.0`). Fast_sim kesinleşmiş sweet-spot: 22=costu (%37 crash), 25=OPTIMAL (%0 crash), 30=%8 crash. Dar ve hassas aralık; sadece bu tek satır.
+2. `drone_exploration_env.py` → lidar_history=2 (obs 40-d → 72-d): hareketli engel hızını çıkarma için. fast_sim breakthrough: crash %80→%1. İlk öneri daha kritik; ikincisi hareketli engel aktif olmadan daha az acil.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **configs/ppo.yaml: HAYIR.** Tüm hyperparametreler Gazebo v3.0 + fast_sim sweep ile kanıtlanmış: `lr=3e-4→1e-5 linear`, `ent_coef=0.008`, `n_steps=2048`, `n_epochs=10`, `clip_range=0.2`, `gae_lambda=0.95`, `net_arch=[256,256]`, `total_timesteps=1.5M`, `n_envs=1`, `VecNormalize(norm_reward=True, clip=10)`. %80+ güven eşiğini aşan hyperparameter sorunu yok.
+- **Operasyonel uyarı (kritik):** v10 Gazebo eğitimi 10+ gündür başlamadı. Tek bloker `drone_exploration_env.py` env kodu (kullanıcı tarafı). Collision=-10→-25 değişikliği yapılmadan v10 başlatmak v9 seviyesinde (crash-loop + 0-oda) başarısızlık riski taşıyor.
+- **Monitor güvenilirliği:** interventions.jsonl'de step=80k'da 20+ crash_recovery döngüsü. v10 monitor'a restart sayacı + exponential backoff eklenmeli.
+
+### v10 Önerisi
+1. **`drone_exploration_env.py` satır 342:** `reward -= 10.0` → `reward -= 25.0` — tek satır, kanıtlanmış sweet-spot, acil.
+2. **v10 başlatma:** `./scripts/train.sh configs/ppo.yaml`. Hyperparametreler hazır; tek bloker env satırı.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` v10 optimal konfigürasyonunda; %80+ güven eşiğini aşan hyperparameter sorunu tespit edilmedi. Env kodu (`drone_exploration_env.py`) değişikliği bu task'ın scope'u dışında (ppo.yaml only).
+---
