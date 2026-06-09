@@ -2365,3 +2365,47 @@ Aktif Gazebo eğitimi yok; CSV 9+ gündür donmuş, güncel veri elde edilemiyor
 ### Müdahale
 **Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10 optimal konfigürasyonunda. Bu oturumda CSV hâlâ donmuş; yeni Gazebo verisi yok. Önceki oturumlarla özdeş durum; %80+ güven eşiğini aşan config sorunu tespit edilmedi. Bloker ENV kodu (kullanıcı tarafı), yaml değil.
 ---
+
+## [2026-06-09 00:00 UTC]
+**Step:** 193,248 (CSV son kayıt — 10 gündür STALE) | **ep_rew_mean:** −173.85 (geçersiz, v9 crash-loop kalıntısı) | **entropy:** −4.212 (geçersiz) | **std:** 0.985 (geçersiz)
+
+### Durum
+`training_metrics.csv` 2026-05-30 22:00'dan bu yana step=193,248'de tamamen donmuş (10 gün). `configs/ppo.yaml` 2026-06-02'den beri v10 optimal konfigürasyonunda ve değişiklik gerektirmiyor. fast_sim 18-config sweep 2026-06-01'de tamamlandı; v10 Gazebo eğitimi hâlâ başlamadı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV'deki tüm ölçümler geçersiz: 2026-05-30 22:00–2026-05-31 03:01 arası 14 satır özdeş (process dead, monitor stale). Gerçek v9 trendi: ep_rew_mean −290 @142k → −37 @145k (geçici toparlanma) → −173 @193k (crash-loop başlangıcı). +15'lik oda sıçraması görülmedi.
+- Son gerçek Gazebo peak: **+110.3 @610k** (v3.0, 2026-05-31 kasıtlı durduruldu). v10 henüz start almadı — eğri yok.
+- fast_sim bulgusu (referans): v4.8 @1.5M → 0% çarpışma, 5 oda, 117 voxel; v4.10 @5M → 54% çarpışma, 5.76 oda, 281 voxel. Temel trade-off kesinleşti.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- KICKOFF.md'de belirtilen sabit 7.5e-5 değeri `ppo.yaml`'da yok; zaten terk edildi. Mevcut v10 config: `lr=3e-4→1e-5 linear (1.5M boyunca)`. Bu doğru seçim — `train_v3_resume_310k.log` gösterdi ki sabit lr altında v3.0 1.45M'de std=14/entropy=−11.5 ile diverge etti; linear decay bu paterni önler.
+- v8'in 3e-4→3e-5 aralığına kıyasla v10'daki 3e-4→1e-5 (son değerde 3× daha agresif küçültme) 1.5M bütçede fine-tuning kalitesini artırır. Değişiklik gerekmez.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- CSV değerleri (entropy=−4.212, std=0.985) geçersiz — aktif run yok.
+- v10 projeksiyonu: `ent_coef=0.008` (v9'un 0.0015 değerinin 5.3×) → başlangıçta std~1.0–1.5, entropy~−4.5 ila −5.0 bekleniyor. fast_v4.8 bu ent_coef ile 0% çarpışma ve 5 oda keşfetti — keşif için yeterli.
+- Erken deterministikleşme riski: v9'daki entropy=−4.25, std~0.99 v10 ent_coef=0.008 ile olmayacak. İzleme eşiği: entropy > −2.5 VE std < 0.5 birlikte → müdahale.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- `drone_exploration_env.py` WITH (`collision_penalty=25`, `lidar_history=2`): ilk oda ~100–200k; 3 oda stabil ~300–500k; 5–6 oda ~700k–1M.
+- `drone_exploration_env.py` WITHOUT değişiklikler (`collision_penalty=10`, `lidar_history=1`): ilk oda ~300–500k; 1.5M içinde 5–6 oda garantisiz (v3.0 Gazebo 610k'da 110.3 peak ile 3.0 oda ortalamasına ulaşabildi, kıyasla daha yavaş ilerleme).
+- v10 henüz başlamadığından "kaç step daha" sorusu şu an geçerli değil.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`collision_penalty: 10 → 25` (`drone_exploration_env.py`, 1 satır):** fast_v4.8 kesinleşmiş şampiyon → %0 çarpışma. Dar tatlı nokta: 22=geriledi(%37 çarpışma, 2-oda yerel optimum), 25=optimal(%0/%5oda), 30=%8 çarpışma. Değişiklik ppo.yaml'ı etkilemez; `resume_from: null` zaten doğru.
+2. **`lidar_history: 1 → 2` (obs 41-d → 72-d, `drone_exploration_env.py`, 1 satır):** fast_v2 breakthrough: çarpışma %80→%1. lidar_history=3 (v5.0) bu seviyeye ulaşamadı (voxels düştü). Obs boyutu değişeceğinden eski checkpoint uyumsuz — fresh start zorunlu, config zaten `resume_from: null`.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml açısından: HAYIR.** Config 2026-06-02'den beri v10 optimal: `lr=3e-4→1e-5 linear`, `ent_coef=0.008`, `n_steps=2048`, `batch_size=256`, `n_epochs=10`, `gae_lambda=0.95`, `clip_range=0.2`, `net_arch=[256,256]`, `total_timesteps=1.5M`, `n_envs=1`, `VecNormalize(norm_obs=false, norm_reward=true, clip_reward=10)`. %80+ güven eşiğini aşan hyperparameter sorunu tespit edilmedi.
+- **Operasyonel (kritik):** v10 Gazebo 10+ gündür başlamadı. 1.5M @~40 FPS Gazebo ≈ 10.4 saat. Bloker: `drone_exploration_env.py` — 2 satır, kullanıcı tarafı. Bu değişiklikler olmadan v10 başlatmak collision=10 ile suboptimal sonuç üretir.
+- **Monitor loop (ikincil):** `interventions.jsonl` step=80k'da 20+ crash_recovery döngüsü kayıtlı. v10 için `--max-restarts` limiti ve exponential backoff eklenmesi önerilir.
+
+### v10 Önerisi
+1. **ENV kodu önce, eğitim sonra:** `drone_exploration_env.py` içinde `collision_penalty=10 → 25` ve `lidar_history=1 → 2` yapıldıktan sonra `./scripts/train.sh configs/ppo.yaml`. Sıra şart; obs boyutu 41→72-d olacağından `resume_from: null` zaten doğru.
+2. **İlk 50k step izleme eşiği:** std > 5.0 → VecNormalize entegrasyon sorunu (v3.0 diverge paterni). std < 0.5 VE entropy > −2.5 → `ent_coef` artır. FPS < 25 → Gazebo bridge sorunu. Aksi halde 300k'ya kadar müdahale yok.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` v10 optimal konfigürasyonunda, değişiklik gerektiren %80+ emin olunan sorun tespit edilmedi. CSV 10 gündür donmuş; aktif Gazebo verisi yok. Bloker `drone_exploration_env.py` (kullanıcı tarafı), yaml değil.
+---
