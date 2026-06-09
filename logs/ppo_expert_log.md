@@ -2615,3 +2615,50 @@ CSV 2026-05-31 03:01'den bu yana tamamen donmuş; 9 gündür yeni veri yok. Ger�
 ### Müdahale
 **Yok** — `configs/ppo.yaml` v10 optimal konfigürasyonunda. Fast_sim zinciri complete; tüm levers (reward shaping, training duration, curriculum, obs) tükendi. Env kodu değişikliği bu task'ın scope'u dışında (ppo.yaml only). %80+ güven eşiğini aşan hyperparameter sorunu tespit edilmedi.
 ---
+
+## [2026-06-09 07:09 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 10 günlük boşluk, May 30 22:00'dan beri frozen) | **ep_rew_mean:** N/A (v10 Gazebo henüz başlamadı) | **entropy:** N/A | **std:** N/A
+
+### Durum
+10 günlük veri sessizliği: training_metrics.csv May 30 22:00'dan beri step=193248 ile donmuş, interventions.jsonl'deki son kayıt June 1 01:30 UTC (v3.0 @434k milestone). **Gazebo v10 Gazebo run'ı CSV'de yok** — ya başlatılmadı, ya da lokal makinede çalışıp bu repo'ya loglamıyor. configs/ppo.yaml v10 FRESH START için hazır (June 2 damgalı, 18 fast_sim config'in özeti). Hyperparameter açısından mevcut config kuvvetli; acil değişiklik yok.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV frozen: Son gerçek veri May 30 22:00, step=193248, ep_rew_mean=-173.85. Bundan sonra hiç yeni Gazebo v10 satırı gelmedi.
+- Gazebo v3.0 tarihsel zirve: peak=110.3 @ 610k adımda kasıtlı durduruldu (ppo.yaml header — June 2'de v10'a geçildi).
+- Fast-sim v4.8 (şampiyon): collision=%0, rooms_mean=5.0, voxels=117 @ 1.5M step. Fast-sim v4.10 @ 5M: rooms_mean=5.76 (6/6 oda), ama collision=%54 (güvenlik kolapsı). Sweet spot: v4.8 @ 1.5M.
+- **Sonuç:** Gazebo v10 henüz üretim verisine yok. Eğitim başlatılırsa kırılım evresi fast-sim'e göre 150-250k step bandında bekleniyor (lidar_history=2 uygulanmışsa).
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Artık geçersiz soru: ppo.yaml'da lr: 0.0003 (3e-4) → 1e-5 linear (1.5M boyunca). Bu v3.0 @ 434k'da ep_rew_mean=99.84 üretmiş kanıtlanmış optimal şema. Sabit 7.5e-5 çok önceden terk edildi — kesinlikle doğru karar.
+- Karşılaştırma: v8 (3e-4→3e-5, 10× decay) → +113 @ 1.6M. v10 (3e-4→1e-5, 30× decay, 1.5M cap) → daha derin fine-tune, fast-sim v4.10'daki 2M+ güvenlik kolapsını önleyecek şekilde kısıtlandı.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Live Gazebo v10 verisi yok; değerlendirme config üzerinden yapılıyor.
+- `ent_coef: 0.008` → v9'un 0.0015'inin 5.3×'i. Fast-sim v4.8'de bu ent_coef düzeyinde collision=%0, rooms=5 — ama fast-sim v4.2'de ent_coef=0.02'ye çıkartıldığında collision=%85'e fırladı. v10'un 0.008'i dengeli bölgede.
+- `gae_lambda: 0.95` (v9'un 0.9'undan iyileşme): Daha uzun horizon GAE → oda keşfi gibi gecikmeli ödüllü görevlerde kritik.
+- `clip_range: 0.2` + `n_epochs: 10` + `max_grad_norm: 0.5`: Standart SB3 PPO güvenlik zarfı. v9'daki 0.1/5 kombinasyonundan daha agresif güncelleme; LR decay ile dengeleniyor.
+- **Beklenti:** v10 başladığında ilk 100k'da entropy > -4.5, std > 0.90 görülmeli. Erken uyarı: 300-400k bandında std < 0.75 → ent_coef müdahale tetikleyicisi.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- Gazebo v3.0 @ 610k: peak=110.3 ≈ eğitim sırasında 7 oda bonusu (7×15=105+5). Tüm 6 odayı stochastic politika geçiyor ama deterministik değil.
+- Fast-sim v4.8 @ 1.5M: rooms_mean=5.0 deterministik (eval ortamı). Bu fast-sim hızında ~7dk — Gazebo'da 1.5M @ 80 FPS × n_envs=1 ≈ 18.750 saniye ≈ ~5.2 saat.
+- **Tahmin (lidar_history=2 uygulanmışsa):** 300-500k step → ilk tutarlı 3-4 oda geçişi; 800k-1.2M → 5-6 oda deterministik. **lidar_history=2 uygulanmamışsa:** fast-sim'in ~%80 collision düşürme etkisinden yararlanılamaz, 6-oda deterministik geçiş mümkün değil.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **Env kod güncellemesi önce, Gazebo v10 sonra:** ppo.yaml header'da belgelenmiş iki kritik değişiklik env koduna yansıtılmamışsa v10 başlatılamaz — ya da başlatılsa da fast-sim'deki kazanımlar görülmez. `drone_exploration_env.py`'de: (a) `lidar_history: 1→2` (obs 41-d→72-d, fast-sim collision %80→%1'e düşürdü), (b) `collision_penalty: 10→25` (v4.8 sweet spot, %0 collision). Bu ikisi uygulanmadan v10 Gazebo run'ı v3.0'ın üzerine pek çıkamaz.
+2. **400-700k bandında std izleme tetikleyicisi kur:** v3.0 @ 434k "taze kırılım" notundaydı; v4.10 @ 5M kolaps başladı. v10 1.5M cap ile güvende ama std < 0.70 VE entropy > -3.8 **birlikte** görüldüğünde `ent_coef: 0.008 → 0.015` uygula. Tek başına std yetmez — v4'te hem std hem entropy birlikte bozuldu.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Hyperparameter açısından: HAYIR.** ppo.yaml v10 fast-sim'den damıtılmış kanıtlanmış optimal konfigürasyon. Değiştirecek bir şey yok.
+- **Operasyonel açıdan: EVET (orta öncelik).** Gazebo v10 10 gündür başlatılmamış veya bu repo'ya loglamıyor. Kullanıcı lokalde çalışıyorsa CSV boşluğu normal; ama v10 hiç başlatılmamışsa env kod güncellemesi + `./scripts/train.sh configs/ppo.yaml` ile başlatılması gerekiyor.
+- **CSV monitoring kalıcı bozuk:** May 30 22:00'dan beri stale. Monitor altyapısı yeniden yazılmadan güvenilir metrik akışı yok. Acil değil ama rapor için engel.
+
+### v10 Önerisi
+1. **Env kodu önce:** `drone_exploration_env.py` → `lidar_history=2` (obs 72-d) + `collision_penalty=25`. Bu adım atlanırsa v10 Gazebo run'ı fast-sim v4.8'in rooms_mean=5.0 performansına ulaşamaz.
+2. **400-700k izleme tetikleyicisi:** std < 0.70 VE entropy > -3.8 → `ent_coef: 0.008→0.015`. Gazebo v3.0'da bu bandda "taze kırılım" gözlemlendi; v10 daha hızlı bu bölgeye gelecek (yüksek ent_coef + lidar_history=2 sayesinde). Tetik koşulları birlikte olmalı, tek başına yetmez.
+
+### Müdahale
+**Yok** — configs/ppo.yaml v10 konfigürasyonu (lr=3e-4→1e-5 linear, ent_coef=0.008, n_epochs=10, gae_lambda=0.95, clip_range=0.2, n_envs=1, 1.5M cap) 18 fast_sim config'inin özeti olarak kanıtlanmış optimal aralıkta. Gazebo v10 live verisi mevcut olmadan %80+ güven eşiğini aşan hyperparameter sorunu tespit edilemez. Env kodu değişikliği (lidar_history=2, collision_penalty=25) bu analizin scope'u dışında — ppo.yaml müdahalesi yok.
+---
