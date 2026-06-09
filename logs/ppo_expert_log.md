@@ -2451,3 +2451,42 @@ CSV 10 gündür donmuş; aktif Gazebo/v10 eğitimi yok. Bu analiz v9 CSV'sinin i
 ### Müdahale
 **Yok** — `configs/ppo.yaml` v10 optimal konfigürasyonunda. %80+ güven eşiğini aşan hyperparameter sorunu tespit edilmedi. CSV 10 gündür donmuş, aktif Gazebo verisi yok. Bloker `drone_exploration_env.py` (kullanıcı tarafı) + Gazebo'nun başlatılması.
 ---
+
+## [2026-06-09 12:00 UTC]
+**Step:** 193,248 (CSV SON KAYIT — STALE, v9 crash-loop kalıntısı) | **ep_rew_mean:** -173.85 (stale) | **entropy:** -4.212 (stale) | **std:** 0.985 (stale)
+
+### Durum
+Gazebo v9 eğitimi 22:00 2026-05-30'dan bu yana tamamen donmuş (step=193,248 frozen). Asıl proje hızla ilerledi: fast_sim v1-v5.0 deneyleri tamamlandı (June 1), configs/ppo.yaml zaten v10-hazır durumda (June 2). Config müdahalesi gerekmez; kritik engel env-tarafında (drone_exploration_env.py).
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV 46 satırdan son 26'sı özdeş (step=193k, stale). En yüksek gerçek kayıt: -37.37 @ 145,600 step (2026-05-30 21:20) — v9 Gazebo kırılım noktasına ulaşamadan crash-loop'a girdi.
+- Aynı anda başlatılan fast_sim v3.0 Gazebo: peak **+110.3 @ 610k** (verified, kasıtlı durduruldu). Fast_sim v4.8: %0 çarpışma, 5 oda, 117 voxel — bu referans değerler.
+- +15'lik oda sıçraması v9 CSV'sinde görülmedi; v3.0 Gazebo TB'de ~120k step civarında gözlemlenmiş.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Görev tanımındaki "lr=7.5e-5 constant" ESKI durum (KICKOFF.md v9 snapshot). Mevcut ppo.yaml artık **v10**: `learning_rate: 3e-4 → 1e-5 linear (lr_schedule: linear, lr_final: 1e-5)` — v3.0 Gazebo'da peak 110.3 veren kanıtlanmış schedule. Müdahale gereksiz, doğru seçim zaten uygulandı.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- CSV stale değerleri (entropy -4.21, std ~0.985) v9'a ait. v10 config: `ent_coef: 0.008` (v9 0.0015'ten 5.3x artış) → keşif yeterliliği artırılmış. Fast_sim v4.8 champion'ı ent=0.008 ile 5 oda %0 çarpışma sağladı. Gazebo için bu değer uygun.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 Gazebo tarihine göre: 80-120k step'te ilk oda geçişi, 200-400k'da tutarlı 3+ oda. v10 n_steps=2048 (v3.0 512'den 4x uzun rollout) → daha zengin gradient sinyali → ilk oda geçişi daha erken beklenir (~60-100k step). Total 1.5M'de 5-6 oda hedefi gerçekçi.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py`: collision_penalty -10.0 → -25.0** — Fast_sim v4.8 kanıtı: %-8→%0 çarpışma, tüm 5 oda aktif. HÂLÂ UYGULANMADI (kod hâlâ -10.0 kullanıyor, ppo.yaml yorumunda belirtilmiş ama env değiştirilmemiş). V10 eğitimi başlamadan ÖNCELİKLE yapılmalı.
+2. **`drone_exploration_env.py`: lidar_history 1→2 (obs 40-d→72-d)** — Fast_sim v2 kanıtı: çarpışma %80→%1 (hareketli engel hızı çıkarımı). HÂLÂ UYGULANMADI. ppo.yaml resume_from=null olduğundan obs boyutu değişikliği sorunsuz; SB3 MlpPolicy yeni shape'i otomatik alır.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- Eğitim şu an bu makinede çalışmıyor (Berker'in lokali). CSV donmuş, process yok.
+- **configs/ppo.yaml HAZIR ve OPTIMAL** — değiştirme. v10 hyperparametreler: lr 3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, clip=0.2, batch=256, max_ep=2500, VecNormalize(norm_reward=True). Tümü fast_sim/v3.0 kanıtlı.
+- **Tek blokaj:** drone_exploration_env.py'daki iki eksik değişiklik (collision_penalty=25, lidar_history=2). V10 eğitimi başlamadan önce env güncellenmeli.
+
+### v10 Önerisi
+1. **drone_exploration_env.py → `reward -= 25.0` (çarpışma cezası, şu an 10.0)**: fast_sim v4.8 tatli noktası, %0 çarpışma + full oda keşfi. Eğitim başlamadan önce yapılmalı.
+2. **drone_exploration_env.py → lidar_history=2 (obs 40→72-d)**: hareketli engel hızı gözlemlenebilir hale gelir; fast_sim'de çarpışma %80→%1. ppo.yaml zaten `resume_from: null` (fresh start) → obs shape değişikliği sorunsuz.
+
+### Müdahale
+Yok — configs/ppo.yaml zaten v10 optimal (linear decay 3e-4→1e-5, ent_coef=0.008). Env-tarafı değişiklikler bu görevin kapsamı dışında; not olarak bırakıldı.
+---
