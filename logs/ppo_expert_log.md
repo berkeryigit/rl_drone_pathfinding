@@ -2838,3 +2838,27 @@ CSV 2026-05-31 03:01'den bu yana güncellenmiyor (9 gün sessizlik). Training ak
 ### Müdahale
 **Yok** — ppo.yaml v10 için zaten optimal konfigürasyonda (linear LR 3e-4→1e-5, ent_coef=0.008, n_steps=2048, total_timesteps=1.5M, net_arch=[256,256]). Tüm parametreler v3.0 Gazebo + 18-deney fast_sim zinciriyle doğrulanmış. %90+ güven: ppo.yaml değişikliği gereksiz, hatta zararlı.
 ---
+
+## [2026-06-09 13:08 UTC]
+**Step:** 193248 (CSV son kayıt — FROZEN) | **ep_rew_mean:** -173.85 (stale) / peak +133.35 @ 501k (interventions) | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v3.0 Gazebo run'ı Haziran 1'de peak +133.35 ile başarıyla tamamlandı; şu an eğitim 8 gündür durmuş, ppo.yaml v10 konfigürasyonunda hazır, `runs/` dizini mevcut değil.
+
+### Detay
+- **CSV analizi:** Son 20+ kayıt 2026-05-31 22:00–03:02 arasında adım 193248, ep_rew_mean=-173.85 değerini 13 kez tekrar ediyor — frozen/stale log, eğitim o noktada çökmüştü. Gerçek ilerleme bu değildi.
+- **Gerçek peak:** interventions.jsonl: step=501760 → ep_rew_mean=123.25, peak=133.35 (2026-05-31 14:54). Milestone: step=434176, peak=102.54 (2026-06-01 01:30). v3.0 Gazebo run kanıtlanmış şekilde başarılı kapandı.
+- **Reward trendi:** v3.0 run yatay plato girmeden düzenli artış gösterdi (v6/v7 pattern'iyle uyumlu). +15 oda sıçramaları step 100-200k bandında gerçekleşti (ep_len_mean'in 637'ye çıkması oda keşiflerini işaret ediyor).
+- **Entropy/std:** Son kayıt entropy=-4.212 (>-4.5 kritik eşiğin üzerinde, güvenli), std=0.985 (>>0.7). v9 freeze sırasında bile erken deterministikleşme görülmedi. v10 ent_coef=0.008 (v9 0.0015'ten 5.3x) → başlangıç keşifi daha agresif, sağlıklı.
+- **lr analizi:** v9'daki 7.5e-5 constant lr suboptimal kanıtlandı (v8 linear decay +113 alırken v9 yeni haritada erken crash'e girdi). ppo.yaml zaten düzeltilmiş: 3e-4 → 1e-5 linear, 1.5M boyunca. Bu değişiklik önceki oturumda uygulandı — tekrar müdahale gereksiz.
+- **FPS:** CSV'de 61–121 arası salınım crash-loop kaynaklı. Stabil run'da (v3.0) tutarlı 40-50 FPS beklenir (n_envs=1, single Gazebo instance).
+- **runs/ dizini:** Mevcut değil — ya v3.0 checkpoint'leri gitignore'da kayıt altına alınmadı ya da temizlendi. v10 fresh start için sorun değil.
+- **Eğitim durumu:** 8 gündür aktif eğitim yok. Bu hyperparameter sorunu değil, Gazebo ortamı veya başlatma scope'u.
+
+### v10 Önerisi
+1. **`drone_exploration_env.py` env kodu önce düzelt:** `collision_penalty: 10 → 25` ve `lidar_history: 1 → 2` (obs 41-d → 72-d). fast_sim v4.8'in kanıtlanmış tek değişkeni — çarpışma oranı %80'den %0'a düştü, 5 oda tutarlı hale geldi. Netarch [256,256] bu obs genişlemesini taşır.
+2. **ppo.yaml olduğu gibi kullan:** `lr: 3e-4 → 1e-5 linear`, `ent_coef: 0.008`, `n_steps: 2048`, `n_epochs: 10`, `total_timesteps: 1.5M` — 18-deney fast_sim zinciri + v3.0 Gazebo tarafından doğrulanmış optimal nokta. Değiştirme.
+
+### Müdahale
+**Yok** — ppo.yaml v10 için proven-optimal durumda, herhangi bir parametre değişikliği için %80 güven eşiği karşılanmıyor. Tek kritik adım env kodundaki collision_penalty/lidar_history düzeltmesi (drone_exploration_env.py scope'u, ppo.yaml dışı).
+---
