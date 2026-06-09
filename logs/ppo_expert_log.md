@@ -2662,3 +2662,49 @@ CSV 2026-05-31 03:01'den bu yana tamamen donmuş; 9 gündür yeni veri yok. Ger�
 ### Müdahale
 **Yok** — configs/ppo.yaml v10 konfigürasyonu (lr=3e-4→1e-5 linear, ent_coef=0.008, n_epochs=10, gae_lambda=0.95, clip_range=0.2, n_envs=1, 1.5M cap) 18 fast_sim config'inin özeti olarak kanıtlanmış optimal aralıkta. Gazebo v10 live verisi mevcut olmadan %80+ güven eşiğini aşan hyperparameter sorunu tespit edilemez. Env kodu değişikliği (lidar_history=2, collision_penalty=25) bu analizin scope'u dışında — ppo.yaml müdahalesi yok.
 ---
+
+## [2026-06-09 08:10 UTC]
+**Step:** 193,248 (CSV son kayıt — May 30 22:00'dan beri frozen, ~10 gün boşluk) | **ep_rew_mean:** -173.85 (v9 stale) | **entropy:** -4.212 (v9 stale) | **std:** 0.985 (v9 stale)
+
+### Durum
+CSV 10+ gün donmuş: en son gerçek Gazebo verisi May 30 22:00 (step=193k, v9 era). Interventions'ın son anlamlı kaydı June 1 01:30 UTC — v3.0 @ 434k peak=102.54. configs/ppo.yaml v10 fresh-start için hazır (June 2 tarihli), Gazebo v10 run'ı bu repo'ya henüz veri göndermiyor veya hiç başlatılmadı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV tamamen stale: step=193k değeri 2026-05-30 22:00'dan 2026-05-31 03:01'e kadar 16 kez tekrar etmiş (aynı TB dosyası okunmuş, monitor loop'u stale veriye takılı).
+- Gerçek eğitim interventions'dan izleniyor: v3.0 @ 434k → ep_rew_mean=99.84, peak=102.54 (kırılım devam ediyordu); 610k'da kasıtlı durduruldu (ppo.yaml header'da kayıtlı), peak=110.3.
+- Eğri durdurulduğunda yükseliş trendindeydi; plato değil, erken kesilme. v10 fresh run başladığında ~100-150k step'te pozitif bölgeye geçiş bekleniyor (v3.0 referans: ~80k'da ilk pozitif geçiş).
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Artık geçerli değil: ppo.yaml v10'da `lr: 0.0003` + `lr_schedule: linear` → `lr_final: 1e-5` (1.5M boyunca). Bu v3.0'ın birebir schedule'ı — peak=110.3 kanıtı var. Constant 7.5e-5 v9'da kullanılmıştı ve terk edildi, doğru karar. v8 (3e-4→3e-5, 10× decay) +113 @ 1.6M üretmişti; v10 (3e-4→1e-5, 30× decay, 1.5M cap) daha derin fine-tune sağlıyor ve fast_sim v4.10 @ 2M+ güvenlik kolapsını önlemek için bilinçli kırpılmış.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Canlı v10 verisi yok; config bazlı projeksiyon yapılıyor.
+- `ent_coef: 0.008` = v9'un 0.0015'inin 5.3×'i. Fast-sim v4.8'de bu ent_coef seviyesiyle collision=%0, rooms_mean=5.0 elde edildi. v4.2'de 0.02'ye çıkınca collision=%85 — v10 0.008 dengeli bölgede.
+- `gae_lambda: 0.95` (v9'un 0.9'undan iyileşme): uzun horizon GAE, gecikmeli oda ödüllerini daha iyi propaga eder.
+- `n_epochs: 10` + `n_steps: 2048` kombinasyonu: rollout başına 10×8=80 gradient adımı (clip_range=0.2 ile sınırlandırılmış). Agresif ama max_grad_norm=0.5 ile güvenli zarfta.
+- Erken uyarı eşiği: v10 başladığında ilk 200k'da entropy > -4.5 ve std > 0.85 görülmeli. 400-600k bandında std < 0.70 VE entropy > -3.8 birlikte → ent_coef 0.008→0.015 tetikleyicisi.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- Gazebo v3.0 referansı (n_envs=1, ~80 FPS): peak=110.3 @ 610k ≈ eğitim sırasında 7 oda bonusu geçilmiş (7×15=105+voxel).
+- Fast-sim v4.8 @ 1.5M: rooms_mean=5.0 deterministik (eval). Gazebo 1/100 gerçek zamana yakın → oransal yakınsama 3-5× daha yavaş.
+- Proje beklentisi (lidar_history=2 uygulanmışsa): 2 oda @ 100-150k; 3-4 oda @ 350-500k; 5-6 oda deterministik @ 900-1200k. 1.5M bütçe 5 oda için yeterli; 6 oda garantisiz ama mümkün.
+- lidar_history=2 uygulanmamışsa: fast-sim'in %80→%1 collision drop etkisi kaybolur; 6 oda deterministik geçiş pratikte imkânsız hale gelir.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py` → collision_penalty=25 + lidar_history=2 (BLOCKING):** ppo.yaml header'da belgelenmiş; bu değişiklikler env koduna yansıtılmadan v10 Gazebo run'ı başlatılsa bile fast-sim v4.8 kırılımını tekrarlamak mümkün değil. collision_penalty sweet spot: 22-30 (v4.8 @ 25 = %0 crash champion), lidar_history=2 crash'i %80→%1'e düşürdü (v4.2 breakthrough). Tek kırık satır = 10 günlük kayıp.
+2. **Gazebo v10 run başlatma + monitor CSV fix:** CSV logging 10 gündür çalışmıyor. v10 `./scripts/train.sh configs/ppo.yaml` ile başlatıldığında monitor'a TB path güncellenmeli (`runs/ppo_v10/tb/PPO_*`). Aynı path yanılması May 30'da 16× aynı değeri yazdırmıştı.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Hyperparameter (ppo.yaml):** HAYIR. v10 config (lr linear decay, ent_coef=0.008, n_steps=2048, gae_lambda=0.95, 1.5M cap) 18 fast_sim config + Gazebo v3.0 ile cross-validated. %80+ güven eşiğini aşan sorun yok.
+- **Operasyonel:** Gazebo v10'un 10 gün başlatılmamış olması veya loglamaması orta öncelikli sorun. Bu task kapsamında ppo.yaml'ı değiştirme yetkisi var; env kodu değil.
+- **Monitor altyapısı:** interventions.jsonl'deki 80k step'te 20+ crash_recovery kaydı, restart sayacı veya minimum backoff olmadığını gösteriyor. v10 monitor'a: `restart_count > 3 within 60min → kill + alert` lojiği eklenmeli.
+
+### v10 Önerisi
+1. **BLOCKING — env kodu önce:** `drone_exploration_env.py` → `collision_penalty: 10.0 → 25.0` + `lidar_history: 1 → 2` (obs 41-d → 72-d). Bu iki satır uygulanmadan v10 Gazebo fast-sim v4.8'in performans tavanını göremez. fast_sim v4.8'in 18 config sweep'inden damıtılmış sweet spot — %80+ güven.
+2. **ppo.yaml: değişiklik yok.** Mevcut config v3.0 kanıtlanmış + fast_sim cross-validated optimal bölgede. lr schedule, ent_coef, gae_lambda, n_steps, 1.5M cap — dokunulmamalı.
+
+### Müdahale
+**Yok** — configs/ppo.yaml zaten optimal (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, n_envs=1, total_timesteps=1.5M). Canlı Gazebo v10 verisi olmadan %80+ güven eşiğini aşan hyperparameter sorunu tespit edilemez. Env kodu (lidar_history=2, collision_penalty=25) bu scope dışında; ppo.yaml müdahalesi yok.
+---
