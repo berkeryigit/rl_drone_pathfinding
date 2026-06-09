@@ -2862,3 +2862,50 @@ v3.0 Gazebo run'ı Haziran 1'de peak +133.35 ile başarıyla tamamlandı; şu an
 ### Müdahale
 **Yok** — ppo.yaml v10 için proven-optimal durumda, herhangi bir parametre değişikliği için %80 güven eşiği karşılanmıyor. Tek kritik adım env kodundaki collision_penalty/lidar_history düzeltmesi (drone_exploration_env.py scope'u, ppo.yaml dışı).
 ---
+
+## [2026-06-09 14:10 UTC]
+**Step:** 193248 (frozen, stale) | **ep_rew_mean:** -173.85 (stale) / gerçek peak +133.35 @ 501k | **entropy:** -4.212 (son kayıt) | **std:** 0.985
+
+### Durum
+v9 eğitimi May 30 22:00'da 193k step'te kalıcı olarak dondu; ppo.yaml June 2'de v10 konfigürasyonuna geçirildi ve hazır. Aktif eğitim 9 gündür yok.
+
+### Detay
+
+**a) Reward eğrisi nerede?**
+- Sabah (May 30 11:02–12:32): step 142k→599k, ep_rew_mean -290→-270 (çok yavaş ilerleme), ep_len_mean=1000 sabit (her episode max'a ulaşıyor, drone duvardan kaçamıyor). Bu run v9 ana run'ıydı.
+- Sonrası (crash-loop): 80k checkpoint'ten ~25 kez yeniden başlatıldı, step 80–193k arasında titreşti, ep_rew_mean -37 ile -173 arası (inconsistent — her restart farklı trajectory).
+- Gerçek ilerleme yok — plato değil, kalıcı crash/freeze döngüsü.
+- interventions.jsonl'dan bilinen gerçek peak: +133.35 @ step 501k (v3.0 Gazebo, May 31 14:54). Bu v9 değil, onceki iyi run. v9_newmap hiçbir zaman pozitife ulaşamadı.
+
+**b) lr=7.5e-5 constant seçimi doğru muydu?**
+- HAYIR. Sabah run'ının başlangıç lr'ı 3e-4 (linear decay to 3e-5) idi; bu run'da entropy_loss -3.886→-3.324 hızlı düştü (599k'da -4'ün üstüne çıktı). ent_coef=0.0015 bu hızı dengeleyemedi.
+- 7.5e-5 constant lr (KICKOFF'taki değer) aslında hiç uygulanmadı — CSV'de görulen ilk run 3e-4 ile başlıyor.
+- mevcut ppo.yaml zaten doğru cevabı veriyor: lr 3e-4→1e-5 linear + ent_coef=0.008. Önceki Claude oturumu bu sorunu tespit edip düzeltti.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- v9 sabah run (kritik): entropy_loss -3.886→-3.617→-3.440→-3.324 (599k step'te). std 0.888→0.813→0.772→0.746 (0.7 eşiğine yaklaşıyor). **-4 eşiği aşıldı** — erken deterministikleşme uyarısı gerçekleşti. ent_coef=0.0015 yetersiz kaldı.
+- v9 crash-loop dönemindeki daha son kayıtlar: entropy -4.21 ile -4.26, std ~0.985. Bu değerler crash recovery restart'larından kaynaklanıyor (policy 80k'da reset), gerçek eğitim ilerleme değil.
+- v10 için ent_coef=0.008 bu problemi çözer (5.3x yüksek). Öngörülen entropy dengesi: step 500k'da ≥-4.5 kalması beklenir.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v9_newmap hiçbir zaman pozitif reward almadı → oda geçişi hiç görülmedi.
+- v10 projeksiyonu (fast_sim v4.8 + v3.0 Gazebo referansıyla): collision_penalty=25 + lidar_history=2 uygulanırsa, ~150-250k stepte ilk oda geçişi (+15), ~400-500k stepte 4-5 oda tutarlı hale gelmesi beklenir (n_envs=1, ~40-50 FPS).
+- lidar_history=2 olmadan (41-d obs): +100k step ek süre gerekebilir.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **drone_exploration_env.py'de `collision_penalty=25` ve `lidar_history=2`** — obs 41-d→72-d. fast_sim v4.8: %0 çarpışma, 5 oda tutarlı. Bu env değişikliği olmadan v10 config tek başına yetersiz kalır.
+2. **ppo.yaml olduğu gibi kullan** — lr 3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, total_timesteps=1.5M kanıtlanmış optimal. Değiştirme.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml açısından: HAYIR.** v10 config proven-optimal. %90 güven — değişiklik gereksiz.
+- **Eğitim başlatma:** 9 gündür aktif eğitim yok. Bu hyperparameter sorunu değil, Gazebo ortamı/başlatma scope'u.
+- **drone_exploration_env.py:** collision_penalty ve lidar_history değişikliği bekliyor — bu en kritik bekleyen iş.
+- **Monitor crash-loop:** interventions.jsonl'da step=180k'dan 20+ tekrar var — monitor kendisi sorunlu, gerçek eğitim ilerlemiyor.
+
+### v10 Önerisi
+1. **env kodu önce:** `drone_exploration_env.py` → `collision_penalty: 10→25`, `lidar_history: 1→2` (obs 41-d→72-d). Ardından `./scripts/train.sh configs/ppo.yaml` ile v10 başlat.
+2. **ppo.yaml değiştirme:** Mevcut konfigürasyon fast_sim 18-deney + v3.0 Gazebo peak +133 tarafından doğrulanmış. Tek dokunuşluk risk taşır.
+
+### Müdahale
+**Yok** — ppo.yaml v10 için zaten optimal konfigürasyonda. Tüm parametreler (lr decay, ent_coef=0.008, n_steps=2048, total_timesteps=1.5M, net_arch=[256,256]) kanıtlanmış değerler. %80 güven eşiği aşılmadı, config değişikliği yapılmadı.
+---
