@@ -2708,3 +2708,49 @@ CSV 10+ gün donmuş: en son gerçek Gazebo verisi May 30 22:00 (step=193k, v9 e
 ### Müdahale
 **Yok** — configs/ppo.yaml zaten optimal (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, n_envs=1, total_timesteps=1.5M). Canlı Gazebo v10 verisi olmadan %80+ güven eşiğini aşan hyperparameter sorunu tespit edilemez. Env kodu (lidar_history=2, collision_penalty=25) bu scope dışında; ppo.yaml müdahalesi yok.
 ---
+
+## [2026-06-09 10:05 UTC]
+**Step:** 193,248 (CSV son kayıt — May 30 22:00'dan beri frozen, ~10 günlük boşluk; v10 Gazebo henüz veri üretmedi) | **ep_rew_mean:** -173.85 (v9 stale) | **entropy:** -4.212 (v9 stale) | **std:** 0.985 (v9 stale)
+
+### Durum
+Bu oturumda 3. analiz girişi. CSV veri yapısı tam okundu (47 satır toplam). v9 run'ı 193k step'te crash'le durdu; hiç pozitif reward görmedi. v10 config June 2'de hazırlandı, eğitim başlatılmadı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV 3 gruba ayrılıyor:
+  - **Grup 1 (11:02–12:32, step=142k–599k):** YANLIŞ TB OKUMA — çok eski bir run'ın TB dizini okunmuş. Checkpoint hep `ppo_drone_80000_steps.zip` ama step 599k'ya kadar çıkıyor; ep_len_mean=1000.0 (her episotta max-step timeout). Bu satırlar geçersiz.
+  - **Grup 2 (13:02–20:55, rows 5-27):** Gerçek v9 run. Step 49k–135k arasında SALINIYOR (20+ crash-recovery, interventions.jsonl teyit ediyor). En iyi ep_rew_mean: **-25.3 @ step 83k** (13:52). Pozitif eşik hiç aşılmadı; oda bonusu (+15) hiç tetiklenmedi.
+  - **Grup 3 (21:20–22:00):** 145k→149k→193k ilerleme. 145k'da -37.4 (gerçek iyileşme sinyali) → 193k'da -173.85 (ep_len=637 → uzun ama penaltı dolu episode, outlier). Sonra 15 satır aynı değer = monitor dead loop.
+- **Sonuç:** Plato değil, crash paterni. Kırılım hiç başlamadı.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- v9'da kullanılmıştı ve yetersiz kaldı: 193k step'te ep_rew_mean hiç +0'a bile ulaşamadı. Constant düşük lr, yeni haritada hızlı adaptasyonu engelledi.
+- v10 config (ppo.yaml): `lr=3e-4 → lr_final=1e-5, lr_schedule=linear` (1.5M boyunca). Bu v3.0 @ 434k → ep_rew_mean=99.84 üretmiş kanıtlanmış şema. Terk edilmesi doğru karar.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Gerçek v9 ölçümleri (Grup 2-3): entropy_loss -4.21 → -4.26, std 0.985 → 1.003. **-4.0'ın altında, std 0.7'nin çok üstünde** — keşif açısından sağlıklı.
+- Grup 1'in alarm verici değerleri (entropy -3.886→-3.324, std 0.746) tamamen yanlış TB okuma artefaktı, ignore.
+- Uyarı eşiği hiç tetiklenmedi; entropinin yüksek kalması rağmen reward pozitife geçemedi → sorun exploration'da değil, crash-recovery döngüsünde.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v9: 193k step, reward hiç +15 sıçraması yok → 0 oda geçişi. Crash paterni öğrenmeyi kesip attı.
+- v10 (lidar_history=2 + collision_penalty=25 uygulanmışsa): Referans v3.0 80k adımda ilk pozitife geçiş — benzer beklenti. 2 oda → ~150k, 4 oda → ~400k, 6 oda deterministik → ~900-1200k.
+- **lidar_history=2 uygulanmamışsa:** fast_sim v4.1 baseline seviyesinde (rooms_mean≈1.5 @ 1.5M, collision %54) → v3.0 bile aşılamaz.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **BLOCKING — env kodu önce:** `drone_exploration_env.py` → `collision_penalty: 10.0 → 25.0` + `lidar_history: 1 → 2` (obs 41-d→72-d). Fast_sim v4.8 (18 sweep'in şampiyonu): bu değişikliklerle collision=%0, rooms_mean=5.0. İki satır değişiklik = fark. ppo.yaml header'da kayıtlı ama env koduna yansıtılmamışsa run başlatmak anlamsız.
+2. **Monitor restart sınırı:** interventions.jsonl'de step=80k'da **22 ayrı crash_recovery** kaydı var (13:02–20:55 arası). Minimum backoff veya restart sayacı yok. v10 başladığında monitor'a `restart_count > 3 within 60min → STOP + alert` lojiği eklenmeli, yoksa v9 tekrarı yaşanır.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml:** HAYIR. v10 config (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, n_envs=1, 1.5M cap) 18 fast_sim config + Gazebo v3.0 ile cross-validated optimal. %80+ güven eşiğini aşan sorun yok.
+- **Operasyonel:** v10 10 günden uzun süredir başlatılmamış. Env kodu güncellemesi + `./scripts/train.sh configs/ppo.yaml` kritik.
+- **Monitor altyapısı:** May 30 22:00'dan beri ölü. Gerçek zamanlı veri akışı yok. v10 başlamadan bu boşluk kapatılamaz.
+
+### v10 Önerisi
+1. **`drone_exploration_env.py` → collision_penalty=25, lidar_history=2 (ÖNCE ENV, SONRA RUN):** Bu iki satır olmadan v10 Gazebo, fast_sim v4.8 tavan performansına ulaşamaz. v9'da bu eksiklik vardı — 193k step, 0 oda.
+2. **ppo.yaml dokunma:** Mevcut config optimal. lr=3e-4→1e-5 linear, ent_coef=0.008, gae_lambda=0.95, n_steps=2048 — tamamı kanıtlanmış aralıkta.
+
+### Müdahale
+**Yok** — configs/ppo.yaml v10 optimal konfigürasyonunda (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, n_envs=1, total_timesteps=1.5M). Canlı v10 Gazebo verisi olmadan %80+ güven eşiğini aşan hyperparameter sorunu tespit edilemez. Env kodu (lidar_history=2, collision_penalty=25) bu scope dışında.
+---
