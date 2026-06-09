@@ -2576,3 +2576,42 @@ CSV 10 gündür donmuş (step=193k, özdeş 26 satır). `configs/ppo.yaml` 2026-
 ### Müdahale
 **Yok** — `configs/ppo.yaml` v10 optimal konfigürasyonunda; %80+ güven eşiğini aşan hyperparameter sorunu tespit edilmedi. Env kodu (`drone_exploration_env.py`) değişikliği bu task'ın scope'u dışında (ppo.yaml only).
 ---
+
+## [2026-06-09 06:10 UTC]
+**Step:** 193,248 (CSV STALE — son 9 gündür donmuş) | **ep_rew_mean:** -173.85 (geçersiz, v9 crash kalıntısı) | **entropy:** -4.212 (stale) | **std:** 0.985 (stale)
+
+### Durum
+CSV 2026-05-31 03:01'den bu yana tamamen donmuş; 9 gündür yeni veri yok. Gerçek durum: fast_sim zinciri (v4.1→v5.0, 18 config) tamamlandı; Gazebo v3.0 610k/1.5M'de durduruldu (peak=110.3); v10 config hazır ama Gazebo eğitimi henüz başlatılmamış. `configs/ppo.yaml` optimal durumda — config değişikliği gerekmez.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV geçersiz. Son gerçek Gazebo verisi: v3.0 @ 434k (peak=102.54, 2026-06-01) ve 610k'da kasıtlı durduruldu (peak=110.3). Eğri v3.0'da hâlâ yükseliş trendindeydi; 610k bütçe dolmadan (1.5M hedef) durduruldu — yani erken kesilme, plato değil.
+- Fast_sim referansı: v4.10 @ 5M adımda 6 oda + 281 voxel (peak), v4.13 @ 8M'de 134 voxel'e geriledi — uzun eğitim Pareto frontierı öteleyemiyor.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Hayır ve artık geçerli bir soru değil. ppo.yaml v10'da lr=3e-4 linear → 1e-5 (1.5M boyunca). Bu Gazebo v3.0 config'i ile özdeş (peak=110.3 üretmiş). v9 sabit 7.5e-5'i çoktan terk edildi — doğru karar.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale veriden (entropy=-4.21, std=0.985) sağlıklı analiz yapılamaz. v10 fresh run başladığında: hedef entropy > -4.0 (ilk 200k), std > 0.7 (300k'a kadar). ent_coef=0.008 v9'un 0.0015'inin 5×'i; bu ile erken deterministikleşme riski düşük.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- Fast_sim (n_envs=8, 100× hız) verileri: ilk 2 oda → <50k step; 5 oda → ~300-500k; 6 oda → ~2-5M. Gazebo (n_envs=1, gerçek fizik) 3-5× yavaş yakınsama beklenebilir.
+- Gazebo v10 beklentisi: 2 oda @ 100-150k, 4 oda @ 400-600k, 5-6 oda @ 900-1200k. 1.5M bütçe 5 oda için yeterli; 6 oda garantisiz.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py` collision penalty 10→25 (BLOCKING):** Fast_sim kesinleşmiş sweet-spot: penalty=22 → 2-oda yerel optimumuna çöküş (%37 crash), penalty=25 → 0% crash (v4.8 champion), penalty=30 → %8 crash (aşırı tedirginlik). Aralık dar (22-30) ve kritik. Bu değişiklik yapılmadan v10 Gazebo'nun v9 crash-loop seviyesinde kalma riski %80+.
+2. **`drone_exploration_env.py` lidar_history 1→2 (41-d → 72-d obs, öncelik 2):** Fast_sim breakthrough: crash %80→%1 (v4.2 breakthrough). Gazebo'da 3 hareketli engel v10'dan aktif olacaksa bu değişiklik kritik; hareketli engel devre dışıysa ikinci öncelik. ppo.yaml `net_arch: [256,256]` 72-d input'u sorunsuz işler.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Hyperparameter (ppo.yaml):** HAYIR. Tüm parametreler Gazebo v3.0 + 18-config fast_sim sweep ile doğrulanmış. %80+ güven eşiğini aşan sorun yok.
+- **Operasyonel (kritik):** v10 Gazebo eğitimi 9 gündür başlamadı. Fast_sim zinciri tamamlandı; sonuç: mevcut gözlem/reward mimarisiyle Pareto frontier aşılamıyor. v10 Gazebo'nun çalışması için tek bloker: env kodu (collision_penalty + lidar_history). Bu iki satır olmadan v10 başlatmak verimli değil.
+- **Monitor altyapısı:** interventions.jsonl'de aynı step=80k için 20+ crash_recovery kaydı var (exponential backoff yok). v10 monitor'ına restart sayacı + minimum bekleme süresi eklenmeli; aksi takdirde çekirdek ölü process'i on kez yeniden başlatır.
+
+### v10 Önerisi
+1. **BLOCKING — env kodu önce:** `drone_exploration_env.py` → collision_penalty satırı 10.0 → 25.0. Bu tek değişiklik %0 collision vs %54+ collision farkı yaratıyor (fast_sim v4.8 vs v4.9/v4.10).
+2. **`configs/ppo.yaml` değişikliği YOK:** lr=3e-4 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, total_timesteps=1.5M — tamamı kanıtlanmış optimal. Dokunma.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` v10 optimal konfigürasyonunda. Fast_sim zinciri complete; tüm levers (reward shaping, training duration, curriculum, obs) tükendi. Env kodu değişikliği bu task'ın scope'u dışında (ppo.yaml only). %80+ güven eşiğini aşan hyperparameter sorunu tespit edilmedi.
+---
