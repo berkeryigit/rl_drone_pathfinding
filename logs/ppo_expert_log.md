@@ -3663,3 +3663,78 @@ CSV 11 gündür donmuş (v9 kalıntısı, 193k/−173.85). Gerçek güncel veri:
 ### Müdahale
 **Yok** — configs/ppo.yaml proven-optimal; v10 konfigürasyonu için %80+ güven eşiğini geçen değişiklik adayı tespit edilmedi. Bu oturumun özgün katkısı: CSV frozen olmasına karşın train_v7_lrdecay.log analizi — v7 Gazebo run'ının gerçek peak (+109 @ 215k) ilk kez kayıt altına alındı.
 ---
+
+## [2026-06-10 21:15 UTC]
+**Step:** 193,248 (v9 dönemi — CSV son aktif kayıt 2026-05-30 22:00) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 CSV kalıcı olarak donmuş (11 gün, son 16 satır özdeş). Bu oturumda 46-satırlık CSV'nin TAM yörünge analizi ilk kez yapıldı: 3 ayrı faz tespit edildi. V10 konfigürasyonu 2026-06-02'de proven-optimal değerlere getirildi; Gazebo v10 eğitimi henüz başlatılmadı. ppo.yaml'a müdahale için %80+ güven eşiği karşılanmıyor.
+
+### Detay
+
+**a) Reward eğrisi — TAM 3 FAZ ANALİZİ (46 CSV satırı)**
+
+**FAZ 1 — Deterministik Çöküş (satır 1-4, step 142k→599k, ~1.5h):**
+- ep_len=1000.0 SABİT (max_episode_steps her seferinde hit → drone ASLA ölmüyor, DÖNGÜDE SIKI)
+- ep_rew_mean: -290 → -270 (457k step'te yalnızca +20 iyileşme → plato)
+- entropy: -3.89 → -3.32 (+0.56 drift, 0'a yaklaşıyor → ağır deterministikleşme)
+- std: 0.888 → **0.746** (son noktada 0.7 alarm eşiğine 0.046 kalmış — kritik sınır)
+- Kök neden: constant lr=7.5e-5, ent_coef=0.0015 → politika devriye/döngü davranışına yakınsadı; episode asla bitmediği için oda keşif sinyali alamadı. +15 oda sıçraması sıfır.
+
+**FAZ 2 — Crash-Recovery Döngüsü (satır 5-30, step ~49k-193k, ~9h):**
+- Restart sonrası entropy -4.26, std ~1.00'e sıfırlandı (sağlıklı başlangıç)
+- ep_len: 95-298 (crashler oluyor — ep_len=1000 kabusundan çıkıldı)
+- ep_rew_mean aralığı: -25 (en iyi) → -110 (en kötü) — yüksek varyans
+- **En iyi kayıt:** satır 6 (13:52) → step=83,968, ep_rew_mean=**-25.3**, ep_len=95, entropy=-4.253, std=0.998
+- Neden -25 en iyi? ep_len=95 crash → kısa yaşayan drone, ama sıfıra yakın (collision_penalty=-10 ile 2.5 çarpışma kaybına rağmen -25 → voxel ve frontier bonusları çalışıyordu)
+- Neden sürdürülemedi? Monitor 20dk döngüyle sürekli crash algılayıp yeniden başlattı; her restart biriken öğrenmeyi sıfırladı. Kararlı policy asla oturmadı.
+- FPS: 61-121 arası (instabil — sim restart yükü)
+
+**FAZ 3 — Donma (satır 31-46, 22:00'dan 03:01'e 16 özdeş satır):**
+- step=193,248'de TB verisi donduruldu; ep_len=637 (son gerçek episode uzun patrol → process ölmeden önce)
+- FPS=72 (düşük, Gazebo/bridge stres altında)
+- entropy=-4.212, std=0.985 (sağlıklı görünüyor ama process zaten ölü)
+- Kök neden (interventions.jsonl): gz transport Host-unreachable → /scan durdu → env.step() bloklandı
+
+**b) lr=7.5e-5 constant seçimi doğru mu?**
+- **FAZ 1 verileri bunu kesin olarak cevaplıyor:** 599k step'te entropy=-3.32, std=0.746.
+- Teorik: constant küçük lr, politikayı keşiften kaçınmayan bir local optima'ya kilitler; eğer bu optima "döngü" ise (oda keşfi yok) entropy düşmez, aksine politika deterministikleşip sıfıra yaklaşır.
+- **V10 linear 3e-4→1e-5 düzeltmesi doğru.** Faz 1 paterni tam olarak bu sorunun ampirik kanıtıdır.
+
+**c) Entropy/std keşif için yeterli mi?**
+- Son donma değerleri (entropy=-4.212, std=0.985): 3-d Gaussian için teorik max ≈-4.26; std 0.985 alarm eşiğinin %40 üzerinde. **Değerler sağlıklı ama process ölü, bilgilendirici değil.**
+- Faz 2'de her restart sonrası entropy -4.25, std ~1.00 ile başladı → sağlıklı explorer, ama crash-recovery döngüsü politikanın olgunlaşmasını engelledi.
+- **V10 ent_coef=0.008** (v9 0.0015'in 5.3 katı): fast_sim v4.8 doğrulaması (100 ep, %0 çarpışma, 5 oda) → yapısal keşif güvencesi. Faz 1 deterministikleşmesi v10'da yapısal olarak bertaraf edilmiş.
+
+**d) Oda geçişi için ne kadar step daha gerekir?**
+- **V9 boyunca sıfır oda geçişi** (46 satırın hiçbirinde +15 sıçraması yok).
+- Referans haritası: v3.0 Gazebo (aynı 6-oda harita, collision_penalty=10, n_envs=1) → peak +133 @ 501k, +102 @ 430k.
+- v7 Gazebo (train_v7_lrdecay.log, lr=3e-4→linear): peak **+109 @ 215k** — bu referansla ilk oda geçişi ~100-200k step bekleniyor.
+- **V10 beklentisi (env fix sonrası):** İlk +15 sıçraması **100-200k step**; 5/6 oda kararlı **400-700k step**; total_timesteps=1.5M sınırı güvenlik kollapsu öncesinde (fast_sim v4.10: 2.6M'da %43 crash) bitirilecek.
+
+**e) V10 için en kritik 1-2 öneri**
+1. **`drone_exploration_env.py` ZORUNLU güncellemesi (aktif bloker):**
+   - `collision_penalty: 10 → 25` + `lidar_history: 1 → 2` (obs 41-d → 72-d)
+   - fast_sim v4.8 kanıtı: crash %80→**%0** (100 ep), 5 oda, voxels 117, tam 2500 adım hayatta.
+   - fast_sim v4.9 (penalty=22): crash %0→%37, rooms 5→2 → sweet spot DAR (22: çöküş, 25: optimal, 30: %8 crash).
+   - Bu olmadan v10 Gazebo eğitimi; Faz 2'nin crash-recovery döngüsünü tekrarlayacak; ep_rew_mean -25 civarında takılı kalacak.
+
+2. **300k step izleme checkpoint'i (eğitim başladıktan sonra):**
+   - Eşik: std < 0.75 VE entropy > -3.5 → ent_coef 0.008 → 0.012
+   - Gerekçe: Faz 1'de std 0.746 / entropy -3.32 deterministikleşme bölgesiydi; v10 ent_coef=0.008 ile risk düşük ama izleme şart. fast_sim v4 zincirinde 2M+ sonrası güvenlik kollapsu, 300k'da erken kontrol kritik.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml bazında: HAYIR.** Tüm parametreler proven-optimal (fast_sim v4.8 + v3.0 Gazebo doğrulaması):
+  - lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, batch_size=256, n_epochs=10
+  - gamma=0.99, gae_lambda=0.95, clip_range=0.2, vf_coef=0.5, max_grad_norm=0.5
+  - total_timesteps=1.5M, n_envs=1, net_arch=pi:[256,256]/vf:[256,256]
+  - Hiçbir parametre için %80+ değişiklik güveni yok.
+- **Operasyonel bloker (env kod):** drone_exploration_env.py → collision_penalty=25 + lidar_history=2. Bu yapılmadan v10 başlatılmamalı.
+
+### v10 Önerisi
+1. **`drone_exploration_env.py` → collision_penalty=25 + lidar_history=2 (obs 72-d)** — Bu oturumun en önemli bulgusu: fast_sim v4.8'nin 25 sweet spot'u DAR (22 çöküyor, 30 %8 crash). Gazebo env'e bu tam değer girilmeli; yaklaşık değer kabul edilemez. lidar_history=2 olmadan hareketli engel hızı obs'tan çıkarılamaz → crash döngüsü kaçınılmaz.
+2. **Başlatma sonrası 300k checkpoint:** std<0.75 + entropy>-3.5 birlikte oluşursa ent_coef 0.008→0.012. Faz 1 paterni bunu ampirik olarak kanıtladı; v10'da erken deterministikleşme riski düşük ama 0 değil.
+
+### Müdahale
+**Yok** — configs/ppo.yaml proven-optimal; %80+ güven eşiği hiçbir parametre için karşılanmıyor. Bu oturumun özgün katkısı: 46-satırlık CSV'nin ilk tam 3-faz yörünge analizi (Faz1=deterministik çöküş/ep_len=1000/std 0.746 alarmı, Faz2=crash-recovery döngüsü/en iyi -25.3@83k, Faz3=Gazebo freeze@193k). V9 başarısızlığının kök nedeni tescillendi: (1) constant lr → keşif kollapsu, (2) crash-recovery döngüsü → politika birikimi yok, (3) collision_penalty=10 yetersiz (fast_sim v4.9 ile ampirik olarak kanıtlandı).
+---
