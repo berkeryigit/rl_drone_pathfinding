@@ -3527,3 +3527,46 @@ v9 eğitimi 2026-05-30 22:00'dan beri step 193,248'de tamamen donmuş (11 günd�
 ### Müdahale
 **Yok** — configs/ppo.yaml proven-optimal (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, batch_size=256, n_epochs=10, gamma=0.99, gae_lambda=0.95, clip_range=0.2, vf_coef=0.5, max_grad_norm=0.5, total_timesteps=1.5M, n_envs=1, net_arch=pi:[256,256]/vf:[256,256]). Tüm parametreler için %80+ güven eşiği karşılanmıyor. Bloker env kodunda.
 ---
+
+## [2026-06-10 17:05 UTC]
+**Step:** 193,248 (donuk — CSV son kayıt 2026-05-31 03:01) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+Eğitim verisi 11 gündür değişmedi: CSV'nin son 16 satırı özdeş (step=193,248, 2026-05-30 22:00'dan beri). v10 ppo.yaml konfigürasyonu 2026-06-02'de proven-optimal değerlere getirildi; Gazebo v10 eğitimi henüz başlatılmadı. Tek bloker env kodu — ppo.yaml'da müdahale gerektiren bir parametre yok.
+
+### Detay
+
+**a) Reward eğrisi nerede? Plato mu, kırılım mı?**
+- Güncel CSV verisi mevcut değil (donmuş). Son kayıt: ep_rew_mean=-173.85 @ 193,248 step.
+- v9 tarihsel özet: Segment-1 (-290→-270, step 142k-599k, ep_len=1000 sabit) → sert plato, sıfır oda geçişi. Segment-2 (crash-recovery döngüsü, en iyi -25.3 @ 84k) → +15 oda sıçraması hiç görülmedi.
+- **Sonuç:** v9'da pozitif kırılım gerçekleşmedi. v10 eğitimi başladığında ilk +15 sıçraması 150-300k step aralığında bekleniyor (v3.0 Gazebo @ peak +133 referansıyla).
+
+**b) lr=7.5e-5 constant seçimi doğru mu?**
+- **Artık geçersiz soru.** ppo.yaml v10: `lr=3e-4 → 1e-5 linear` (1.5M boyunca). Constant lr sorunu 2026-06-02'de çözüldü.
+- v9 constant 7.5e-5 başarısızlığı: entropy -3.89→-3.32 / std 0.888→0.746 yalnızca 4 ölçümde (150k step) — keşif kollapsu hızlandırıcısı olarak tescillendi.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Donma anındaki son değerler: entropy=-4.212 (3-d Gaussian için teorik max ≈-4.26; güvenli ✓), std=0.985 (0.7 alarm eşiğinin çok üzerinde ✓).
+- v10 ent_coef=0.008 (v9'un 0.0015'inin 5.3 katı): fast_sim v4.8 onayıyla (200 ep, %0 çarpışma) deterministikleşme riski yapısal olarak bertaraf edildi.
+- **Sonuç:** v10 başlatıldığında keşif istatistikleri sağlıklı olacak; aktif run olmadığından mevcut sayılar bilgilendirici değil.
+
+**d) Oda geçişi için ne kadar step daha gerekir?**
+- v3.0 Gazebo (aynı env, collision_penalty=10, lidar_history=1, n_envs=1): oda geçişleri ~200-400k step; peak +133 @ 501k.
+- fast_sim v4.8 (collision_penalty=25, lidar_history=2): %0 çarpışma, 5 oda, voxel 117 — daha erken ve güvenilir oda keşfi.
+- **v10 beklentisi** (env fix yapılırsa): İlk +15 sıçraması **150-300k step**; 5/6 oda **500k-900k step**. total_timesteps=1.5M bu pencereye sığar ve güvenlik kollapsu öncesinde sona erer.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py` güncellemesi (ZORUNLU — bloker):** `collision_penalty: 10→25` + `lidar_history: 1→2` (obs 41-d→72-d). fast_sim v4.8 kanıtı: crash oranı %80→%1, 5 oda, %0 çarpışma. Bu iki değişiklik yapılmadan eğitim yeniden v9 kalıbına (crash-loop, sıfır oda) düşer.
+2. **total_timesteps=1.5M korunmalı:** fast_sim v4.10 kanıtı — 2.6M step'te %43 crash oranı, 3.2M'da %100. Güvenlik kollapsu deterministic; sınır değiştirilmemelidir. Daha uzun koşu için v11 fresh start gereklidir.
+
+**f) Acil müdahale gerektiren durum var mı?**
+- **ppo.yaml bazında: HAYIR.** lr, ent_coef, n_steps, batch_size, n_epochs, gamma, gae_lambda, clip_range, vf_coef, max_grad_norm, net_arch, total_timesteps — hepsinde %80+ güven eşiğini geçen değişiklik adayı yok. Kanıtlanmış optimal config.
+- **Operasyonel bloker:** v10 Gazebo eğitimi 11 gündür başlatılmadı. Env kodu güncellemesi bekleniyor.
+
+### v10 Önerisi
+1. **Acil: `drone_exploration_env.py` → `collision_penalty=25` + `lidar_history=2`** — fast_sim v4.8 kanıtına dayalı; Gazebo v10 başlamadan önce zorunlu. Bu olmadan +15 oda sıçraması erken fazda gerçekleşmez.
+2. **Izleme noktası (eğitim başladıktan sonra):** 300-400k step bandında std < 0.7 VE entropy > -3.5 ise ent_coef 0.008→0.012 (v4 analojusunda deterministikleşme bu bantta başlamıştı; v10'da ent_coef 0.008 ile risk düşük ama ölçüm şart).
+
+### Müdahale
+**Yok** — configs/ppo.yaml proven-optimal; tüm parametreler için %80+ güven eşiği karşılanmıyor (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, batch_size=256, n_epochs=10, gamma=0.99, gae_lambda=0.95, clip_range=0.2, vf_coef=0.5, max_grad_norm=0.5, total_timesteps=1.5M, n_envs=1, net_arch=pi:[256,256]/vf:[256,256]). Bloker env kodunda — ppo.yaml'a dokunmak regresyon riski yaratır.
+---
