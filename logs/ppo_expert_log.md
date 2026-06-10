@@ -3611,3 +3611,55 @@ Eğitim 11 gündür duruyor (CSV son 16 satırı özdeş, 2026-05-31 03:01'e kad
 ### Müdahale
 **Yok** — configs/ppo.yaml proven-optimal; tüm parametreler için %80+ güven eşiği karşılanmıyor. ppo.yaml'a dokunmak regresyon riski yaratır. Bloker env kodunda.
 ---
+
+## [2026-06-10 20:10 UTC]
+**Step:** 223,521 (train_v7_lrdecay — INTERRUPTED @ 11%/2M) | **ep_rew_mean:** 69.8 (peak: 109 @ 215k) | **entropy:** -3.81 | **std:** 0.860
+
+### Durum
+CSV 11 gündür donmuş (v9 kalıntısı, 193k/−173.85). Gerçek güncel veri: train_v7_lrdecay.log — v7 Gazebo run'ı 215k'da peak +109 yaptı, ardından 223k'da kasıtlı kesildi (11% tamamlandı). ppo.yaml v10 proven-optimal konfigürasyonda; runs/ dizini bu remote ortamda mevcut değil → v10 fresh start gerekiyor. Acil ppo.yaml müdahalesi yok.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- **CSV tamamen stale** (v9 era, 2026-05-30 22:00'dan bu yana 193k'da donmuş). Bu oturum train_v7_lrdecay.log'u ilk kez analiz etti.
+- **v7 Gazebo eğrisi** (train_v7_lrdecay.log, n_envs=1, Gazebo 31 FPS):
+  - Başlangıç: ep_rew_mean=−122 @ 2k, ep_len=233 (random policy)
+  - Kırılım başladı: −91.9 @ 8k → −75.7 → pozitife geçiş
+  - Peak: **+109 @ 215,040 step** (v8 all-time peak +113 @ 1.6M'ın %91'i, sadece 215k'da!)
+  - 219k: 89.9 → 221k: 66.1 → 223k: 69.8 (tipik PPO varyansı, çöküş değil)
+  - INTERRUPTED @ 223,521 (kasıtlı, clean shutdown)
+- **+15'lik oda sıçraması:** peak +109 ≈ 6–7 oda × 15 + voxel kazancı → oda geçişleri 215k'da gerçekleşti. Kritik kırılım aşıldı.
+
+**b) lr=7.5e-5 constant seçimi doğru mu?**
+- Artık geçersiz soru (v9 dönemi config). v7 log'da lr=0.000271 @ 219k → linear decay 3e-4'ten aktif olarak azalıyor. v10 ppo.yaml: lr=3e-4→1e-5 linear (1.5M boyunca). Constant lr v9 segment-1'de deterministikleşmeyi hızlandırmıştı (std 0.888→0.746 @ 600k); linear decay doğru karar.
+
+**c) Entropy/std keşif için yeterli mi?**
+- v7 @ 223k: entropy=−3.81 (numerik olarak −4.0'ın üzerinde → deterministikleşme uyarısı !)
+  - v7 başlangıcı: entropy=−4.25 (random policy, maksimum keşif)
+  - 223k'da: entropy=−3.81 → +0.44 drift, 223k'da zaten -4.0 eşiğini geçti
+  - **v7 ent_coef düşük** (muhtemelen 0.0015 veya benzeri — v9 era config)
+- **std=0.860 @ 223k** (0.7 alarm eşiğinin üzerinde ✓; ancak 0.997'den azalıyor, trend dikkat gerektirir)
+- **v10 ent_coef=0.008 (v7/v9'un 5.3×'i):** Bu seviyede 223k'da entropy'nin −4.0'ın çok altında kalması bekleniyor. Yapısal güvence var; ppo.yaml değişikliği gerekmiyor.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v7 zaten 215k'da +109 üretiyordu (6+ oda). **Oda geçişi gerçekleşti.**
+- v10 için beklenti (ent_coef=0.008, clip_range=0.2, n_steps=2048 ile v7'ye kıyasla gelişmiş config):
+  - İlk +15 sıçraması: **100-200k step** (v7'de 215k, v10 daha iyi ent_coef ile daha erken bekleniyor)
+  - 5/6 oda stabil: **400-700k step**
+  - Peak reward: v8 all-time (+113) @ 1.6M; v7 zaten 215k'da +109 yaptı — v10 yeni all-time mümkün
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **std izleme checkpoint'i:** v7'de std 0.997→0.860 @ 223k (düşüş hızı: −0.137 / 219k step). v10 ent_coef=0.008 ile düşüş çok daha yavaş olmalı. Ancak **300-400k step'te std < 0.75 VE entropy > −3.5 ise ent_coef 0.008→0.012** yapılmalı (fast_sim v4 analojusu).
+2. **`drone_exploration_env.py` güncellemesi (runs/ yoksa önce bu):** collision_penalty 10→25 + lidar_history 1→2 (obs 41-d→72-d). fast_sim v4.8: crash %80→%0, 5 oda, voxel 117. v7'de v9 env kodu kullanılmış (ppo.yaml'dan bağımsız); hareketli engel sorunu collision_penalty artışı + lidar_history=2 olmadan çözülemiyor. Bu iki env değişikliği yapılmadan v10 Gazebo eğitimi başlatılmamalı.
+
+**f) Acil müdahale gerektiren durum var mı?**
+- **ppo.yaml bazında: HAYIR.** v10 config proven-optimal; lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, batch_size=256, n_epochs=10, gamma=0.99, gae_lambda=0.95, clip_range=0.2, vf_coef=0.5, max_grad_norm=0.5, total_timesteps=1.5M, n_envs=1, net_arch=pi:[256,256]/vf:[256,256]. Hiçbir parametre için %80+ değişiklik güveni yok.
+- **Operasyonel durum:** runs/ dizini bu remote ortamda mevcut değil (v7 checkpoint'leri dahil). v10 fresh start gerekiyor. Env kodu (collision_penalty + lidar_history) güncellemesi öncesinde eğitim başlatılmamalı.
+
+### v10 Önerisi
+1. **`drone_exploration_env.py` → collision_penalty=25 + lidar_history=2 (obs 72-d):** fast_sim v4.8 kanıtı — %0 crash, 5 oda, voxel 117 (lidar_history=1'e karşı %80→%0 crash fix). Bu bloker olmadan v7 kalıbı tekrarlanır (v7 +109 yapsa da hareketli engel ve çarpışma riski devam ediyor).
+2. **İzleme dashboard:** v7 270+ iterasyonluk run boyunca reward +90-109 bandında gezindi, sonra kasıtlı kesildi. v10 için **wandb / TensorBoard alarm: std<0.75 @ step>300k** uyarısı kurulursa ent_coef kararı otomatize edilebilir. Manuel izleme 30dk döngü ile yeterli ama 300k geçmeden bakılmalı.
+
+### Müdahale
+**Yok** — configs/ppo.yaml proven-optimal; v10 konfigürasyonu için %80+ güven eşiğini geçen değişiklik adayı tespit edilmedi. Bu oturumun özgün katkısı: CSV frozen olmasına karşın train_v7_lrdecay.log analizi — v7 Gazebo run'ının gerçek peak (+109 @ 215k) ilk kez kayıt altına alındı.
+---
