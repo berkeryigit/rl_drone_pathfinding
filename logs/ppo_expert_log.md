@@ -3479,3 +3479,51 @@ v9 eğitimi 2026-05-30 22:00'da step 193,248'de tamamen çöktü; sonraki 15 kay
 ### Müdahale
 **Yok** — configs/ppo.yaml proven-optimal durumda (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, batch_size=256, n_epochs=10, gamma=0.99, gae_lambda=0.95, clip_range=0.2, vf_coef=0.5, max_grad_norm=0.5, total_timesteps=1.5M, n_envs=1, net_arch=pi:[256,256]/vf:[256,256]). %80+ güven eşiğini geçen değişiklik adayı bulunmadı. Bloker env kod katmanında.
 ---
+
+## [2026-06-10 13:30 UTC]
+**Step:** 193,248 (donuk — son aktif) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 eğitimi 2026-05-30 22:00'dan beri step 193,248'de tamamen donmuş (11 gündür ölü). CSV'nin 47 satırının 16'sı özdeş — süreç checkpoint 180k'dan kurtaramadı. ppo.yaml 2026-06-02'de v10 proven-optimal konfigürasyonuna geçildi; v10 eğitimi henüz başlatılmadı.
+
+### Detay
+
+**a) Reward Eğrisi — Plato mu, Kırılım mı?**
+- CSV iki segment barındırıyor:
+  - **Segment-1** (satır 2-5, step 142k→599k, ep_len=1000 sabit): Monitor stale ppo_drone_80000_steps.zip okuyor. ep_rew_mean: -290→-270 (küçük toparlanma). Episode timeout → drone hiç oda bulamadı. Pozitife geçiş sıfır.
+  - **Segment-2** (satır 6-31, step 49k-193k arasında salınım): Crash-recovery döngüsü. En iyi an: ep_rew_mean=-25.3 @ 83,968 steps (tek olumlu yaklaşma). +15 oda sıçraması hiç görülmedi. Son 16 satır tamamen donmuş.
+- **Sonuç:** Reward eğrisi sürekli negatif. Pozitif kırılım yok. Plato kavramı geçersiz — eğitim başarısız.
+
+**b) lr=7.5e-5 Constant — Bu Aşamada Doğru mu?**
+- v9 constant lr başarısız kanıtlıydı. ppo.yaml artık v10: `lr=3e-4 → 1e-5` linear decay (1.5M boyunca). Geçiş doğru yapıldı.
+- Segment-1 kanıtı: entropy -3.89 → -3.32 arasında sadece 150k adımda (ent_coef=0.0015 yetersizliği + sabit yüksek lr). v8 lineer decay (3e-4→3e-5) peak +113 @ 1.6M verdi — lineer zamanlamanın önemi kanıtlı.
+
+**c) Entropy/Std — Keşif Yeterli mi?**
+- **Donma anı:** entropy=-4.212 (3-d sürekli aksiyon için teorik maksimum ≈-4.26; %99 kapasite — keşif baskılanmamış). std=0.985 (0.7 alarm eşiğinin çok üstünde).
+- **Segment-1 tehlike:** std 0.888 → 0.746 (sadece 4 ölçüm, ~150k adım). 0.7 eşiğine bu hızla inmek ent_coef=0.0015 yetersizliğini kanıtlıyor. v10 ent_coef=0.008 (5.3× artış) bu bozunumu yapısal olarak önlüyor.
+- **Sonuç:** v10 başlatıldığında keşif yeterli; mevcut sayılar aktif run olmadığından bilgilendirici değil.
+
+**d) Oda Geçişi için Beklenen Step Sayısı**
+- v9: Sıfır oda geçişi (tüm eğitim boyunca). collision_penalty=10 + lidar_history=1 + IPC instabilitesi kombinasyonu öğrenmeyi engelledi.
+- v3.0 Gazebo referansı (collision_penalty=10, lidar_history=1, n_envs=1): ep_rew +99.84 @ 434k, peak +133.35 @ 501k — oda geçişleri ~200-400k arasında başladı.
+- fast_sim v4.8 referansı (collision_penalty=25, lidar_history=2): %0 çarpışma, 5 oda, voxel 117 → oda geçişi daha erken ve güvenli.
+- **v10 beklentisi (env fix + n_envs=1 + ~90 FPS):** İlk +15 sıçraması **150-300k step**. 5/6 oda için **500k-900k step**. total_timesteps=1.5M bu pencerede güvenlik kollapsu öncesinde sona erer.
+
+**e) FPS Tutarlılığı**
+- Segment-1: 83-84 FPS (SubprocVecEnv, n_envs=2, stabil). Crash-recovery Segment-2: 61-121 FPS (±50, varyans %83) — IPC pipe restart gecikmesi ve Gazebo bridge instabilitesinin sonucu.
+- v10 n_envs=1 → DummyVecEnv: IPC pipe tamamen ortadan kalkar. Beklenti 85-105 FPS, varyans <%10.
+
+**f) Acil Müdahale Gerektiren Durum**
+- ppo.yaml bazında: **Yok.** Config proven-optimal; herhangi bir parametre değişikliği için %80+ güven eşiği karşılanmıyor.
+- **GERÇEK BLOKER (ppo.yaml dışı — 11 gündür bekleniyor):**
+  1. `drone_exploration_env.py` → `collision_penalty: 10 → 25` (fast_sim v4.8: 100 ep %0 crash. 22'de costu, 25 optimal, 30'da %8 crash başlıyor.)
+  2. `drone_exploration_env.py` → `lidar_history: 1 → 2` → obs 41-d→72-d (crash oranı %80→%1; 3 hareketli engelden kaçma bu olmadan öğrenilemiyor.)
+  Bu iki değişiklik yapılmadan v10 Gazebo eğitiminin başlatılması anlamsız.
+
+### v10 Önerisi
+1. **Acil: `drone_exploration_env.py` güncellemesi** — `collision_penalty=25` + `lidar_history=2` (obs 72-d). fast_sim v4.8'nin %0 crash kanıtına dayalı; Gazebo'ya geçişin kritik bloker'ı. Bu olmadan eğitim tekrar v9 kalıbına düşer.
+2. **total_timesteps=1.5M kesinlikle değiştirilmemeli** — fast_sim v4.10 (5M): step 2.6M'da %43 crash → 3.2M'da %100 crash. Güvenlik kollapsu kaçınılmaz; 1.5M sınırı korunmalı. Daha uzun run için v11 fresh start gerekli.
+
+### Müdahale
+**Yok** — configs/ppo.yaml proven-optimal (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, batch_size=256, n_epochs=10, gamma=0.99, gae_lambda=0.95, clip_range=0.2, vf_coef=0.5, max_grad_norm=0.5, total_timesteps=1.5M, n_envs=1, net_arch=pi:[256,256]/vf:[256,256]). Tüm parametreler için %80+ güven eşiği karşılanmıyor. Bloker env kodunda.
+---
