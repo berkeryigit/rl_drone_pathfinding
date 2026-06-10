@@ -3797,3 +3797,50 @@ V9 eğitimi 10 gün önce kalıcı olarak durdu; fast_sim araştırma zinciri (v
 ### Müdahale
 **Yok** — configs/ppo.yaml proven-optimal; %80+ güven eşiği hiçbir parametre için karşılanmadı. Bu oturumun özgün katkısı: task-prompt v9 bağlamını (lr=7.5e-5, devam eden run) gerçek repo durumuyla (v9 ölü, v10 hazır, fast_sim yakınsama tescilli) karşılaştırarak tam durum özeti oluşturuldu. Gazebo v10 için tek eylem maddesi: env fix (collision_penalty=25+lidar_history=2). ppo.yaml dokunulmadı.
 ---
+
+## [2026-06-10 23:45 UTC]
+**Step:** 193,248 (CSV 10 gün donmuş — son yazım 2026-05-31 03:01) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 eğitimi 10 gün önce kalıcı olarak durdu; process yok, CSV 16 özdeş satırla kilitli. configs/ppo.yaml 2026-06-02'de v10 proven-optimal değerlerine güncellenmiş. Aktif Gazebo eğitimi bulunmuyor. Tek operasyonel bloker: `drone_exploration_env.py` env fix (collision_penalty=25 + lidar_history=2).
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV 2026-05-31 03:01'den beri DONMUŞ (10 gün, 16 özdeş son satır — değer: -173.85). V9 yaşam döngüsünde hiç +15 oda sıçraması görülmedi.
+- Tam V9 yörüngesi: -324 (başlangıç, 64k) → -272…-270 (Faz-1 plato, ep_len=1000, 142k→599k) → fresh restart → -25 (best@83k, yeni kırılım) → -37 (en iyi@145k) → -173 (final çöküş, 193k freeze).
+- Kırılım başlamadı; plato → sürekli crash döngüsü. V9 geçersiz sayılmalı.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru muydu?**
+- HAYIR — ampirik olarak V9 Faz-1 çürüttü. 142k→599k: sabit lr ile ep_len=1000 (her episode max-timeout), entropy -3.89→-3.32, std 0.888→0.746 (0.7 alarm eşiğine yakın). Oda geçişi sıfır. "Safe-but-useless" local optima.
+- V10 düzeltmesi zaten uygulandı: `lr_schedule: linear, 3e-4→1e-5 (1.5M boyunca)` — v7 stratejisiyle yapısal özdeş (v7 @215k +109 üretti). Müdahale gereksiz.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut değerler (donmuş process kalıntısı): entropy=-4.212, std=0.985. V9 aktifken sağlıklı görünüyordu; asıl çöküş Faz-1'de entropy=-3.32'ye düşmesiydi (sabit düşük lr + düşük ent_coef=0.0015 birlikteliği).
+- V10 yapısal güvencesi: ent_coef=0.008 (v9'un 5.3×'i). fast_sim v4.8 cross-validasyonu: 100 ep → %0 crash, 5 oda, voxels 117. Erken deterministikleşme riski yapısal olarak önlenmiş.
+- İzleme eşiği (v10 başladığında): std<0.75 VE entropy>-3.5 birlikte @ step>300k → ent_coef 0.008→0.012.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9 için: artık sıfır (ölü, 193k ömür, oda geçişi hiç olmadı).
+- V10 fresh start (env fix uygulandıktan sonra) beklentisi:
+  - İlk +15 sıçraması: 100-200k step (v7 ref: @215k +109; v3.0 Gazebo ref: peak +133 @501k)
+  - 3 oda kararlı: ~250-350k
+  - 5-6 oda: 400-700k
+  - Peak band: 600k-900k (1.5M ceiling içinde, fast_sim v4.10 güvenlik kollapsu @ 2.6M öncesi)
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py` → collision_penalty=10→25 + lidar_history=1→2 (obs 41-d→72-d)** — BLOCKER. fast_sim v4.8 sweet spot tescilli: 22→%37 crash (aşırı ceza), 25→%0 crash (optimal), 30→%8 crash (kısıtlayıcı). Tam değer 25 girilmeli. lidar_history=2 olmadan hareketli engel hızı gözlem uzayında yok → engel kaçınması imkânsız → Faz-2 crash-recovery döngüsü tekrar.
+2. **300k step izleme checkpoint'i:** std<0.75 VE entropy>-3.5 → ent_coef 0.008→0.012 (ppo.yaml güncelle + git commit). Faz-1 paterni (std=0.746 + entropy=-3.32 @ ~450k) v4 eğitim serisinde tekrarlandı; v10 yüksek ent_coef ile risk düşük ama sıfır değil.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml: HAYIR.** Tüm parametreler fast_sim v4.8 + v3.0 Gazebo + v7 üçlü doğrulamasıyla sabit: lr=3e-4→1e-5 linear ✓, ent_coef=0.008 ✓, n_steps=2048 ✓, batch_size=256 ✓, n_epochs=10 ✓, gamma=0.99 ✓, gae_lambda=0.95 ✓, clip_range=0.2 ✓, max_grad_norm=0.5 ✓, n_envs=1 ✓, total_timesteps=1.5M ✓, net_arch=[256,256] ✓. Değişiklik için %80+ güven eşiği sağlayan parametre yok.
+- **Operasyonel bloker:** drone_exploration_env.py env fix (collision_penalty=25 + lidar_history=2) uygulanmadan v10 Gazebo başlatılmamalı. Bu ppo.yaml'dan bağımsız bir env kod meselesi.
+- **Monitoring:** CSV 10 gündür stale; eğitim yeniden başlarsa TB dizini ppo_v10/tb/PPO_1 altında oluşacak. Monitor agent güncel dizini okumalı.
+
+### v10 Önerisi
+1. **`drone_exploration_env.py` → collision_penalty=25, lidar_history=2** (obs 41-d→72-d) — Bu olmadan v10 Gazebo eğitimi Faz-2 crash döngüsünü tekrarlar; ep_rew_mean -25 bandında takılır. Tek açıklayıcı değişken tescilli (fast_sim v4.8).
+2. **ppo.yaml değişmez + 300k izleme:** Mevcut v10 config proven-optimal. Sonraki müdahale tetik: std<0.75 VE entropy>-3.5 @ step>300k → ent_coef 0.008→0.012.
+
+### Müdahale
+**Yok** — configs/ppo.yaml proven-optimal; %80+ güven eşiği hiçbir parametre için karşılanmadı. V9 CSV'sinin tam 3-faz yörüngesi (Faz-1: constant-lr deterministik çöküş / Faz-2: crash-recovery döngüsü / Faz-3: 193k freeze) teyit edildi. V10 başlatılabilir durumda; tek bloker env kodunda.
+---
