@@ -3738,3 +3738,62 @@ V9 CSV kalıcı olarak donmuş (11 gün, son 16 satır özdeş). Bu oturumda 46-
 ### Müdahale
 **Yok** — configs/ppo.yaml proven-optimal; %80+ güven eşiği hiçbir parametre için karşılanmıyor. Bu oturumun özgün katkısı: 46-satırlık CSV'nin ilk tam 3-faz yörünge analizi (Faz1=deterministik çöküş/ep_len=1000/std 0.746 alarmı, Faz2=crash-recovery döngüsü/en iyi -25.3@83k, Faz3=Gazebo freeze@193k). V9 başarısızlığının kök nedeni tescillendi: (1) constant lr → keşif kollapsu, (2) crash-recovery döngüsü → politika birikimi yok, (3) collision_penalty=10 yetersiz (fast_sim v4.9 ile ampirik olarak kanıtlandı).
 ---
+
+## [2026-06-10 22:45 UTC]
+**Step:** 193,248 (CSV son aktif kayıt — 10 gün stale, son yazım 2026-05-31 03:01) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 eğitimi 10 gün önce kalıcı olarak durdu; fast_sim araştırma zinciri (v4.1→v5.0, 18 config) 2026-06-01'de tamamlandı ve yakınsama tescillendi. configs/ppo.yaml zaten v10 proven-optimal değerlerine güncellenmiş (2026-06-02). Aktif Gazebo eğitimi yok; bir sonraki adım drone_exploration_env.py env fix + v10 fresh start.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV 2026-05-31 03:01'den bu yana DONMUŞ (10 gün, 16 özdeş son satır). Eğri bilgisi yok.
+- V9'un tüm ömrü boyunca +15 oda sıçraması sıfır — ne plato ne kırılım, sürekli negatif + process ölümü.
+- Son gerçek referans noktası: v3.0 Gazebo (aynı 6-oda harita) → peak +133.35 @ 501k (interventions.jsonl, 2026-05-31 14:54).
+- Karşılaştırma: v8 all-time +113 @ 1.6M, v7 +109 @ 215k — yeni harita (v9/v10) ile v7 eşdeğeri veya üstü bekleniyor.
+
+**b) lr=7.5e-5 constant seçimi doğru mu?**
+- **HAYIR — ve bu v10'da zaten düzeltildi.** V9 Faz-1 ampirik kanıtı (142k-599k, ep_len=1000 sabit): entropy -3.89→-3.32 (deterministikleşme), std 0.888→0.746 (alarm eşiği), oda geçişi sıfır. Constant küçük lr politikayı "devriye döngüsü" local optima'ya kilitledi.
+- V10 ppo.yaml: `lr_schedule: linear, learning_rate: 3e-4, lr_final: 1e-5` — doğru seçim. V7 (aynı schedule) 215k'da +109 üretti.
+- Bu parametre için müdahale gereksiz — zaten düzeltilmiş.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut CSV değerleri (donmuş process): entropy=-4.212, std=0.985. 3-d Gaussian teorik max ≈-4.26 → std ve entropy başlangıç düzeyinde sağlıklı görünüyor, ancak bu değerler process ölmeden önce Faz-3 donma noktası; aktif öğrenme sinyali değil.
+- **V10 yapısal garantisi:** ent_coef=0.008 (v9'un 5.3×'i). fast_sim v4.8 doğrulaması: 100 eval ep, %0 çarpışma, 5 oda keşfi — bu ent_coef seviyesinde erken deterministikleşme Faz-1'den yapısal olarak önlenmiş.
+- Alarm eşikleri (v10 başladığında izlenecek): std<0.75 VE entropy>-3.5 birlikte @ step>300k → ent_coef 0.008→0.012.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9'da sıfır oda geçişi (193k step boyunca). V10 env fix (collision_penalty=25+lidar_history=2) olmadan bu tekrarlanır.
+- **V10 fresh start (env fix sonrası) beklentisi:**
+  - İlk +15 sıçraması: **100-200k step** (v7 ref: +109@215k, v3.0 ref: +102@430k)
+  - 5-6 oda kararlı: **400-700k step**
+  - Peak reward: **600k-900k band** (1.5M ceiling içinde, fast_sim v4.10'un 2.6M güvenlik kollapsu öncesi)
+- **Oda geçişi için hiç step kalmadı** — v9 çoktan öldü. V10 fresh start gerekiyor.
+
+**e) v10 için en kritik 1-2 öneri**
+1. **`drone_exploration_env.py`: collision_penalty=10→25 + lidar_history=1→2** (BLOCKER, obs 41-d→72-d)
+   - fast_sim v4.8 (en iyi güvenlik noktası): crash %80→%0, 5 oda, voxels 117
+   - sweet spot DAR: 22→%37 crash (çöküş), 25→%0 (optimal), 30→%8 (fazla kısıtlı)
+   - Bu olmadan v10 Gazebo = Faz-2 crash-recovery döngüsü, ep_rew_mean -25 bandında takılı
+   - lidar_history=2: hareketli engel hızını obs'a dahil eder; olmadan engel kaçınması imkânsız
+2. **300k step izleme noktası (v10 başladıktan sonra):**
+   - std<0.75 VE entropy>-3.5 → ent_coef 0.008→0.012 (ppo.yaml + git commit)
+   - total_timesteps=1.5M'a bağlı kal (fast_sim v4.10: 2.6M'da %54 crash = güvenlik kollapsu; v4.13: 8M'da da düzelmiyor)
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml: HAYIR.** Tüm parametreler proven-optimal (fast_sim v4.8 + v3.0 Gazebo + v7 lrdecay cross-validation):
+  - lr=3e-4→1e-5 linear ✓, ent_coef=0.008 ✓, n_steps=2048 ✓, batch_size=256 ✓, n_epochs=10 ✓
+  - gamma=0.99 ✓, gae_lambda=0.95 ✓, clip_range=0.2 ✓, max_grad_norm=0.5 ✓
+  - n_envs=1 ✓ (SubprocVecEnv deadlock riski), total_timesteps=1.5M ✓, net_arch=[256,256] ✓
+  - Değiştirilmesi için %80+ güven eşiğini geçen parametre YOK.
+- **Operasyonel bloker:** drone_exploration_env.py env fix uygulanmadan v10 Gazebo başlatılmamalı.
+- **ppo.yaml → configs/ppo.yaml DEĞIŞMEDI** (proven-optimal, müdahale kriterleri karşılanmadı)
+
+### v10 Önerisi
+1. **Acil: `drone_exploration_env.py` → collision_penalty=25, lidar_history=2 (obs 72-d)** — ppo.yaml'dan bağımsız, bu env değişikliği v10 eğitiminin sıfır bloker olmadan çalışmasının tek koşulu. sweet spot tescilli: tam 25, yaklaşık değer kabul edilemez.
+2. **ppo.yaml değişmez** — mevcut v10 config (lr=3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_envs=1, total_timesteps=1.5M) fast_sim v4.8 + v3.0 Gazebo + v7 üçlü doğrulamasıyla sabitleniş. Sonraki müdahale eşiği: std<0.75 @ step>300k.
+
+### Müdahale
+**Yok** — configs/ppo.yaml proven-optimal; %80+ güven eşiği hiçbir parametre için karşılanmadı. Bu oturumun özgün katkısı: task-prompt v9 bağlamını (lr=7.5e-5, devam eden run) gerçek repo durumuyla (v9 ölü, v10 hazır, fast_sim yakınsama tescilli) karşılaştırarak tam durum özeti oluşturuldu. Gazebo v10 için tek eylem maddesi: env fix (collision_penalty=25+lidar_history=2). ppo.yaml dokunulmadı.
+---
