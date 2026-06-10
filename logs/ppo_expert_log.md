@@ -3570,3 +3570,44 @@ Eğitim verisi 11 gündür değişmedi: CSV'nin son 16 satırı özdeş (step=19
 ### Müdahale
 **Yok** — configs/ppo.yaml proven-optimal; tüm parametreler için %80+ güven eşiği karşılanmıyor (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, batch_size=256, n_epochs=10, gamma=0.99, gae_lambda=0.95, clip_range=0.2, vf_coef=0.5, max_grad_norm=0.5, total_timesteps=1.5M, n_envs=1, net_arch=pi:[256,256]/vf:[256,256]). Bloker env kodunda — ppo.yaml'a dokunmak regresyon riski yaratır.
 ---
+
+## [2026-06-10 19:15 UTC]
+**Step:** 193,248 (donuk — son aktif kayıt 2026-05-30 22:00) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+Eğitim 11 gündür duruyor (CSV son 16 satırı özdeş, 2026-05-31 03:01'e kadar). ppo.yaml v10 proven-optimal değerlerde (2026-06-02 güncellemesi); acil müdahale gerektiren parametre yok. Tek operasyonel bloker: drone_exploration_env.py güncellemesi.
+
+### Detay
+
+**a) Reward eğrisi nerede? Plato mu, kırılım mı?**
+- CSV tam analizi: 2 ayrı segment var.
+- **Segment 1** (satır 2-5, step 142k→599k): ep_len=1000 sabit (max cap'e çarpıyor, hiç terminasyon yok), ep_rew_mean=-290→-270 (plato), entropy -3.89→-3.32, std 0.888→0.746. Constant lr=7.5e-5 altında hızlı deterministikleşme, sıfır oda geçişi.
+- **Segment 2** (satır 6-31, step 49k-193k): Crash-recovery döngüsü. Her restart sonrası entropy ~-4.25'e, std ~0.99'a sıfırlanıyor. En iyi ep_rew_mean=-25.3 @ 84k (ep_len=95, çarpışmalar var ama beklenen gelişme işareti). Ancak sürdürülemedi — monitor tekrar crash algılayıp resume döngüsüne girdi.
+- **Donma**: step=193,248 @ 22:00'dan 11 gün boyunca değişmemiş. Kırılım gerçekleşmedi.
+
+**b) lr=7.5e-5 constant seçimi doğru mu?**
+- **Artık geçersiz.** ppo.yaml v10: lr=3e-4→1e-5 linear (1.5M boyunca). Segment 1 analizi constant lr'nin problemini kanıtlıyor: 450k step'te std 0.746'ya (0.7 alarm sınırı!), entropy -3.32'ye düşmüş — linear lr geçişi doğru karar.
+
+**c) Entropy/std keşif için yeterli mi?**
+- Son donma-anı değerleri: entropy=-4.212 (3-d Gaussian için teorik max ~-4.26; marjin 0.05 → iyimser sınır), std=0.985 (alarm eşiğinin 40% üzerinde). Aktif run olmadığından bu değerler bilgilendirici değil.
+- v10 ent_coef=0.008 (v9'un 0.0015'inin 5.3 katı): fast_sim v4.8 onayıyla (200ep, %0 çarpışma) deterministikleşme riski yapısal bertaraf edilmiş. v10 başlatıldığında keşif istatistikleri segment 2'ye kıyasla çok daha sağlıklı bekleniyor.
+
+**d) Oda geçişi için ne kadar step daha gerekir?**
+- v9: Hiç oda geçişi gerçekleşmedi (tüm run boyunca sıfır +15 sıçraması).
+- **v10 beklentisi** (env fix sonrası): v3.0 Gazebo referansı (aynı harita, n_envs=1) peak +102.54 @ 430k → ilk oda geçişi ~200-250k step. fast_sim v4.8 (collision_penalty=25, lidar_history=2): 5 oda keşfi erken faz. v10 beklentisi: ilk +15 @ **150-300k step**, 5/6 oda @ **500-900k step**, 1.5M sınırı güvenlik kollapsu öncesinde bitirilecek.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **drone_exploration_env.py (ZORUNLU — aktif bloker):** `collision_penalty: 10→25` + `lidar_history: 1→2` (obs 41-d→72-d). fast_sim v4.8 kanıtı: crash oranı %80→%1, voxel 117, %0 çarpışma, 5 oda. Bu olmadan v10 eğitimi segment 2 crash-loop kalıbına düşer ve 193k step civarında yeniden donar.
+2. **total_timesteps=1.5M değiştirilmemeli:** fast_sim v4.10 (5M run): step 2.6M'da %43 crash, 3.2M'da %100 güvenlik kollapsu. Deterministik. Sınır korunmalı; daha uzun koşu için v11 fresh start.
+
+**f) Acil müdahale gerektiren durum var mı?**
+- **ppo.yaml bazında HAYIR.** Tüm parametreler proven-optimal: lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, batch_size=256, n_epochs=10, gamma=0.99, gae_lambda=0.95, clip_range=0.2, vf_coef=0.5, max_grad_norm=0.5, total_timesteps=1.5M, n_envs=1, net_arch=pi:[256,256]/vf:[256,256]. Değişiklik için %80+ güven eşiği hiçbir parametre için karşılanmıyor.
+- **Operasyonel bloker (kritik):** v10 Gazebo eğitimi 11 gündür başlatılmadı. drone_exploration_env.py env kodu güncellemesi yapılmadan training başlatılmamalı.
+
+### v10 Önerisi
+1. **`drone_exploration_env.py` → `collision_penalty=25` + `lidar_history=2` (obs 41→72-d)** — fast_sim v4.8 kanıtına dayalı; bu olmadan v10 eğitimi başlasa bile crash-recovery döngüsü kaçınılmaz. Gazebo training başlamadan önce zorunlu.
+2. **İzleme checkpoint'i (eğitim başladıktan sonra):** 300k step'te std < 0.75 VEYA entropy > -3.5 ise ent_coef 0.008→0.012. v10'da risk düşük (ent_coef 5x artırıldı) ama izleme şart — v9 segment 1'de deterministikleşme 300k bandında gerçekleşmişti.
+
+### Müdahale
+**Yok** — configs/ppo.yaml proven-optimal; tüm parametreler için %80+ güven eşiği karşılanmıyor. ppo.yaml'a dokunmak regresyon riski yaratır. Bloker env kodunda.
+---
