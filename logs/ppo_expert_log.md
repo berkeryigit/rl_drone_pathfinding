@@ -2909,3 +2909,53 @@ v9 eğitimi May 30 22:00'da 193k step'te kalıcı olarak dondu; ppo.yaml June 2'
 ### Müdahale
 **Yok** — ppo.yaml v10 için zaten optimal konfigürasyonda. Tüm parametreler (lr decay, ent_coef=0.008, n_steps=2048, total_timesteps=1.5M, net_arch=[256,256]) kanıtlanmış değerler. %80 güven eşiği aşılmadı, config değişikliği yapılmadı.
 ---
+
+## [2026-06-10 00:10 UTC]
+**Step:** 193248 (frozen/stale, son gerçek veri) | **ep_rew_mean:** -173.85 (stale) / gerçek peak +133.35 @ 501k (v3.0 Gazebo) | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9_newmap hiçbir zaman pozitife ulaşamadı; eğitim May 30 22:00'da 193k stepte kalıcı olarak dondu. ppo.yaml June 2'de v10 konfigürasyonuna alındı ve kanıtlanmış-optimal durumda. Aktif Gazebo eğitimi 10 gündür yok, `runs/` dizini mevcut değil.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- **Phase 1** (11:02–12:32, step 142k→599k): ep_rew_mean -290→-270, ep_len_mean=1000 (her bölüm max'a ulaşıyor). Drone 599k stepte bile tek oda geçemedi. Plato değil — kalıcı başarısızlık.
+- **Phase 2** (13:02–22:00, crash-loop): Monitor 80k checkpoint'ten ~25 kez restart yaptı; step 49k–193k arasında tutarsız salındı. En iyi anlık değer: -25 @ step 84k (gerçek öğrenme değil, kısa restart artefakti).
+- **Phase 3** (22:00+): Step 193248'de donduruldu, 13+ satır aynı değer → process kesin ölü.
+- **Gerçek peak:** interventions.jsonl → +133.35 @ step 501k (v3.0 Gazebo, May 31 14:54). v9_newmap pozitif reward görmedi.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru muydu?**
+- Hayır. Phase 1 CSV'si (entropy -3.89→-3.32 hızlı düşüşü) lr=3e-4 linear decay ile başlandığını gösteriyor. KICKOFF'ta yazılan 7.5e-5 constant v9 final config değildi, hatta uygulanmadı.
+- Sonuç: ent_coef=0.0015 + hızlı deterministikleşme → ep_len 1000'de sıkışma, oda keşfi sıfır.
+- Mevcut v10 config: lr 3e-4→1e-5 linear + ent_coef=0.008. Bu sorunun doğrudan çözümü. Değiştirme.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Phase 1 (gerçek v9 run): std 0.888→0.813→0.772→0.746 → **0.7 eşiğine yaklaşıyor, erken deterministikleşme uyarısı gerçekleşti.** Entropy_loss -3.89→-3.32 (hızlı düşüş). ent_coef=0.0015 yetersiz.
+- Phase 2 crash-loop: entropy -4.21 ile -4.26 (güvenli bölge), std ~0.985-1.003 (iyi). Ancak bunlar restart artefaktları, gerçek öğrenme değil.
+- v10 için ent_coef=0.008 (5.3× artış) Phase 1'deki çöküşü önler. entropy -4.5'in üstünde tutulması beklenir. Std 0.85+ kalması gerekir.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v9_newmap'te sıfır oda geçişi (ep_len=1000, hiçbir bölümde oda sinyali yok).
+- v10 projeksiyonu (env kodu düzeltmeli, collision_penalty=25 + lidar_history=2 ile):
+  - İlk oda geçişi (+15 sıçrama): **~150–250k step** (v3.0 Gazebo + v4.8 fast_sim pattern'i referans).
+  - 4–5 oda tutarlı: **~400–600k step** (n_envs=1 @ ~40-50 FPS, 1.5M total).
+  - 6 oda (%100 keşif): v4.10 fast_sim'de 5M+ gerekliydi ve güvenlik trade-off'uyla geldi.
+- **Env kodu düzeltmeden (41-d obs, collision=10):** v9 pattern'i tekrar eder, oda geçişi görünmez.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py`: `collision_penalty: 10 → 25`, `lidar_history: 1 → 2` (obs 41-d → 72-d).** fast_sim 18-deney zincirinin kesin bulgusu: v4.8 %0 çarpışma, 5 oda tutarlı, voxels 117. Sezgiye aykırı: penaltı düşürmek (%30→%25) %8→%0 çarpışma sağladı (aşırı-tedirgin hatalı manevra kaldırıldı). Bu değişiklik olmadan ppo.yaml değişikliğinin etkisi sınırlı kalır.
+2. **ppo.yaml'ı olduğu gibi bırak:** lr 3e-4→1e-5 linear (1.5M boyunca), ent_coef=0.008, n_steps=2048, n_epochs=10, total_timesteps=1.5M, net_arch=[256,256], n_envs=1. 18-deney fast_sim zinciri + v3.0 Gazebo peak +133.35 tarafından doğrulanmış. Herhangi bir değişiklik için %80 güven eşiği karşılanmıyor.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml:** HAYIR. Config proven-optimal, değiştirme.
+- **Eğitim sürekliliği:** `runs/` dizini yok, Gazebo 10 gündür inaktif. Bu bir hyperparameter sorunu değil; ortam başlatma/altyapı scope'u.
+- **drone_exploration_env.py collision_penalty + lidar_history:** EVET, en kritik bekleyen değişiklik — ama ppo.yaml dışı.
+- **Monitor crash-loop:** interventions.jsonl'da 30+ tekrar crash_recovery var (tümü 80k→180k stepte). Monitor'ın kendisi kusurlu (stale detection yanlış tetikleyerek gerçek eğitimi sürekli bozdu). v10'da monitor mantığı güncellenmeli.
+
+### v10 Önerisi
+1. **Önce env kodu:** `drone_exploration_env.py` → `collision_penalty=25`, `lidar_history=2` (obs 41-d → 72-d). Netarch [256,256] bu genişlemeyi taşır.
+2. **ppo.yaml değiştirme:** Mevcut değerler (lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, total_timesteps=1.5M) kanıtlanmış. Ardından `./scripts/train.sh configs/ppo.yaml` ile v10 başlat.
+
+### Müdahale
+**Yok** — ppo.yaml v10 için zaten proven-optimal konfigürasyonda. %80 güven eşiği aşılmadı. Env kodu düzeltmesi (collision_penalty + lidar_history) ppo.yaml scope'u dışında, bu oturumda talep edilmedi.
+---
