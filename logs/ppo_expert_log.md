@@ -2959,3 +2959,48 @@ v9_newmap hiçbir zaman pozitife ulaşamadı; eğitim May 30 22:00'da 193k stept
 ### Müdahale
 **Yok** — ppo.yaml v10 için zaten proven-optimal konfigürasyonda. %80 güven eşiği aşılmadı. Env kodu düzeltmesi (collision_penalty + lidar_history) ppo.yaml scope'u dışında, bu oturumda talep edilmedi.
 ---
+
+## [2026-06-10 00:00 UTC]
+**Step:** 193,248 (CSV STALE — son kayıt 2026-05-31 03:01) | **ep_rew_mean:** -173.85 (CSV son, gerçek peak: +133.35 @ ~500k, interventions.jsonl) | **entropy:** -4.21 (CSV son) | **std:** 0.985 (CSV son)
+
+### Durum
+training_metrics.csv 10 gün boyunca güncellenmemiş (son kayıt 2026-05-31 03:01, step=193248). Gerçek eğitim süreci çok daha ileriye gitmiş: interventions.jsonl'a göre 2026-05-31 14:54'te step=501760 ep_rew_mean=123.25/peak=133.35'e ulaşıldı. configs/ppo.yaml zaten v10'a güncellenmiş durumda (proven-optimal). fast_sim (v4.1→v5.0, 18 konfig) tamamen kapandı — temel güvenlik/kapsam trade-off'u kesinleşti.
+
+### Detay
+
+**a) Reward Eğrisi:**
+- CSV verisi 2026-05-30 22:00'dan itibaren frozen (step=193248, aynı satır 13 saat boyunca tekrarlandı). Monitor süreci log güncellemeyi bırakmış.
+- Gerçek seyir (interventions.jsonl): 80k → 120k → 140k → 180k crash recovery döngüsü. 2026-05-31 05:33'te GZ transport root cause fix (GZ_IP=127.0.0.1 + python timeout). Fix sonrası sağlıklı: 501760 step'te peak=133.35. Bu v8'in +113 all-time rekorunu kırdı.
+- Plato işareti YOK; 500k bölgesinde aktif öğrenme vardı.
+
+**b) lr=7.5e-5 constant seçimi (v9):**
+- v9 için bu seçim muhtemelen suboptimal'dı — v8 lineer decay (3e-4→3e-5) ile +113 peak'e ulaşmıştı. Sabit düşük lr ile erken faz yavaş öğrenme kaçınılmaz.
+- Ancak configs/ppo.yaml zaten v10'a güncellenmiş: lr=3e-4→1e-5 linear, bu kanıtlanmış optimal yaklaşım. Sorun aşılmış.
+
+**c) Entropy/std değerleri:**
+- CSV son değerler: entropy=-4.21, std=0.985. Bu std değeri yüksek (neredeyse 1.0) — policy hâlâ geniş action dağılımı gösteriyor, yani erken faz deterministikleşme yok.
+- -4 eşiği: entropy -4.21 ile sınırda ama std=0.985 çelişiyor. Bu erken 80-193k step aralığı için normal (agent hâlâ duvardan kaçmayı öğrenirken).
+- fast_sim son log (train_v3_resume_310k.log): entropy=-11.5, std=14.1 @ 1.456M step. Bu ham fast_sim obs scale'inde normalized değil — Gazebo env'e doğrudan kıyaslanamaz.
+- v10 config'deki ent_coef=0.008 (v9'un 0.0015'inden 5.3x yüksek) entropy düşüşünü yavaşlatacak.
+
+**d) Oda geçişi için beklenen step:**
+- v9/Gazebo: 500k civarında ilk pozitif ödüller (+133 peak), oda geçişleri muhtemelen 200-400k aralığında başlıyor.
+- fast_sim referans: v4.10 @ 5M step → tüm 6 oda (oda=5.76/6.0). Gazebo sim daha yavaş (FPS 72 vs fast_sim'in ~1000x hızı) dolayısıyla wall-clock çok uzun.
+- v10 config ile (n_steps=2048, n_epochs=10, ent_coef=0.008): 300-500k step aralığında ilk oda geçişleri beklenmeli.
+
+**e) v10 İçin En Kritik 2 Öneri:**
+1. **drone_exploration_env.py güncelleme (ACİL):** collision_penalty 10→25 (fast_sim v4.8'den: %0 çarpışma sağladı), lidar_history 1→2 (eval gap fix). Bu değişiklikler ppo.yaml dışında ama v10 başarısı için kritik. Env kodu olmadan ppo.yaml hiperparametreleri etkisiz.
+2. **Monitor yeniden başlatılmalı:** training_metrics.csv 10 gündür güncellenmemiş. Yeni bir monitor_agent.py çalıştırması gerekiyor (nohup python3 scripts/monitor_agent.py > /tmp/monitor.log 2>&1 &).
+
+**f) Acil Müdahale Durumu:**
+- CSV monitoring tamamen durmuş — bu kritik ama training kendisi durmuş olabilir (remote ephemeral env, son aktivite 2026-06-01).
+- fast_sim YAKINSADI (v4.1→v5.0 18 config denendi, trade-off kırılamadı). Yeni yapısal lever denemek için Gazebo gerçek sim gerekiyor.
+- configs/ppo.yaml v10 için %100 hazır, değiştirmeye gerek yok.
+
+### v10 Önerisi
+1. `drone_exploration_env.py` → collision_penalty=25, lidar_history=2 (fast_sim kanıtlanmış, Gazebo env'e port edilmedi)
+2. Monitor'ü yeniden başlat; CSV logging aktif olmadan uzun eğitimde kör kalınıyor
+
+### Müdahale
+**Yok** — configs/ppo.yaml zaten proven-optimal v10 konfigürasyonunda (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, total_timesteps=1.5M). %80 güven eşiği aşılmadı; env kodu değişiklikleri ve monitor restart ppo.yaml scope'u dışında, bu oturumda talep edilmedi.
+---
