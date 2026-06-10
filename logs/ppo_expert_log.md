@@ -3004,3 +3004,50 @@ training_metrics.csv 10 gün boyunca güncellenmemiş (son kayıt 2026-05-31 03:
 ### Müdahale
 **Yok** — configs/ppo.yaml zaten proven-optimal v10 konfigürasyonunda (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, total_timesteps=1.5M). %80 güven eşiği aşılmadı; env kodu değişiklikleri ve monitor restart ppo.yaml scope'u dışında, bu oturumda talep edilmedi.
 ---
+
+## [2026-06-10 00:00 UTC]
+**Step:** 193248 (son güncel) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 Gazebo eğitimi 2026-05-31 03:01'den beri tamamen donmuş — son 10 günde step ilerlemesi sıfır. Eğitim hiçbir zaman pozitif reward almadı; v9'un en iyisi -37.4 @~145k step. ppo.yaml zaten v10 optimal konfigürasyonuna taşınmış durumda.
+
+### Detay
+**a) Reward eğrisi — plato mu, kırılım mı?**
+- İlk 4 kayıt (11:02-12:32): step 142k→599k gibi görünüyor ancak ep_rew_mean -290 → -270, ep_len=1000 (max). Drone duvardan kaçmayı bile öğrenemedi, sadece time-out ile episode bitiriyordu. Bu lr=7.5e-5 constant altında erken faz felci belirtisi.
+- Crash recovery döngüsü (13:02-20:55): 22+ tekrar eden restart, hep ppo_drone_80000_steps.zip'ten resume. Step sayacı 83k-135k arasında salınıyor. Reward -25 ile -109 arasında tutarsız — reward sinyali var ama öğrenme birikmesi yok.
+- Peak: -37.4 @ ~145-149k (21:20-21:40). Bu tüm v9 Gazebo run'ının en iyisi.
+- Freeze: 22:00'dan itibaren step=193248 sabitlendi. 13 ardışık satır aynı değerleri tekrar etti (5+ saat donmuş).
+- **Sonuç: Ne plato ne kırılım — eğitim ölü. Sıfır ilerlenme.**
+
+**b) lr=7.5e-5 constant seçimi:**
+- KICKOFF.md v9 config'ini lr=7.5e-5 constant olarak belgeliyor. v8 lineer decay (3e-4→3e-5) ile +113 almıştı — bu v9 seçimi açıkça suboptimal.
+- İlk 4 CSV satırındaki ep_len=1000 (max) değeri bunu doğruluyor: çok düşük lr ile policy gradients yeterince güçlü değil, erken faz öğrenme felç.
+- **ppo.yaml ZATen v10'a güncellendi:** lr=3e-4→1e-5 linear, fast_sim v3.0'ın kanıtlanmış değerleri. Sorun aşılmış, müdahale gerekmiyor.
+
+**c) Entropy/std değerleri:**
+- entropy=-4.212, std=0.985. Std ~1.0 — policy hâlâ geniş exploration dağılımında, deterministikleşme yok.
+- Eşik -4.0: entropy tam sınırda ama v9'un crash-loop'u düşünüldüğünde bu 80-193k step aralığı için normal.
+- v10'un ent_coef=0.008 (v9'un 0.0015'inin 5.3x'i) entropi çöküşünü önleyecek.
+
+**d) Oda geçişi için beklenen step:**
+- v9 Gazebo'da hiç oda geçişi gerçekleşmedi (reward hiç +15 sıçraması göstermedi).
+- v10 config ile (ent_coef=0.008, lr linear decay, n_steps=2048, n_envs=1, collision_penalty=25 env'e uygulanırsa): fast_sim v3.0 referansı 200-400k step'te ilk oda geçişleri göstermişti. Gazebo wall-clock yavaş (FPS ~72) ama agent davranışı eşdeğer.
+- **Gerçekçi beklenti: v10 fresh start sonrası 200-400k step.**
+
+**e) FPS tutarlılığı:**
+- İlk 4 satır: 83-84 FPS (kararlı, n_envs=2).
+- Crash recovery döngüsünde: 61-121 FPS (çok tutarsız). IPC/transport kararsızlığının başarısız recovery attempt'lerini yansıttığı anlaşılıyor.
+- Son donma noktasında: 72 FPS (kararlı ama ilerleyişsiz).
+
+**f) Crash recovery analizi:**
+- 22+ başarısız crash_recovery, tamamı aynı checkpoint (ppo_drone_80000_steps.zip). Monitor yanlış pozitif tespiti yapıyor — training çalışıyor ama monitor "ölü" sanıyor.
+- Son intervention (2026-06-01 01:30): v3.0 Gazebo 434k step'te reward=99.84, peak=102.54. Bu v9_newmap'tan farklı bir run — muhtemelen fast_sim/Gazebo hybrid deney.
+- v9 restart döngüsü gece boyunca döndü ve hiçbir zaman 193k'ı geçemedi.
+
+### v10 Önerisi
+1. **drone_exploration_env.py güncelleme (kritik önceden yapılmalı):** `collision_penalty: 10 → 25` (fast_sim v4.8'de %0 çarpışma sağladı) ve `lidar_history: 1 → 2` (obs 41-d→72-d, eval gap fix). Bu env değişiklikleri yapılmadan v10 eğitimi başlatılsa bile fast_sim'in peak performansına ulaşılamaz. ppo.yaml hazır ama env kodu henüz güncel değil.
+2. **Monitor crash-recovery mantığını düzelt:** False-positive "process ölü" tespiti nedeniyle 22+ gereksiz restart yaşandı ve training hiç ilerleme kaydedemedi. Stale-log kontrolü için threshold 15dk yerine 60dk yapılmalı VEYA `pgrep` sonucuna ek olarak TB event mtime de kontrol edilmeli.
+
+### Müdahale
+**Yok** — configs/ppo.yaml zaten v10 optimal konfigürasyonunda (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, total_timesteps=1.5M, n_envs=1). fast_sim v3.0 kanıtlı değerleri uygulanmış. %80+ güven eşiğini geçen bir config sorunu yok; gerekli değişiklikler ppo.yaml scope'u dışında (env kodu, monitor script).
+---
