@@ -165,6 +165,7 @@ def main(argv=None) -> None:
     parser.add_argument("--out", type=Path, default=None, help="varsayilan: runs/seed_<N>")
     parser.add_argument("--device", default=None, help="cuda | cpu (varsayilan: otomatik)")
     parser.add_argument("--lr", type=float, default=None, help="learning_rate override (HP sweep)")
+    parser.add_argument("--gamma", type=float, default=None, help="gamma (indirim faktoru) override (HP sweep)")
     parser.add_argument("--ent-coef", default=None, help="ent_coef override, ornek 0.1 (HP sweep)")
     parser.add_argument("--no-eval", action="store_true")
     parser.add_argument("--resume", action="store_true",
@@ -177,6 +178,8 @@ def main(argv=None) -> None:
     env_cfg, sac_cfg, train_cfg = cfg["env"], cfg["sac"], cfg["train"]
     if args.lr is not None:
         sac_cfg["learning_rate"] = args.lr
+    if args.gamma is not None:
+        sac_cfg["gamma"] = args.gamma
     if args.ent_coef is not None:
         try:
             sac_cfg["ent_coef"] = float(args.ent_coef)  # sabit sicaklik => kesif kontrolu
