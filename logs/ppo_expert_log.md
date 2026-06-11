@@ -4230,3 +4230,48 @@ CSV 2026-05-31 03:01'den bu yana donmuş; `runs/` dizini mevcut değil — v10 G
 ### Müdahale
 **YOK** — `configs/ppo.yaml` zaten v10 optimal config'inde. V9 post-mortem analizi v10 config kararlarını (ent_coef 0.0015→0.008, lr constant→linear decay) retrospektif olarak doğruladı. %80+ eşiğini aşan yeni bir YAML sorunu tespit edilmedi. Env kodu değişiklikleri (collision_penalty, lidar_history) YAML scope'u dışında — bu analizde uygulanmadı.
 ---
+
+## [2026-06-11 23:05 UTC]
+**Step:** 193,248 (CSV 12 GÜN STALE — v9 son crash kalıntısı) | **ep_rew_mean:** -173.85 (stale) | **entropy:** -4.212 (stale) | **std:** 0.985 (stale)
+
+### Durum
+V9 eğitimi 2026-05-30 22:00'dan bu yana tamamen durmuş; training_metrics.csv son 12 gündür aynı satırı tekrarlıyor. V10 Gazebo eğitimi hiç başlatılmamış. configs/ppo.yaml v10 optimal parametreleriyle hazır, acil config müdahalesi gerekmiyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- **Phase 1 (step 142k–599k):** ep_rew_mean sabit ~-270 ila -293, ep_len=1000 (her episode timeout). Drone hiç episode bitirmedi. Öğrenme sinyali sıfır — bu fazın tamamı boşa gitti.
+- **Phase 2 (crash sonrası restart, ~50k–193k):** ep_rew_mean -102'den en iyi -25'e indi (adım ~84k). Ardından -173'e geriledi ve 193k step'te crash. ep_len 95–245 arası (drone hayatta kalmayı kısmen öğrendi).
+- **+15 oda sıçraması hiç görülmedi.** Tüm ep_rew_mean değerleri negatif. Oda kırılımı gerçekleşmedi.
+- Phase 1'de çok bariz **monoton entropy çöküşü** tespit edildi: entropy_loss -3.89→-3.32 (her 30dk ölçümde sürekli artış), std 0.888→0.746 (her 30dk ölçümde sürekli düşüş). Bu, ent_coef=0.0015 + lr=7.5e-5 constant kombinasyonunun ~350k step boyunca policy'yi değersiz bir deterministik yerel minimuma kilitlendiğini kanıtlıyor.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru muydu?**
+- **HAYIR — v9'un yapısal ölüm nedeni.** Phase 1 verisi bunu teyit ediyor: 600k step, sabit -270 reward, sıfır iyileşme. Sabit 7.5e-5; hem ilk öğrenme için momentum yetersiz, hem de entropi kaybını telafi edecek gradient kuvvetinden yoksun.
+- interventions.jsonl'de görülen v3.0 Gazebo başarısı (peak=133.35 @501k, v10 ile aynı lr=3e-4→1e-5 decay) v9'un lr hatasını retrospektif olarak doğruluyor.
+- **V10 ppo.yaml: `lr_schedule: linear, 3e-4→1e-5` — DOĞRU. Değişiklik gerekmez.**
+
+**c) Entropy/std değerleri keşif için yeterli miydi?**
+- **Phase 1 — KRİTİK SORUN:** entropy_loss -3.89→-3.32 aralığı -4.0 eşiğinin tamamen üstünde → erken deterministikleşme aktif ve hiç düzelmedi. std 0.888→0.746 → 0.7 kritik sınırına yaklaşıyordu.
+- **Phase 2 (restart sonrası):** entropy ~-4.21 ile -4.26, std ~0.99-1.00 — daha sağlıklı ancak ent_coef hâlâ 0.0015 ile küçük; 193k step'te -4.21'e tırmanarak yeniden eşiğe yaklaştı.
+- **V10 ppo.yaml: ent_coef=0.008 (v9'dan 5.3×) — DOĞRU.** Beklenen entropy bandı: -4.4 ile -5.0 arası, yeterli keşif sağlar.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9'da hiç oda geçişi olmadı. Referans: v3.0 Gazebo (aynı hyperparametreler, n_envs=1): ilk oda ~200-250k, 4-5 oda ~400-500k, peak @430-610k.
+- **V10 beklentisi (fresh start):** ilk +15 sıçraması ~150-250k step; 4-5 oda ~400-600k step; 6 oda tamamı 700-1000k step içinde (total_timesteps=1.5M yeterli).
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py` → `collision_penalty = 25` (şu an 10):** Fast_sim v4.8 tespiti: sadece 25 ile %0 çarpışma + 5 oda başarısı. 10 ile drone çarpışma-ölüm döngüsüne giriyor, total reward körelerek oda keşfini blokluyor. Eğitim başlatılmadan önce uygulanmalı.
+2. **`drone_exploration_env.py` → `lidar_history = 2` (obs 41-d→72-d):** Fast_sim v2 tespiti: %80→%1 çarpışma oranı düşüşü (en büyük tek iyileştirme). Tek lidar frame hız bilgisinden yoksun; iki frame differansiyeli proxy hız sinyali sağlıyor. [256,256] ağ mimarisiyle uyumlu.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml (configs): HAYIR.** Tüm hyperparametreler v10 optimal değerlerinde. %80+ güven eşiğini geçen bir YAML hatası yok.
+- **Eğitim süreci: EVET — ÇALIŞMIYOR.** `runs/` dizini yok, v10 Gazebo eğitimi hiç başlatılmamış. `./scripts/train.sh configs/ppo.yaml` henüz çalıştırılmadı.
+- **Env kodu (yüksek öncelik):** `collision_penalty=25` ve `lidar_history=2` uygulanmadıysa v10 fast_sim bulgularından yoksun başlar — v9'un başarısız olduğu koşullarla aynı risk.
+
+### v10 Önerisi
+1. **Önce env kodu** (`drone_exploration_env.py`): `collision_penalty: 10→25`, `lidar_history: 1→2`. Bu iki değişiklik v10 başlamadan uygulanmalı — fast_sim zincirinin en yüksek etkili iki bulgusudur.
+2. **Sonra `./scripts/train.sh configs/ppo.yaml`**: ppo.yaml eksiksiz hazır. V9 faz-1 entropy çöküşü v10'da ent_coef=0.008 ile önlenmiş. İlk oda kırılımı ~150-250k step bekleniyor.
+
+### Müdahale
+**YOK** — `configs/ppo.yaml` zaten v10 optimal config'inde (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, clip_range=0.2). V9 tam post-mortem analizi tamamlandı: ent_coef=0.0015 + lr=7.5e-5 constant kombinasyonu Phase 1'de entropy çöküşüne neden oldu, v10 bu ikisini de düzeltiyor. %80+ eşiğini geçen config hatası tespit edilmedi.
+---
