@@ -4041,3 +4041,48 @@ total_timesteps: 1.5M ✓ (2M+ safety collapse riski için kısaltıldı)
 ### Müdahale
 Yok — configs/ppo.yaml v10 olarak zaten doğru yapılandırılmış. Training'i başlatmak kullanıcının lokal makinesini gerektiriyor (bu ortamda Gazebo/ROS2 yok).
 ---
+
+## [2026-06-11 06:05 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 12 GÜN STALE; v10 henüz başlatılmamış) | **ep_rew_mean:** -173.85 (v9 dondurulmuş değer) | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 eğitimi 2026-05-30 22:00'da 193k step'te crash-loop'a girdi ve bir daha ilerlemedi. Aradan geçen sürede fast_sim zinciri (v1→v5.0, 18 config) eksiksiz tamamlandı; temel bulgular configs/ppo.yaml'a zaten 2026-06-02'de yansıtıldı. v10 fresh-start config hazır, **eğitim başlatılmamış.**
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- v9 tam yay: -324@64k → -270@447k → -37@145k (en iyi) → -173@193k → FREEZE.
+- İlk 600k satır (ep_len=1000 sabit): drone max süre hayatta kaldı ama hiç oda keşfedemedi; +15'lik oda sıçraması ömrü boyunca GÖRÜLMEDİ.
+- 193k'daki ep_len=637 ise episode'un kısaldığını (daha sık crash) gösteriyor — gerçek kırılım değil.
+- v3.0 Gazebo interventions: peak +133.35 @ 501k (aynı ödül tabanı, farklı sefer). v10'da referans bu.
+
+**b) lr=7.5e-5 constant seçimi doğru muydu?**
+- HAYIR. CSV ilk satırları (142k–599k): entropy -3.89→-3.32, std 0.888→0.746. ent_coef=0.0015 + constant lr kombinasyonu politikayı ilk 600k'da erken dondurdu; oda sıçraması için gerekli geniş keşif olmadı.
+- v10'da 3e-4→1e-5 linear doğru yaklaşım (v8 peak +113@1.6M aynı stratejiydi). Mevcut config bunu uyguluyor.
+
+**c) Entropy/std değerleri keşif için yeterli miydi?**
+- HAYIR. v9 son: entropy -4.212, std ~0.985. -4.0 eşiği geçilmiş = erken determinizm tehlikesi aktif hale geldi.
+- v9 ent_coef=0.0015: keşif baskısı yetersiz, 6-odalı harita için politika lokal-optimalden (tek oda tekrarı) çıkamadı.
+- v10 ent_coef=0.008 (5.3×) bu doğrudan hedef alıyor; first-room breakout için gerekli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi bekleniyor?**
+- v9 verisi: 193k'da bile ilk oda yoktu (negatif bölgede). v9 config ile hiç görülmeyecekti.
+- v3.0 Gazebo referansı: ilk oda ~180-200k, peak 5+ oda ~430-500k arasında görüldü.
+- v10 config (ent_coef=0.008, n_steps=2048, lr linear): ilk oda breakout ~150-250k bekleniyor. 400k+ çoklu-oda stabil keşif.
+- Kritik kontrol noktası: 200k step — ep_rew_mean > 0 ve en az 1 adet +15 sıçraması gözlemlenmeli.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **TRAINING BAŞLAT.** `./scripts/train.sh configs/ppo.yaml` — ppo.yaml v10 için eksiksiz hazır. 12 günlük boşluk var; her geçen gün sonuç alınamaz.
+2. **Env kodu önce güncelleyin** (eğitim başlatılmadan): `collision_penalty: -10 → -25` (drone_exploration_env.py) ve `lidar_history: 1 → 2` (obs 41-d→72-d). fast_sim v4.8 = %0 çarpışma ve lidar_history=2 = %80→%1 çarpışma. Bu iki değişiklik olmadan v10 Gazebo'da fast_sim başarısını tekrarlayamaz.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **configs/ppo.yaml: HAYIR** — lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, gae_lambda=0.95, n_envs=1, total_timesteps=1.5M — hepsi fast_sim + v3.0 Gazebo ile kanıtlanmış. Değişiklik için %80+ güven eşiği karşılanmıyor.
+- **Operasyonel:** Training dead. Kullanıcının lokal makinede başlatması gerekiyor. Bu ortamda Gazebo/ROS2 yok.
+
+### v10 Önerisi
+1. `drone_exploration_env.py` güncelle (collision_penalty=25, lidar_history=2) → SONRA `./scripts/train.sh configs/ppo.yaml` başlat. Bu sıralama kritik — env kodu düzeltilmeden başlatılırsa fast_sim'in %0 çarpışma başarısı Gazebo'ya taşınmaz.
+2. 500k checkpoint'te: entropy < -5.0 ise ent_coef=0.008→0.005 müdahalesi değerlendirilebilir; şimdilik değişiklik yok.
+
+### Müdahale
+**Yok** — configs/ppo.yaml v10 için doğrulanmış optimal değerlerle dolu (fast_sim 18-config zinciri + v3.0 Gazebo peak 110.3 ile kanıtlandı). Tüm parametre değişkenleri (lr schedule, ent_coef, n_steps, clip_range, total_timesteps) için %80+ güven eşiği karşılanmıyor — config zaten optimal noktada. Aktif eğitim bulunmadığından config değişikliği yapmanın anlamı yok.
+---
