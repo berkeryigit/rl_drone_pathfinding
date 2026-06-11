@@ -3946,3 +3946,43 @@ CSV 2026-05-31 03:01'den bu yana güncellenmemiş (11 gün stale). Gerçek eğit
 ### Müdahale
 **YOK** — configs/ppo.yaml v10 formatında, fast-sim kanıtlı optimal parametrelerle dolu. lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_envs=1, total_timesteps=1.5M — tüm değerler %80+ güven eşiğini aşan sorun içermiyor. Aktif eğitim olmadığından config değişikliği yapmanın anlamı yok; env kodu hazırlığı eğitim öncesinde kullanıcının sorumluluğunda.
 ---
+
+## [2026-06-11 04:06 UTC]
+**Step:** 193,248 (v9 SON — DONMUŞ; v10 henüz başlatılmamış) | **ep_rew_mean:** -173.85 (v9 son değer) | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 eğitimi 2026-05-31 03:01'de 193k step'te tamamen durmuş, sonrasında ekip v2.x→v3.0 Gazebo ve kapsamlı fast_sim (18 config) zincirini tamamlamış. configs/ppo.yaml zaten 2026-06-02'de v10 için güncellendi; ancak Gazebo env (drone_exploration_env.py) kritik fast_sim bulguları ile henüz güncellenmedi.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- v9: ep_rew_mean -290→-173 aralığında tüm süre negatif kaldı. ep_len=1000 (MAX) — drone hayatta kaldı ama hiç oda keşfedemedi. +15'lik oda sıçraması hiç görülmedi. Gerçek bir kırılım yaşanmadan eğitim crash-loop'a girdi.
+- v10: Henüz başlatılmamış. `runs/ppo_v10/` dizini yok.
+
+**b) lr=7.5e-5 constant seçimi doğru muydu?**
+- Yanlıştı. v9 KICKOFF'ta "7.5e-5 constant" yazsa da CSV ilk satırlarında (142k-599k) entropy -3.89→-3.32 hızlıca azaldı, std 0.888→0.746'ya düştü — ent_coef=0.0015 ile politika çok erken deterministikleşti.
+- v8'in linear decay (3e-4→3e-5) stratejisi daha doğruydu. v10'da aynı yaklaşım benimsendi: 3e-4→1e-5 linear, bu fast_sim + v3.0 Gazebo (peak 110.3) ile doğrulandı.
+
+**c) Entropy/std değerleri keşif için yeterli miydi?**
+- HAYIR. v9 entropy -4.21, std ~0.985. ent_coef=0.0015 ile politika ilk 600k step'te agresif şekilde daraldı. n_steps=512 kısa rollout pencereleri oda-arası keşfi yakalayamadı.
+- v10'da ent_coef=0.008 (5.3× artış) ve n_steps=2048 (4×) bu sorunları doğrudan hedef alıyor.
+
+**d) Oda geçişi için ne kadar step gerekir?**
+- v3.0 Gazebo run'ı: peak 110.3 @ ~500k step (6 oda × +10 = 60 + voxel), v10 config ile 200-350k step arasında ilk oda sıçraması bekleniyor.
+- fast_sim v4.8: 2M step, %0 çarpışma, rooms_mean=5.0. Gazebo ~40 FPS ile bu ~14 saat.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **ENV KRİTİK — collision_penalty: -10 → -25 (drone_exploration_env.py satır 342)**: fast_sim v4.8 kanıtladı — ceza 25 ile %0 çarpışma, 10 ile %70+. Bu değişiklik v10 eğitimi başlatılmadan uygulanmalı.
+2. **ENV KRİTİK — lidar_history: 1 → 2 (obs 40-d → 72-d)**: fast_sim'in en büyük kırılımı — lidar_history=2 çarpışmayı %80→%1'e indirdi. Gazebo env'e eklenmesi gerekiyor; son 2 lidar taramasının obs'a eklenmesi hareketli engel hızını çıkarmayı sağlar.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- ppo.yaml: HAYIR — zaten v10 için optimal yapılandırıldı (2026-06-02).
+- drone_exploration_env.py: EVET — yukarıdaki 2 env değişikliği v10 başlatılmadan uygulanmazsa fast_sim bulgularının Gazebo'ya transferi gerçekleşmez. Ancak bu env kodu değişikliği, ppo.yaml dışında olduğundan bu görevin kapsamı dışında.
+
+### v10 Önerisi
+1. **drone_exploration_env.py satır 342: `reward -= 10.0` → `reward -= 25.0`** — fast_sim v4.8'in sıfır çarpışma rekorunu Gazebo'ya taşımak için şart.
+2. **Obs boyutu 40-d → 72-d (lidar_history=2)**: Hareketli engel hız bilgisi olmadan Gazebo'da da fast_sim'deki %80 çarpışma tekrar yaşanacak. ppo.yaml MlpPolicy obs boyutunu otomatik algılar, sadece env kodu değişmeli.
+
+### Müdahale
+**YOK** — configs/ppo.yaml v10 için doğrulanmış optimal değerlerle dolu (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, net_arch=[256,256], n_envs=1, total_timesteps=1.5M, gae_lambda=0.95, clip_range=0.2). Herhangi bir parametre değişikliği için %80+ güven eşiği karşılanmıyor — config zaten fast_sim ve v3.0 Gazebo verisiyle optimize edilmiş durumda. Aktif eğitim bulunmadığından anlamsız bir config değişikliği yapılmadı.
+---
