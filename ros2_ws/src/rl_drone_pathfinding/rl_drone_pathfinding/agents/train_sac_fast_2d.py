@@ -92,7 +92,7 @@ def build_env(max_steps: int, seed: int | None):
 
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--timesteps", type=int, default=100_000)
+    parser.add_argument("--timesteps", type=int, default=300_000)
     parser.add_argument("--num-envs", type=int, default=8)
     parser.add_argument("--max-steps", type=int, default=600)
     parser.add_argument("--seed", type=int, default=42)
@@ -139,13 +139,14 @@ def main(argv=None) -> None:
         "MlpPolicy",
         env,
         learning_rate=3e-4,
-        buffer_size=250_000,
-        batch_size=256,
-        learning_starts=5_000,
+        # --- hiz / replay buffer: uzun egitim + yuksek throughput ---
+        buffer_size=600_000,           # 250k -> 600k (100k+ step icin yeterli replay)
+        batch_size=512,                # 256 -> 512 (GPU verimliligi)
+        learning_starts=10_000,
         tau=0.02,
         gamma=0.98,
-        train_freq=(1, "step"),
-        gradient_steps=1,
+        train_freq=(32, "step"),       # burst toplama: 32 vec-step -> Python dongu yuku azalir
+        gradient_steps=32,             # ~1:8 update:data orani (hizli + ogrenme dengeli)
         ent_coef="auto",
         policy_kwargs={"net_arch": [256, 256]},
         tensorboard_log=str(args.out / "tb"),

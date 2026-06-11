@@ -1,0 +1,52 @@
+# ======================================================================
+# RL Drone Pathfinding — 2D egitim konfigurasyonu (tek kaynak)
+# Egitim SADECE bu 2D Gymnasium ortaminda yapilir (Gazebo'da DEGIL).
+# Gazebo yalnizca egitilmis politikanin testi/gosterimi icindir.
+# Tum sayisal kararlar numpy.random.default_rng ile uretilir; np.random.seed
+# ve np.random.choice KULLANILMAZ. import gym (eski API) KULLANILMAZ.
+# ======================================================================
+
+env:
+  max_episode_steps: 600     # episode basina maksimum adim
+  random_start: true         # her episode rastgele (RNG'li) baslangic odasi
+  # --- stokastiklik kanitlari (ortam gercekten stokastik) ---
+  lidar_noise_std: 0.015     # her lidar isinina eklenen Gauss gurultusu (m)
+  odom_noise_std: 0.004      # odometri gurultusu (m)
+  wind_std: 0.015            # her adimda hiz komutuna eklenen ruzgar (m/s)
+  # hareketli engeller (moving obstacles) ortamda zaman-degisken => stokastik+ardisiklik
+
+sac:
+  policy: MlpPolicy
+  learning_rate: 3.0e-4
+  # --- HIZ / REPLAY BUFFER AYARLARI ---------------------------------
+  # Daha uzun egitim (100k+ step) icin buyuk buffer; GPU'da buyuk batch
+  # ile ornek verimliligi + wall-clock hizlanir. train_freq/gradient_steps
+  # "burst" toplama yaparak Python dongu yukunu azaltir.
+  buffer_size: 600000        # replay buffer kapasitesi (uzun egitim icin buyuk)
+  optimize_memory_usage: false  # true => buffer RAM'i ~yariya iner (cok buyuk buffer'da ac)
+  batch_size: 512            # GPU verimliligi icin buyuk batch (CPU'da 256 yapin)
+  learning_starts: 10000     # buffer dolana kadar saf kesif
+  tau: 0.02
+  gamma: 0.98
+  train_freq: 32             # 32 vec-step topla (=32*num_envs transition) sonra guncelle
+  gradient_steps: 32         # toplanan veride 32 gradyan adimi (~1:8 update:data orani)
+  target_update_interval: 1
+  ent_coef: auto             # otomatik sicaklik => kesif-somuru dengesi
+  target_entropy: auto
+  use_sde: false
+  net_arch: [256, 256]
+
+train:
+  total_timesteps: 300000    # 100k azdi; varsayilan 300k, CLI --timesteps ile artirilabilir
+  num_envs: 8                # paralel toplama (hizli 2D ortam => yuksek throughput)
+  save_freq: 25000           # checkpoint sikligi (toplam step bazinda)
+  eval_freq: 10000           # deterministik eval sikligi (toplam step bazinda)
+  n_eval_episodes: 5         # her eval'da deterministik episode sayisi
+  out_root: runs             # her seed => runs/seed_<N>/
+
+eval:
+  episodes: 20               # final degerlendirmede deterministik episode sayisi
+  deterministic: true        # greedy/deterministik politika (eval icin ZORUNLU)
+
+baseline:
+  episodes: 20               # baseline (random + heuristic) episode sayisi

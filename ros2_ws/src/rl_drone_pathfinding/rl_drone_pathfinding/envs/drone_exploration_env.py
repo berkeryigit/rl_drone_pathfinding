@@ -10,14 +10,14 @@ Dunya (multi_room.sdf):
     * Yatay duvar y=0 : kapilar x in [-7,-5], [0,2], [5,7]
     * 3 hareketli engel.
 
-Gozlem (43-d):
-    [0:32]  : 32-bin yatay lidar
-    [32:34] : (cos(yaw), sin(yaw))
-    [34:37] : (vx/v_max, vz/vz_max, wz/w_max)
-    [37:39] : kesif_orani (scaled x2), oda_scalari
-    [39:41] : min_lidar/max_range, idle_counter
-    [41:42] : nearest_door_dist (normalized)
-    [42:43] : wall_proximity (0=far, 1=near wall)
+Gozlem (LIDAR_BINS + 11 = 75-d, LIDAR_BINS=64):
+    [0:64]   : 64-bin yatay lidar
+    [64:66]  : (cos(yaw), sin(yaw))
+    [66:69]  : (vx/v_max, vz/vz_max, wz/w_max)
+    [69:71]  : kesif_orani (scaled x2), oda_scalari
+    [71:73]  : min_lidar/max_range, idle_counter
+    [73:74]  : nearest_door_dist (normalized)
+    [74:75]  : wall_proximity (0=far, 1=near wall)
 
 Aksiyon (3-d, surekli):
     a[0] -> vx, a[1] -> vy, a[2] -> wz
@@ -65,7 +65,7 @@ GRID_CELL_XY = 0.5
 GRID_NXY     = int((2 * WORLD_HALF) / GRID_CELL_XY)  # 32
 GRID_NZ      = 1
 
-LIDAR_BINS = 32
+LIDAR_BINS = 64
 LIDAR_MAX  = 10.0
 V_MAX      = 1.2
 VZ_MAX     = 0.4
@@ -228,9 +228,11 @@ class DroneExplorationEnv(gym.Env):
             high=np.array([ 1.0,  1.0,  1.0], dtype=np.float32),
             dtype=np.float32,
         )
-        # 32 lidar + 2 yaw + 3 vel + 2 explore + 2 lidar_stats + 1 door_dist + 1 wall_proximity = 43
+        # LIDAR_BINS lidar + 2 yaw + 3 vel + 2 explore + 2 lidar_stats + 1 door_dist + 1 wall = LIDAR_BINS+11
+        # gozlem = lidar(LIDAR_BINS) + yaw cos/sin(2) + planar vel(3)
+        #          + [progress,rooms](2) + [min_lidar,idle](2) + [door_dist,wall](2)
         self.observation_space = spaces.Box(
-            low=-1.0, high=1.0, shape=(43,), dtype=np.float32
+            low=-1.0, high=1.0, shape=(LIDAR_BINS + 11,), dtype=np.float32
         )
 
         if not rclpy.ok():
@@ -294,7 +296,7 @@ class DroneExplorationEnv(gym.Env):
         wall_proximity = np.clip((NEAR_COLLISION_DIST - scan_min) / NEAR_COLLISION_DIST, 0.0, 1.0)
 
         obs = np.concatenate([
-            self._bin_lidar(scan),                                             # 32
+            self._bin_lidar(scan),                                             # LIDAR_BINS (64)
             np.array([math.cos(yaw), math.sin(yaw)], dtype=np.float32),        # 2
             np.array([np.clip(vx / V_MAX, -1, 1),                              # 3 (planar vx,vy,wz)
                       np.clip(vy / V_MAX, -1, 1),

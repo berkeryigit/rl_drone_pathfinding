@@ -31,8 +31,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # --- python ML deps (SB3 + Torch w/ CUDA 12.1 wheels) -------------------------
+# NOT: --ignore-installed -> ROS desktop'in apt ile kurdugu matplotlib alt
+# bagimliliklari (kiwisolver, contourpy, fonttools...) "0.0.0 / RECORD yok"
+# oldugu icin pip onlari kaldiramaz. Bu bayrak ile pip onlari yerinde birakir,
+# kendi surumlerini ustune kurar (debian numpy override mantigiyla ayni).
 COPY requirements.txt /tmp/requirements.txt
-RUN pip3 install --no-cache-dir --break-system-packages \
+RUN pip3 install --no-cache-dir --break-system-packages --ignore-installed \
         --extra-index-url https://download.pytorch.org/whl/cu121 \
         -r /tmp/requirements.txt
 

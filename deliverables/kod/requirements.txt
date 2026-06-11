@@ -1,0 +1,13 @@
+# 2D egitim/eval icin sabit (==) surumler. Gazebo/ROS bu listede DEGIL;
+# 2D pipeline saf Python ile calisir (rclpy gerekmez).
+gymnasium==0.29.1
+stable-baselines3==2.3.2
+torch==2.4.0
+numpy==1.26.4
+pandas==2.2.2
+pyyaml==6.0.1
+matplotlib==3.8.4
+tqdm==4.66.4
+tensorboard==2.16.2
+rich==13.7.1
+Pillow==10.3.0
