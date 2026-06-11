@@ -4086,3 +4086,53 @@ v9 eğitimi 2026-05-30 22:00'da 193k step'te crash-loop'a girdi ve bir daha iler
 ### Müdahale
 **Yok** — configs/ppo.yaml v10 için doğrulanmış optimal değerlerle dolu (fast_sim 18-config zinciri + v3.0 Gazebo peak 110.3 ile kanıtlandı). Tüm parametre değişkenleri (lr schedule, ent_coef, n_steps, clip_range, total_timesteps) için %80+ güven eşiği karşılanmıyor — config zaten optimal noktada. Aktif eğitim bulunmadığından config değişikliği yapmanın anlamı yok.
 ---
+
+## [2026-06-11 07:10 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 11 GÜNLÜK STALE) | **ep_rew_mean:** -173.85 (stale, v9 crash kalıntısı) | **entropy:** -4.212 (stale) | **std:** 0.985 (stale)
+
+### Durum
+CSV 2026-05-31 03:01'den bu yana güncellenmemiş (11 gün boşluk). Ancak ppo.yaml zaten **v10** olarak yeniden yazılmış (2026-06-02): `lr=3e-4→1e-5 linear, n_steps=2048, n_epochs=10, ent_coef=0.008, total_timesteps=1.5M, n_envs=1`. v3.0 Gazebo run peak=110.3 @ 610k kasıtlı durduruldu; fast_sim zinciri (v4.1→v5.0, 18 config) tamamlandı. Config artık kanıtlanmış optimal parametrelerde — acil müdahale yok, ama aktif eğitim verisi izlenemiyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV verisi tamamen stale: son gerçek ölçüm 2026-05-30 20:55 (193k step, -173 rew) sonrası 10+ saat aynı satır tekrarlandı; monitor script crash-loop'a girmiş.
+- v3.0 Gazebo run (interventions.jsonl): 434k @ +99.84, peak=102.54 (2026-06-01); 501k @ +123.25, peak=133.35 (2026-05-31 14:54). Bu run 610k/1.5M'de kasıtlı durduruldu — peak=110.3 (ppo.yaml comments).
+- **v10 için aktif CSV verisi mevcut değil.** Eğitim ya bu container'da hiç başlatılmadı ya da lokal makinede CSV güncellemesi kopmuş.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Artık geçersiz: ppo.yaml v10 olarak güncellenmiş, `learning_rate: 0.0003` + `lr_schedule: linear` + `lr_final: 1e-5` kullanılıyor.
+- v9'un sabit 7.5e-5'i doğru terk edildi. v3.0 kanıtı: aynı 3e-4→1e-5 schedule ile peak=110.3 elde edildi.
+- v8 şemasıyla (3e-4→3e-5) kıyaslandığında: final LR 3× daha düşük (1e-5 vs 3e-5), bu fine-tune fazında daha küçük güncellemeler demek — pozitif.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Güncel ölçüm yok (CSV stale). Ancak v10 config: `ent_coef: 0.008` (v9'un 0.0015'inden **5.3× yüksek**).
+- fast_sim bulgusu (v4.1→v5.0 zinciri): yüksek ent_coef keşif kalitesini doğrudan artırdı.
+- Bu değerle entropy'nin -4.5 ile -5.5 arasında seyretmesi bekleniyor — deterministikleşme riski minimumd.
+- std tahmini: 0.9-1.1 erken fazda, n_steps=2048 geniş rollout ile stabil kalması bekleniyor.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 analoji (aynı hyperparametreler): ilk +90 reward (~6 oda) @ ~500k step.
+- v10 n_envs=1 (v3.0 ile aynı): wall-time daha yavaş ama step verimliliği eşdeğer.
+- **Beklenen milestone'lar (v10, fresh start):**
+  - İlk pozitif rew: ~150-200k step
+  - İlk oda kırılımı (+15): ~200-300k step
+  - 3+ oda (~+60): ~350-500k step
+  - 6 oda (~+90+voxel): ~600-900k step (total_timesteps=1.5M içinde hedeflenebilir)
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`lidar_history: 2` (obs 41-d → 72-d):** fast_sim'in en önemli bulgusu — eval gap'ini kapatan temel değişiklik. drone_exploration_env.py'de uygulanmadıysa v10 başlamadan önce mutlaka aktif edilmeli. Stochastic training ile deterministic eval arasındaki uçurumun kökü tek lidar frame'idir.
+2. **`collision_penalty: 25` (şu an 10):** fast_sim v4.8 bulgusu: %0 çarpışma oranı yalnızca 25 ile sağlandı. Mevcut 10 ile drone çarpışma-ölüm döngüsüne girip erken terminate edebilir; bu total reward'u köreltir ve 6 oda keşfini engeller.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Hyperparameter açısından: HAYIR.** ppo.yaml v10 kanıtlanmış optimal config'inde. %80+ güven eşiğini aşan bir config sorunu yok.
+- **Monitoring açısından: EVET (orta aciliyet).** CSV 11 gündür güncellenmemiş. Eğer v10 başlatılmışsa TB verisine erişilemiyor ve olası bir crash yakalanamıyor. `pgrep -fa "train_ppo"` + `tail -20 /tmp/train_ppo.log` ile anlık durum kontrol edilmeli.
+- **Env kodu açısından: EVET (yüksek aciliyet).** `lidar_history=2` ve `collision_penalty=25` env kodu değişikliği henüz uygulanmadıysa v10 fast_sim'in en kritik bulgularından yoksun başlayacak.
+
+### v10 Önerisi
+1. **drone_exploration_env.py'de `lidar_history: 1→2` ve `collision_penalty: 10→25` uygula** — v10 run başlamadan önce. Bu iki değişiklik fast_sim zincirinin (v4.8, v5.0) kanıtlanmış en yüksek etkili bulguları.
+2. **CSV/TB monitoring'i v10 dizinine yönelt** (`runs/ppo_v10/tb`): monitor_agent.py v9 dizinini hedef alıyorsa v10 verisini hiç kaydetmez. Her 30dk'da bir `ls -lt runs/ppo_v10/checkpoints/` ile checkpoint ilerleme kontrolü yeterli minimum monitoring.
+
+### Müdahale
+**YOK** — `configs/ppo.yaml` zaten v10 optimal config'inde (`lr=3e-4→1e-5`, `ent_coef=0.008`, `n_steps=2048`, `n_epochs=10`, `clip_range=0.2`, `total_timesteps=1.5M`). %80+ güven eşiğini aşan bir config hatası tespit edilmedi. Env kodu değişiklikleri (lidar_history, collision_penalty) Python kaynak dosyasında yapılmalı — YAML scope'u dışında, bu analizde dahil edilmedi.
+---
