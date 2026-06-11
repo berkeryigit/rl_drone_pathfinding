@@ -3891,3 +3891,58 @@ CSV 2026-05-31 03:01'den bu yana güncellenmemiş (11 gün stale). Gerçek eğit
 ### Müdahale
 **YOK** — configs/ppo.yaml v10 formatında ve v3.0 tarafından kanıtlanmış (+133.35 peak @ 500k). %80 güven eşiğini aşan yaml sorunu tespit edilmedi. Kritik iyileştirmeler (lidar_history=2, collision_penalty tuning) yaml değil env kodu kapsamında; bu oturumda müdahale edilmedi.
 ---
+
+## [2026-06-11 03:06 UTC]
+**Step:** 193,248 (CSV son kayıt — STALE, 2026-05-30 22:00'dan beri donmuş) | **ep_rew_mean:** N/A (aktif run yok) | **entropy:** N/A | **std:** N/A
+**Referans:** Gazebo v3.0 → peak=110.3 @ 610k (kasıtlı durduruldu) | ppo.yaml: v10 HAZIR (2026-06-02)
+
+### Durum
+**Aktif Gazebo eğitimi ÇALIŞMIYOR** — son 10 gündür (Haziran 1'den bu yana) yeni CSV verisi yok, interventions.jsonl son kaydı June 1 01:30 UTC'de. ppo.yaml, fast-sim zincirinin kanıtlanmış optimal parametreleriyle tam olarak v10 formatına güncellenmiş; eğitim başlatılmayı bekliyor. Config üzerinde %80+ güven eşiğini aşan bir sorun tespit edilmedi.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- `training_metrics.csv` SON 20+ SATIRI TAMAMEN GEÇERSIZ: 2026-05-30 22:00'dan beri 25 özdeş satır, hepsi step=193,248, ep_rew_mean=−173.85. Bu v9/v10 crash-loop döneminin kalıntısı; herhangi bir trend analizi yapılamaz.
+- **Gerçek v3.0 son bilinen eğri (interventions.jsonl):** step 434k → ep_rew_mean=99.84, peak=102.54 (June 1 01:30 UTC); ardından 610k'da peak=110.3 ile kasıtlı durduruldu. Olgunlaşma fazındaydı, plato yoktu.
+- **v10 durum:** Fresh start bekliyor. Önceki run yok, eğri yok; başlatıldığında fast-sim v3.0 referansıyla ilk pozitif bölge ~100-150k step, ilk oda sıçraması (+15) ~200-400k step beklenir.
+- **+15'lik oda sıçraması görüldü mü?** v10'da henüz başlamadı. Gazebo v3.0'da peak=110.3 ≈ 7×15=105 oda bonusu + voxel/frontier — eğitim sırasında tutarlı 7 oda keşfi gerçekleşmişti. Bu, v10'un beklentisini pozitif kiliyor.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- TAMAMEN GEÇERSİZ SORU. ppo.yaml, v3.0→v4.x→fast-sim tüm zincirinin sonucunda v10 formatına güncellenmiş. Mevcut schedule: **lr=3e-4 → 1e-5 linear, 1.5M boyunca.**
+- Bu v8 şemasıyla (3e-4→3e-5, 10× azalma) yapısal olarak özdeş; tek fark final LR 3× daha düşük (1e-5 vs 3e-5). Sabit 7.5e-5 v9'da terk edilmişti — kanıt: v3.0 yalnızca 610k adımda v8'in 1.6M'deki +113'ünün %97'sine erişti. Doğru seçim.
+- Resume sonrası SB3 progress_remaining sıfırlanma riski önceki oturumda analiz edildi; lr=3e-4'ten başlayan fresh run için bu sorun geçerli değil.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- CSV değerleri stale (v9/v10 crash-loop, entropy=−4.21, std=0.985); bunlar v10 için geçerli değil.
+- v10 fresh start'ta: entropy ~−5.5 ile başlayacak (v3.0 referans: −5.67 @ 312k), std ~1.6+ (v3.0 ref: 1.63). Bu değerler mükemmel keşif kapasitesi gösterir.
+- **ent_coef=0.008:** v9'un 0.0015'inin 5.3×'i. Keşif koruması güçlü. Fast-sim dersi: ent_coef'in aşırı artırılması (v4.2'de 0.02) collision %85'e çıkardı → 0.008 dengeli seçim.
+- Eşik izleme: std < 0.7 VE entropy > −4.0 (birlikte) → ent_coef artırım tetik. v10'da bu 400-700k bandında izlenecek.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 fresh start için tahmin (fast-sim v3.0 aynı parametreler + Gazebo ≈2×yavaş):
+  - ilk pozitif reward: ~100-150k step
+  - ilk oda sıçraması (+15): ~200-300k step
+  - tutarlı 3-4 oda: ~400-600k step
+  - rooms_mean≥5 (lidar_history=2 uygulanırsa fast-sim v4.8 referansı): ~800k-1.2M step
+- **KRİTİK ŞART:** Bu tahminler drone_exploration_env.py'deki lidar_history=2 ve collision_penalty=25 değişikliklerine bağlı. Bu env kodu değişiklikleri olmadan rooms_mean≥3 tutarlı keşif güçleşir (fast-sim'de kanıtlandı: lidar_history=1 ile collision %47, history=2 ile %1).
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **drone_exploration_env.py kodu değişikliklerini doğrula (OBS + REWARD):** ppo.yaml yorumunda belirtilmiş ama uygulandı mı belirsiz:
+   - `lidar_history: 1 → 2` (obs 41-d → 72-d: son 2 lidar taraması birleşik). Fast-sim'de collision %80→%1. Bu tek değişiklik hareketli engel darboğazını çözdü.
+   - `collision_penalty: 10 → 25` (reward'da). Tatli nokta: 22=yerel optimuma çöküş, 25=%0 collision, 30=%8 collision, 50=collapse.
+   - Eğer bu kodlar uygulanmamışsa v10 eğitimi başlatılmamalı; önce env kodu hazırlanmalı.
+2. **1.5M step sınırını koru — 2M+ başlatma:** fast-sim v4.10 (5M) voxels=281 ama collision %54; v4.11 (5M+collision_50) %100 collision — daha uzun eğitim güvenliği bozuyor. ppo.yaml'daki 1.5M sınırı doğru; eğitim tamamlanınca artırmaya çalışma.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Hyperparameter: HAYIR.** ppo.yaml v10 config'i fast-sim kanıtlı optimal değerlerde. lr schedule, ent_coef, n_steps, n_epochs, clip_range, total_timesteps — hepsi kanıtlanmış aralıkta.
+- **Operasyonel durum:** Eğitim 10+ gündür durmuş. Gazebo bu uzak container ortamında başlatılamaz. Kullanıcının lokal makinede `./scripts/train.sh configs/ppo.yaml` ile başlatması gerekiyor.
+- **CSV monitoring altyapısı:** Kalıcı olarak bozuk (v9/v10 crash-loop döneminden donmuş). v10 eğitimi başladığında yeni TB dizinine (`runs/ppo_v10/tb/`) yönlendirme gerekli.
+- **ppo.yaml tutarlılık notu:** `log_dir: ./runs/ppo_v10`, `resume_from: null`, `total_timesteps: 1500000` — hepsi doğru ve tutarlı.
+
+### v10 Önerisi
+1. **drone_exploration_env.py doğrulaması önce:** ppo.yaml yorumunda listelenen iki kod değişikliği (lidar_history=2, collision_penalty=25) uygulandı mı kontrol et. Gözlem boyutu 41-d→72-d olacaksa TB log'unda `train/std` ve reward eğrisinin daha hızlı kırılması beklenir. Uygulanmamışsa eğitimi başlatma.
+2. **v10 @ 200k step kontrol noktası:** Eğitim başladıktan sonra 200k step'te ep_rew_mean > 0 ve en az 1 oda sıçraması (+15) görülmesi bekleniyor. Görülmezse: collision_penalty ayarını kontrol et (25 değil farklı bir değer kullanılıyor olabilir).
+
+### Müdahale
+**YOK** — configs/ppo.yaml v10 formatında, fast-sim kanıtlı optimal parametrelerle dolu. lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_envs=1, total_timesteps=1.5M — tüm değerler %80+ güven eşiğini aşan sorun içermiyor. Aktif eğitim olmadığından config değişikliği yapmanın anlamı yok; env kodu hazırlığı eğitim öncesinde kullanıcının sorumluluğunda.
+---
