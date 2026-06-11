@@ -3986,3 +3986,58 @@ v9 eğitimi 2026-05-31 03:01'de 193k step'te tamamen durmuş, sonrasında ekip v
 ### Müdahale
 **YOK** — configs/ppo.yaml v10 için doğrulanmış optimal değerlerle dolu (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, net_arch=[256,256], n_envs=1, total_timesteps=1.5M, gae_lambda=0.95, clip_range=0.2). Herhangi bir parametre değişikliği için %80+ güven eşiği karşılanmıyor — config zaten fast_sim ve v3.0 Gazebo verisiyle optimize edilmiş durumda. Aktif eğitim bulunmadığından anlamsız bir config değişikliği yapılmadı.
 ---
+
+## [2026-06-11 08:00 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 12 GÜN STALE) | **ep_rew_mean:** -173.85 (CSV son, geçersiz) | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV 2026-05-30 22:00'dan bu yana tamamen donmuş; 16+ özdeş satır var. Gerçek durum: v3.0/fast_sim zinciri 501k step @ peak +133.35'e ulaştı (31 Mayıs 14:54), ardından fast_sim v4.1→v5.0 zinciri tamamen kapatıldı. Şu an tarih 11 Haziran 2026 — v10 config 2 Haziran'da hazırlandı ama training muhtemelen 10 gündür çalışmıyor. ACİL: Training dead, v10 başlatılmamış.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV'deki trend (v9, geçmiş): -324@64k → -89@104k → -37@145k → -173@193k → FREEZE
+- v9 145k'da -37 ile en iyi değerine ulaştı, ardından +15'lik oda sıçraması GÖRÜLMEDI (hâlâ negatif bölgede)
+- İnterventions verisi çok daha ümit verici: v3.0/fast_sim zinciri +123.25@501k, peak +133.35
+- v10 config hazır ama başlatılmamış — 10 günlük boşluk var
+
+**b) lr=7.5e-5 constant seçimi doğru muydu?**
+- HAYIR — bu aradaki bir geçici konfigürasyondu ve configs/ppo.yaml zaten v10'a geçmiş
+- v10: lr=3e-4 → 1e-5 (linear over 1.5M) — bu doğru seçim
+- v8 en iyi performans (peak +113@1.6M) lineer decay ile geldi; constant lr erken öğrenmeyi hızlandırır ama sonunda plateau riski arttırır
+- Mevcut v10 config bu dersi doğru uyguluyor
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- CSV son: entropy=-4.212, std=0.985 → v9'da erken determinizm başlamıştı (entropy -4.0 eşiğini geçmiş)
+- v10 config: ent_coef=0.008 (v9'un 0.0015'inden 5x yüksek) — DOĞRU DÜZELTME
+- std=0.985 iyiydi; v10'da ent_coef artışıyla std >1.0 beklenir ilk 200k'da
+- Kritik eşik: entropy'nin -5.0'ın altına düşmesi = müdahale sinyali
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v9 verisi: 145k'da bile negatif bölgede → oda geçişi görülmedi (6 oda × +15 = +90 potential)
+- fast_sim v3.0 ise 430k'da peak +102.54 → 6 oda keşfinin büyük bölümünü başardı
+- v10 fresh start için tahmin: ~150-250k ilk oda, ~400-600k stabil çoklu oda keşfi
+- v10 ent_coef=0.008 ile ilk oda daha erken görünmeli (v9'a göre ~30-40k daha erken)
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **TRAINING BAŞLAT** — v10 config hazır, 10 gündür çalışmıyor. `./scripts/train.sh configs/ppo.yaml` çalıştırılmalı. Bu en kritik adım.
+2. **500k'da ent_coef izle** — ent_coef=0.008 fresh start için iyi, ama 500k+ sonrası entropy -4.5'in altına düşerse ve std <0.7 görülürse ent_coef'i 0.005'e indirmeyi değerlendir (v3.0 verisi: 434k'da sağlıklı)
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+EVET — Training 12 gündür dead. configs/ppo.yaml v10 olarak güncellenmiş ve sağlıklı görünüyor, ancak eğitim başlatılmamış. Kullanıcının local makinesinde `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırması gerekiyor.
+
+### v10 Config Değerlendirmesi (configs/ppo.yaml güncel hal)
+```
+lr: 3e-4 → 1e-5 linear ✓ (v8 proven)
+ent_coef: 0.008 ✓ (v9 0.0015 çok düşüktü, bu düzeltme doğru)
+n_steps: 2048 ✓ (512'den yükseltme, daha stabil rollout)
+n_epochs: 10 ✓ (5'den artış, daha iyi sample efficiency)
+clip_range: 0.2 ✓ (standart SB3 default)
+n_envs: 1 ✓ (deadlock fix: SubprocVecEnv sorunu çözüldü)
+total_timesteps: 1.5M ✓ (2M+ safety collapse riski için kısaltıldı)
+```
+**Config değişikliğine gerek YOK** — v10 yapısı mevcut verilerle tutarlı ve kanıtlanmış parametreler üzerine kurulu.
+
+### Müdahale
+Yok — configs/ppo.yaml v10 olarak zaten doğru yapılandırılmış. Training'i başlatmak kullanıcının lokal makinesini gerektiriyor (bu ortamda Gazebo/ROS2 yok).
+---
