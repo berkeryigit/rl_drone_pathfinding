@@ -4544,3 +4544,35 @@ v9 eğitimi 2026-05-30 22:00'dan bu yana ölü; training_metrics.csv 24 özdeş 
 ### Müdahale
 **YOK (ppo.yaml)** — configs/ppo.yaml değiştirilmedi. %80+ güven eşiğini aşan YAML sorunu tespit edilmedi (8. kez). Env kod değişikliği (collision_penalty) YAML scope dışında; kaynak kodu doğrudan okunarak kesinleştirildi, operasyonel karar kullanıcıya ait.
 ---
+
+## [2026-06-12 00:00 UTC]
+**Step:** 193,248 (CSV son kayıt — frozen) | **ep_rew_mean:** -173.85 (son frozen) / best: -25.30 @ 83,968 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 eğitimi 2026-05-30 22:00'da 193k step'te tamamen donmuş; o tarihten bu yana CSV değişmemiş. 34+ crash_recovery döngüsü yaşanmış, tüm v9 boyunca reward hiç pozitife geçememiş (best: -25.30). ppo.yaml şu an **v10 konfigürasyonuna** güncellenmiş durumda — fast_sim v3.0'dan alınan kanıtlanmış parametreler.
+
+### Detay
+
+- **Reward eğrisi:** v9 boyunca reward negatif kaldı. İlk run (142k-599k arasında): -290→-270 (düzelme yok, plato). Crash sonrası yeniden başlamalar: en iyi -25.30 @ 83k step. Hiç oda geçişi olmadı (+15 ödülü hiç görülmedi). 193k'da donma başladı ve bir daha ilerleme olmadı.
+
+- **v9 lr=7.5e-5 constant seçimi:** Yanlış seçimdi. İlk uzun run'da (142k→599k) entropy -3.88→-3.32'ye düşmüş, std 0.888→0.746'ya inmiş — açık erken deterministikleşme işareti. Constant 7.5e-5 ile politika çok yavaş gelişti, keşif erken kapandı. v10'da 3e-4→1e-5 linear decay doğru düzeltme.
+
+- **Entropy/std:** Son frozen state'de entropy -4.212 (tehlikeli değil, -5+ değil), std 0.985 (sağlıklı). Ancak ilk long-run'da std 0.75'e yaklaşmıştı — ent_coef=0.0015 v9 için yetersizdi. v10'da ent_coef=0.008 doğru artış.
+
+- **Crash döngüsü:** interventions.jsonl'de 34+ crash_recovery, hepsi 80k checkpoint etrafında döngüye girmiş. Kök neden: GZ transport/bridge instabilitesi (GZ_IP=127.0.0.1 fix ile çözüldü, ancak v9 artık terk edildi). Bu ortam sorunu, hyperparameter sorunu değil.
+
+- **FPS tutarsızlığı:** İlk run 83-84 stabil. Crash sonrası 67-114 arası büyük varyasyon — Gazebo sim instabilitesinin başka göstergesi.
+
+- **fast_sim v3.0 başarısı:** interventions.jsonl son satırlar: reward=123.25 @ 501k step, peak=133.35 @ ~430k. Bu fast_sim (Gazebo dışı) çalışması v9 Gazebo run'ının aksine başarılı.
+
+- **Oda geçişi (v9'da):** Hiç olmadı. Reward hiç +15 sıçraması yaşamamış. v9 terk edildi.
+
+### v10 Önerisi
+
+1. **Mevcut ppo.yaml ayarları korunmalı:** `ent_coef=0.008` (v9'daki erken deterministikleşmeyi düzeltir), `n_steps=2048` (daha stabil gradyanlar), `lr 3e-4→1e-5 linear` (v9'un constant 7.5e-5 hatasını düzeltir), `clip_range=0.2` (v9'un 0.1'i çok kısıtlayıcıydı). Bunlar fast_sim v3.0'dan kanıtlanmış parametreler — dokunma.
+
+2. **Sim stabilitesi öncelik 1:** v9'da eğitim 34+ kez crashledi. GZ_IP=127.0.0.1 ve python timeout fixleri zaten uygulanmış; v10 başlatılmadan önce `train.sh` ilk 5k step'te monitor edilmeli. Crash döngüsüne girilirse fast_sim v3.0 checkpoint'ten Gazebo'ya transfer düşünülmeli.
+
+### Müdahale
+**YOK** — configs/ppo.yaml zaten v10 için optimal hale getirilmiş (v3.0 fast_sim'den kanıtlanmış parametreler). %80+ güven eşiğini aşan YAML sorunu tespit edilmedi. v9'daki sorunlar (crash döngüsü, donma) ortam/sim sorunuydu; v10 config bunların hyperparameter tarafını zaten düzeltiyor.
+---
