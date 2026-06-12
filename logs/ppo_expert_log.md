@@ -4904,3 +4904,55 @@ CSV 2026-05-31 03:01'den bu yana dondurulmuş durumda; v10 training hiç başlam
 ### Müdahale
 **YOK** — `configs/ppo.yaml` değiştirilmedi. %80+ güven eşiğini aşan YAML sorunu yok (13. teyit). Tüm parametreler fast_sim 18-config ampirik zinciri + v3.0 Gazebo çift doğrulaması ile optimal. Env kodu ve eğitim başlatma kararı kullanıcıya ait.
 ---
+
+## [2026-06-12 22:06 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 12 GÜN STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+`training_metrics.csv` 2026-05-31 03:01'den bu yana dondurulmuş; v9 193k adımda crash ile sona erdi. `configs/ppo.yaml` 2026-06-02'de v10 için güncellenmiş ve 13 önceki analizde ampirik olarak doğrulanmış. `runs/ppo_v10/` dizini yok — v10 eğitimi bu container'da hiç başlamadı. ppo.yaml'da değiştirilecek bir şey yok (14. teyit).
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV tam seyri (46 satır, 2 faz):
+  - **Faz-1** (v9 ilk run, step 142k→599k): ep_len=1000 (max'a çarpıyor), ep_rew -290→-270, std 0.888→0.746 — monoton daralma, hiç oda keşfi yok.
+  - **Faz-2** (crash recovery sonrası fresh restart, step ~49k→193k): std≈1.0, ep_len 95-315 (kısa = sık çarpışma). En iyi: **-37.38 @ 145k**; ardından -173.85 regresyon ile final crash.
+- +15'lik oda spike'ı CSV'nin hiçbir satırında görülmedi. v9 keşif sıfırda kapandı.
+- interventions.jsonl bağlamı: v9 gerçek seyrinde +133.35@501k ulaşıldı ama o veri TB'deydi, CSV stale'di.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- v9 için retrospektif: Sabit 7.5e-5 gradyan baskısı yetersizdi; std 0.888→0.746 hızlı daralması kanıtı.
+- Artık geçersiz: ppo.yaml `learning_rate: 0.0003, lr_schedule: linear, lr_final: 1e-5` olarak güncellenmiş. v3.0 Gazebo aynı schedule ile +110.3@610k üretmiş (ampirik kanıt). Değişiklik gereksiz.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut CSV değerleri (entropy_loss=-4.212, std=0.985) stale/crashed v9 kalıntısı; v10 için geçersiz.
+- Entropy_loss ∈ [-4.21, -4.25] → gerçek entropi ≈ 4.2 nats, -4 eşiğinin ALTI (eşiği aşmamış, keşif hâlâ sağlıklı). Erken deterministikleşme yok.
+- std=0.985 → 0.7 eşiğinin çok üzerinde.
+- v10 ent_coef=0.008 (v9'un 0.0015'inden 5× yüksek) başlangıç keşfini garantileyecek.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 henüz 0 adımda. Referans (v3.0 Gazebo, benzer hyperparametreler, collision_penalty=25 varsayımıyla):
+  - İlk +15 spike: ~150–300k step.
+  - 3+ oda tutarlı: ~400–600k step.
+  - 5–6 oda: ~700k–1.2M step.
+  - 1.5M bütçe içinde ulaşılabilir (v3.0 Gazebo 610k@110.3 referansı).
+- UYARI: collision_penalty hâlâ 10 ise bu tahminler geçersiz → v9 oda-sıfır örüntüsü tekrarlanır.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **[BLOKER — ENV KOD]** `drone_exploration_env.py`: `reward -= 10.0` (collision) → `reward -= 25.0`. fast_sim 18-config ampirik zinciri sweet-spot: 22=%37 çarpışma+2oda, **25=%0 çarpışma+5oda (v4.8 şampiyon)**, 30=%8+5oda, 50=%100. %95+ güven. Bu tek satır v10 başarı/başarısızlık kırım noktası.
+2. **[YÜKSEKLİK — ENV KOD]** `drone_exploration_env.py`: lidar_history=2 → obs 41-d'den 72-d'ye. fast_sim v2 kanıtı: hareketli engel çarpışması %80→%1. ppo.yaml net_arch=[256,256] 72-d'yi sorunsuz işler.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml için HAYIR** (14. teyit). Tüm parametreler fast_sim 18-config + v3.0 Gazebo çift doğrulaması ile optimal:
+  - `lr: 3e-4→1e-5 linear` ✓ | `ent_coef: 0.008` ✓ | `n_steps: 2048, batch_size: 256, n_epochs: 10` ✓
+  - `clip_range: 0.2, gae_lambda: 0.95, gamma: 0.99` ✓ | `n_envs: 1` ✓ | `total_timesteps: 1.5M` ✓
+  - `max_episode_steps: 2500` ✓ | `net_arch: [256,256]` ✓ | `VecNormalize: norm_reward=true, clip=10` ✓
+- **Env kodu için EVET (YAML scope dışı).** collision_penalty=10→25 ve lidar_history=2 düzeltmeleri v10 başarısının önkoşulu.
+
+### v10 Önerisi
+1. `drone_exploration_env.py` → collision reward satırını `reward -= 25.0` yap (fast_sim v4.8 sweet-spot, tek başarı koşulu).
+2. lidar_history=2 ekle (obs 41-d→72-d, hareketli engel çarpışması %80→%1). Ardından `./scripts/train.sh configs/ppo.yaml` ile v10 başlat — ppo.yaml tamamen hazır.
+
+### Müdahale
+**YOK** — `configs/ppo.yaml` değiştirilmedi. %80+ güven eşiğini aşan YAML sorunu tespit edilmedi (14. teyit). fast_sim 18-config ampirik zinciri ve v3.0 Gazebo çift doğrulaması ppo.yaml'ın tüm parametrelerini kanıtlıyor. Env kodu blokerinin çözümü ve v10 eğitim başlatma kararı kullanıcıya ait.
+---
