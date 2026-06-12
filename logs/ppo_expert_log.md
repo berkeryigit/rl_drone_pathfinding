@@ -4459,3 +4459,51 @@ V9 eğitimi 2026-05-30 22:00'da çöktü, bir daha başlatılmadı. V10 Gazebo e
 ### Müdahale
 **YOK** — `configs/ppo.yaml` değiştirilmedi. %80+ eşiğini aşan YAML sorunu tespit edilmedi (7. kez). Tüm hyperparametreler kanıtlanmış optimal değerlerde. Env kodu değişiklikleri (collision_penalty, lidar_history) YAML scope dışında; eğitim başlatma operasyonel karar, kullanıcıya ait.
 ---
+
+## [2026-06-12 00:00 UTC]
+**Step:** 193,248 (v9 FROZEN — son geçerli v9 satırı; v10 henüz başlatılmamış) | **ep_rew_mean:** -173.85 (v9 terminal) / v9 peak: -37.38 @ ~145k | **entropy:** -4.212 (v9 son) | **std:** 0.985 (v9 son)
+
+### Durum
+v9 eğitimi 2026-05-30 22:00'dan bu yana **13 gündür ölü** (training_metrics.csv 24 özdeş satırla donmuş). ppo.yaml 2026-06-02 tarihinde fast_sim v4.1–v5.0 zincirinin (18 config) bulgularıyla v10'a yeniden yazılmış; **v10 eğitimi henüz başlatılmamış** (logs/progress.csv ve runs/ppo_v10/tb yoktur).
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- v9 Gazebo run'ı hiçbir zaman pozitif reward'a ulaşamadı. En iyi değer: **-37.38 @ ~145k step**.
+- 193k step'te rew=-173.85'e gerileyerek crash-loop'ta dondu (ppo_drone_180000_steps.zip checkpoint'inden yeniden başlatıldıktan sonra divergans). Plato değil; aktif çöküş.
+- +15 oda sıçraması hiç görülmedi — v9 yeni 6-odalı haritada oda geçişine ulaşamadı.
+- **Referans:** fast_sim v4.8: rooms=5/6, voxels=117, çarpışma=%0 @ 3M step. Gazebo'nun gerçek sensor gürültüsü ve sim kararsızlığı öğrenmeyi zorlaştırıyor.
+
+**b) lr=7.5e-5 constant bu aşamada doğru muydu?**
+- Hayır. v9'un planlanan sabit 7.5e-5 LR'ı çok muhafazakârdı; early exploration fazında kritik gradyan sinyalini boğdu. Ek olarak SubprocVecEnv deadlock ve IPC pipe sorunları eğitimi sürekli kesti.
+- **v10 doğru karar**: lr=3e-4 → 1e-5 lineer (1.5M adımda). `_build_lr()` fonksiyonu (train_ppo.py:30-43) bu schedule'ı doğru uygulayacak şekilde implement edilmiş.
+- Karşılaştırma: v8 3e-4→3e-5 (10× azalma), v10 3e-4→1e-5 (30× azalma, daha agresif fine-tune). v10 daha iyidir.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- v9 son verisi: entropy=-4.21 (alarm eşiği >-4.0, bu değer eşiğe çok yakın), std=0.985 (sağlıklı >0.7 ✓). Entropy değeri erken-deterministikleşme sınırına yaklaşmıştı.
+- **v9 ent_coef=0.0015 yetersizdi.** v10 ent_coef=0.008 (5.3×) bu riski önemli ölçüde azaltır.
+- **Risk:** ent_coef=0.008 fazla yüksek olursa politika 400-600k bandında hâlâ random kalabilir (std yüksek, reward artmaz). İzleme noktası: 500k'da std hâlâ >0.85 ise → ent_coef kademeli düşüşü düşün.
+- fast_sim v4.1→v5.0 deneylerinde (versions.jsonl): v4.8 bu config ile %0 çarpışma + 5 oda. Emprik kanıt güçlü.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v9 run'ı sıfır oda geçişiyle öldü. v10 fresh start.
+- fast_sim v4.8 analojisine göre (farklı action space, benzer reward): İlk oda geçişi **150-300k step** beklenir.
+- Tutarlı 3+ oda: **400-600k step** beklenir.
+- Tüm 6 oda: fast_sim'de 5/6 oda 3M step'te görüldü; Gazebo'da sensor gürültüsü ve gerçek fizik nedeniyle **800k-1.2M** hedef.
+- **Not:** ppo.yaml yorumları collision_penalty=25 ve lidar_history=2'yi drone_exploration_env.py'ye uygulandığını belirtiyor (v4.8 bulgularından). Bu env değişikliklerinin gerçekten uygulandığı teyit edilmelidir — env kodu okunmadan bu varsayım yapılamaz.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **500k bandında std izleme tetikleyicisi:** std > 0.85 VE rooms_max < 2 → ent_coef 0.008→0.005. std < 0.65 VE entropy > -3.0 → ent_coef 0.008→0.012. İkisi birden olmalı. Tek kriter yeterli değil.
+2. **drone_exploration_env.py teyidi:** ppo.yaml'ın yorumlarında collision_penalty=25 ve lidar_history=2 env kodunda implement edildi deniyor (v4.8 champion config'i). Eğer env'de hâlâ collision_penalty=10 ve lidar_history=1 ise v10 fast_sim bulgularından faydalanmaz — bu teyit EĞİTİM BAŞLATILMADAN yapılmalıdır.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **EVET — DURUM BELİRSİZLİĞİ (düşük-aciliyet):** v10 training data'sı tamamen eksik. CSV 13 gündür donmuş, runs/ppo_v10/ dizini yok. ppo.yaml hazır ama eğitim başlatılmamış. Kullanıcının `./scripts/train.sh configs/ppo.yaml` ile v10'u başlatması gerekiyor.
+- **Hyperparameter açısından: HAYIR müdahale.** v10 config fast_sim 18 config'lik ampirik validasyona dayanıyor. %80 güven eşiği aşılan sorun yok.
+
+### v10 Önerisi
+1. **Drone env teyidi önce:** collision_penalty ve lidar_history değerlerini drone_exploration_env.py'de kontrol et; v4.8 champion değerleri (collision=25, lidar_history=2) uygulanmamışsa → uygula → SONRA train.sh başlat.
+2. **500k checkpoint'te manuel eval:** 20 ep eval.sh çalıştır; rooms_mean < 1.5 ise wall penalty agresifliğini artır (forward-arc katsayısı 0.3→0.5); rooms_mean ≥ 2.0 ise yalnızca izle.
+
+### Müdahale
+**YOK** — v10 config (ppo.yaml) fast_sim ampirik bulgularına dayanıyor ve iç tutarlı. LR schedule, ent_coef, n_steps, clip_range, total_timesteps hepsi fast_sim v4.8/v4.10 trade-off analizini yansıtıyor. %80+ güven eşiğini aşan bir config hatası tespit edilmedi. train_ppo.py:30-43'te LR schedule doğru implement edilmiş, norm_obs=false kasıtlı seçim. Config değiştirilmedi.
+---
