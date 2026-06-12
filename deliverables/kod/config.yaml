@@ -1,0 +1,56 @@
+# ======================================================================
+# RL Drone Pathfinding — PPO 2D egitim konfigurasyonu (tek kaynak)
+#
+# Bu dosya, algo/td3 (SAC) branch'inin 11 Haziran teslimindeki config.yaml
+# ile AYNI ortam/eval/baseline kosullarini saglar; yalnizca algoritma blogu
+# (sac -> ppo) ve ona ozgu hiperparametreler farklidir. Amac: ayni ortamda,
+# ayni seed'lerde, ayni protokolle PPO ile adil karsilastirma.
+#
+# Egitim SADECE bu 2D Gymnasium ortaminda yapilir (Gazebo'da DEGIL).
+# Gazebo yalnizca egitilmis politikanin testi/gosterimi icindir.
+# Tum sayisal kararlar numpy.random.default_rng ile uretilir; np.random.seed
+# ve np.random.choice KULLANILMAZ. import gym (eski API) KULLANILMAZ.
+# ======================================================================
+
+env:
+  # --- algo/td3 teslimi ile BIREBIR AYNI ortam kosullari ---
+  max_episode_steps: 600     # episode basina maksimum adim
+  random_start: true         # her episode rastgele (RNG'li) baslangic odasi
+  # --- stokastiklik kanitlari (ortam gercekten stokastik) ---
+  lidar_noise_std: 0.015     # her lidar isinina eklenen Gauss gurultusu (m)
+  odom_noise_std: 0.004      # odometri gurultusu (m)
+  wind_std: 0.015            # her adimda hiz komutuna eklenen ruzgar (m/s)
+  # hareketli engeller (moving obstacles) ortamda zaman-degisken => stokastik+ardisiklik
+
+ppo:
+  policy: MlpPolicy
+  learning_rate: 3.0e-4      # SAC teslimi ile ayni taban lr (adil karsilastirma)
+  # --- ON-POLICY ROLLOUT AYARLARI -----------------------------------
+  # PPO on-policy'dir: replay buffer YOK. Veri her guncellemeden sonra atilir.
+  # n_steps her env icin toplanan adim; rollout buffer = n_steps * num_envs.
+  n_steps: 1024              # her env'de 1024 adim => 8 env ile 8192'lik rollout
+  batch_size: 512            # minibatch (8192 / 512 = 16 minibatch / epoch)
+  n_epochs: 10               # her rollout uzerinde 10 gecis (PPO ornek tekrar kullanimi)
+  gamma: 0.98                # SAC teslimi ile AYNI indirim faktoru (getiriler kiyaslanabilir)
+  gae_lambda: 0.95           # GAE avantaj tahmini yumusatma
+  clip_range: 0.2            # PPO klips orani (politika guncellemesini sinirlar)
+  ent_coef: 0.005            # entropi bonusu (kesif); HP sweep'te taranir
+  vf_coef: 0.5               # deger (critic) kayip agirligi
+  max_grad_norm: 0.5         # gradyan kirpma (kararlilik)
+  use_sde: false
+  net_arch: [256, 256]       # SAC teslimi ile AYNI ag mimarisi
+
+train:
+  total_timesteps: 1500000   # PPO on-policy => SAC'in 500k'sina kiyasla daha cok adim (yakinsama + net plato)
+  num_envs: 8                # SAC teslimi ile ayni (paralel toplama)
+  save_freq: 50000           # checkpoint sikligi (toplam step bazinda)
+  eval_freq: 10000           # deterministik eval sikligi (toplam step bazinda)
+  n_eval_episodes: 5         # her eval'da deterministik episode sayisi
+  out_root: runs             # her seed => runs/seed_<N>/
+
+eval:
+  episodes: 20               # final degerlendirmede deterministik episode sayisi
+  deterministic: true        # greedy/deterministik politika (eval icin ZORUNLU)
+
+baseline:
+  episodes: 20               # baseline (random + heuristic) episode sayisi

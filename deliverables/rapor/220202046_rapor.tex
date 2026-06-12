@@ -1,0 +1,300 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{mathptmx}           % Times New Roman (Nimbus Roman) klonu
+\usepackage[a4paper,margin=2.3cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{caption}
+\usepackage[hidelinks]{hyperref}
+\usepackage{enumitem}
+\setlist{nosep,leftmargin=1.4em}
+\captionsetup{font=small,labelfont=bf}
+\renewcommand{\figurename}{Şekil}
+\renewcommand{\tablename}{Tablo}
+\setlength{\parskip}{0.45em}
+\setlength{\parindent}{0pt}
+
+\newcommand{\reff}[1]{\texttt{#1}}
+
+\begin{document}
+
+\begin{center}
+{\Large\bfseries Kapalı Ortamda PPO ile Lidar Tabanlı Drone Keşfi}\\[0.3em]
+{\large Pekiştirmeli Öğrenme Dönem Projesi -- Teknik Rapor}\\[0.8em]
+{\normalsize Berker Yiğit -- 220202046}\\
+{\small Kocaeli Üniversitesi, Bilgisayar Mühendisliği (II. Öğretim)}\\[0.4em]
+{\small Algoritma: PPO (Proximal Policy Optimization) \quad\textbar\quad Branch: \texttt{algo/ppo}}\\
+{\small Depo: \url{https://github.com/berkeryigit/rl_drone_pathfinding/tree/algo/ppo}}
+\end{center}
+
+\hrule
+\vspace{0.6em}
+
+\section{Özet}
+Bu çalışmada, GPS'in bulunmadığı kapalı bir binada yalnızca 360 derecelik lidar ve
+gürültülü odometri kullanan bir drone'un, engellere çarpmadan mümkün olduğunca çok
+alanı keşfetmesi problemi pekiştirmeli öğrenme ile çözülmektedir. Politika, PPO
+(Proximal Policy Optimization) ile saf Python/numpy üzerinde kurulu hızlı bir iki
+boyutlu Gymnasium ortamında eğitilmiştir. Eğitim beş farklı tohum (seed) ile
+tekrarlanmış, eğitilmiş politika deterministik koşuda değerlendirilmiş ve sonuçlar
+rastgele ile basit sezgisel (heuristic) iki taban politikasına (baseline) karşı
+karşılaştırılmıştır. Aynı ortam ve protokol, ekipteki SAC (\texttt{algo/td3})
+teslimiyle birebir aynı tutularak algoritmalar arası adil bir karşılaştırma zemini
+sağlanmıştır; tek fark algoritmadır. Sonuçlar, PPO ajanının her iki taban politikasını
+da belirgin biçimde geçtiğini ve ortalama oda kapsamasını yüksek seviyeye taşıdığını
+göstermektedir.
+
+\section{Giriş ve Neden Pekiştirmeli Öğrenme?}
+Keşif problemi, ajanın bilmediği bir haritada nereye gideceğine adım adım karar
+vermesini gerektirir. Bu problemin pekiştirmeli öğrenme ile çözülmesinin gerekçesi,
+rehberin istediği dört ölçütün de sağlanmasıdır:
+
+\textbf{Ardışıklık (eylem geleceği etkiler).} Drone'un bir adımdaki dönüş ve
+ilerleme kararı, bir sonraki adımda göreceği lidar manzarasını ve girebileceği
+odaları doğrudan belirler. Yanlış bir koridora sapmak, sonraki onlarca adımın
+keşif potansiyelini düşürür. Durum geçişi $p(s'\mid s,a)$ eyleme bağlıdır.
+
+\textbf{Gecikmeli ödül.} Yeni bir odaya ulaşmanın getirisi, o odaya götüren kapıyı
+bulmak için harcanan boş adımlardan sonra gelir. Altı odanın tamamını gezmenin büyük
+bonusu ise ancak bölümün sonuna doğru elde edilir. Ajan, anlık küçük cezaları göze
+alıp ileride büyük getiriyi toplamayı öğrenmek zorundadır.
+
+\textbf{Bilinmeyen, büyük durum uzayı.} Gözlem 75 boyutlu sürekli bir vektördür ve
+ortam stokastiktir (lidar, odometri ve rüzgar gürültüsü; zamanla yer değiştiren
+hareketli engeller). Durum uzayı tablo yöntemleriyle taranamayacak kadar büyüktür;
+bu yüzden fonksiyon yaklaşımı (sinir ağı) gerekir.
+
+\textbf{Daha ucuz bir alternatifin bulunmaması.} A* veya BFS gibi klasik arama
+yöntemleri, haritanın ve hedefin önceden bilindiği, deterministik ve statik ortamlar
+için uygundur. Burada harita önceden bilinmez (ajan onu lidar ile keşfederek çıkarır),
+hareketli engeller ortamı zamanla değiştirir ve tek bir hedef yoktur; amaç kapsamayı
+en büyüklemektir. Bu koşullarda klasik planlayıcılar doğrudan uygulanamaz; problem
+bir sıralı karar (MDP) problemidir ve pekiştirmeli öğrenme doğal çözümdür.
+
+\section{Ortam ve MDP Formülasyonu}
+Eğitim ortamı, mevcut Gazebo \reff{multi\_room} dünyasının hızlı bir iki boyutlu
+yaklaşımıdır (\reff{env/fast\_2d\_drone\_env.py}). Sekiz metre yarıçaplı, altı odalı
+bir bina, $0{,}5$ m çözünürlüklü bir keşif ızgarası ($32\times32$ hücre), 64 ışınlı
+bir lidar ve üç adet zamanla yer değiştiren hareketli engel içerir. Aynı dosya,
+SAC teslimindeki ortamla bayt-bayt aynıdır (MD5 doğrulanmıştır); böylece iki
+algoritma birebir aynı MDP üzerinde karşılaştırılır.
+
+\textbf{Durum (gözlem) $s$.} 75 boyutlu, $[0,1]$ aralığına normalize sürekli bir
+vektör:
+\begin{itemize}
+\item 64 lidar ışını mesafesi (\reff{LIDAR\_MAX}=10 m'ye bölünmüş),
+\item ölçülen yönelimin kosinüs ve sinüsü (2),
+\item bir önceki eylem $(v_x, v_y, \omega)$ (3),
+\item keşif ilerlemesi ve ziyaret edilen oda oranı (2),
+\item en yakın engel mesafesi ve boştalık (idle) sayacı (2),
+\item en yakın kapıya uzaklık ve duvara yakınlık (2).
+\end{itemize}
+Yönelim ve poz bilgisine odometri gürültüsü eklenir; yani \emph{ölçülen} durum,
+\emph{gerçek} durumdan sapar (Bölüm~\ref{sec:savunma}).
+
+\textbf{Eylem $a$.} Üç boyutlu sürekli bir vektör, \reff{Box}$(-1,1)^3$:
+gövde çerçevesinde ileri/geri hız, yanal hız ve dönüş hızı. Komutlar fiziksel
+sınırlara ölçeklenir (\reff{V\_MAX}=1.2 m/s, \reff{W\_MAX}=1.5 rad/s) ve üzerine
+rüzgar gürültüsü eklenir.
+
+\textbf{Ödül $r$.} Ödül fonksiyonu koddaki \reff{step()} metodunda (\reff{fast\_2d\_drone\_env.py},
+158--185.\ satırlar) ile birebir aynıdır:
+\begin{align*}
+r \;=\; -0{,}01
+&\;+\; 3{,}0\cdot \mathbb{1}[\text{yeni voxel}]
+\;+\; 20{,}0\cdot \mathbb{1}[\text{yeni oda}]\\
+&\;-\; 0{,}10\cdot \mathbb{1}[\text{50 adımdır yeni voxel yok}]\\
+&\;-\; 0{,}3\cdot \max\!\Big(0,\tfrac{0{,}7-\ell_{\min}}{0{,}7}\Big)
+\;-\; 40{,}0\cdot \mathbb{1}[\text{çarpışma}]\\
+&\;+\; 60{,}0\cdot \mathbb{1}[\text{6 odanın tamamı}]
+\;-\; 0{,}10\cdot \mathbb{1}[\text{son 60 adımda tekrar ziyaret}]
+\end{align*}
+Burada $\ell_{\min}$ en küçük lidar mesafesidir. Tasarım felsefesi, toplam getirinin
+yaklaşık olarak keşfedilen alanla orantılı olması, çarpışmanın ise ağır
+cezalandırılmasıdır. Bölüm, çarpışmada veya altı odanın tamamı gezildiğinde
+sonlanır (\emph{terminated}); 600 adıma ulaşınca kesilir (\emph{truncated}).
+
+\section{PPO Algoritması ve Hiperparametreler}
+PPO, aktör-kritik ailesinden \textbf{on-policy} bir politika gradyanı yöntemidir.
+Aktör, gözlemi alıp eylem üzerinde bir Gauss dağılımı üretir (sürekli eylem); kritik,
+durumun değerini tahmin eder. PPO'nun ayırt edici yanı, politika güncellemesini bir
+\emph{clipped surrogate} hedefiyle sınırlamasıdır: yeni politikanın eskisine oranı
+$1\pm\varepsilon$ (\reff{clip\_range}=0.2) aralığında kırpılır, böylece tek adımda
+politikanın aşırı sapması engellenir ve eğitim kararlı kalır. Avantaj tahmini için
+GAE (\reff{gae\_lambda}=0.95) kullanılır.
+
+PPO on-policy olduğu için \textbf{replay buffer yoktur}: her rollout'ta toplanan veri,
+birkaç epoch boyunca kullanılıp atılır. Bu, SAC/DQN gibi off-policy yöntemlere göre
+örnek verimliliğini düşürür; biz bunu sekiz paralel ortam (\reff{num\_envs}=8) ve daha
+uzun eğitim ile telafi ettik. Adil karşılaştırma için \reff{learning\_rate}, $\gamma$,
+ağ mimarisi ve paralel ortam sayısı SAC teslimiyle aynı tutulmuştur.
+
+\begin{table}[h]
+\centering\small
+\caption{PPO hiperparametreleri (\reff{config.yaml})}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Parametre & Değer & İşlevi \\
+\midrule
+\reff{learning\_rate} & $3\times10^{-4}$ & adım büyüklüğü (SAC ile aynı) \\
+\reff{n\_steps} & 1024 & ortam başına rollout uzunluğu \\
+\reff{batch\_size} & 512 & minibatch boyutu \\
+\reff{n\_epochs} & 10 & rollout başına geçiş sayısı \\
+\reff{gamma} ($\gamma$) & 0.98 & indirim faktörü (SAC ile aynı) \\
+\reff{gae\_lambda} & 0.95 & avantaj yumuşatma \\
+\reff{clip\_range} & 0.2 & politika klips oranı \\
+\reff{ent\_coef} & 0.005 & entropi (keşif) bonusu \\
+\reff{vf\_coef} & 0.5 & kritik kayıp ağırlığı \\
+\reff{max\_grad\_norm} & 0.5 & gradyan kırpma \\
+\reff{net\_arch} & [256, 256] & ağ genişliği (SAC ile aynı) \\
+\reff{num\_envs} & 8 & paralel ortam (SAC ile aynı) \\
+\reff{total\_timesteps} & 1.5\,M & seed başına eğitim bütçesi \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Deney Düzeni}
+Eğitim, \reff{seeds.txt}'teki beş tohumla (7, 13, 42, 123, 2025) tekrarlanmıştır.
+Her tohum için ayrı bir politika eğitilmiş; eğitim sırasında her 10.000 adımda bir
+deterministik eval yapılarak en iyi model saklanmıştır. Eğitim sonunda her politika,
+eğitimden ayrı bir RNG akışıyla (tohum$+20000$) 20 bölüm boyunca \textbf{deterministik}
+(greedy) koşturularak değerlendirilmiştir; çünkü eğitim eğrisi tek başına kanıt
+sayılmaz. Taban politikalar (rastgele ve sezgisel) aynı ortamda 20'şer bölüm
+koşturulmuştur. Hiperparametre duyarlılığı için iki parametre üçer değerle taranmıştır
+(\reff{learning\_rate}: $10^{-4}, 3\times10^{-4}, 10^{-3}$; \reff{ent\_coef}:
+$0{,}0, 0{,}01, 0{,}05$), her biri üç tohumla. Tüm rastgelelik
+\reff{numpy.random.default\_rng} ile üretilmiştir; \reff{np.random.seed} ve
+\reff{np.random.choice} kullanılmamıştır.
+
+\section{Sonuçlar}
+\label{sec:sonuclar}
+Beş tohumun deterministik eval özeti Tablo~\ref{tab:ozet}'de verilmiştir. Aşağıdaki
+beş grafik, rehberin B bölümü zorunlu standardına uygundur: her grafikte başlık,
+birimli eksen etiketi, lejant, beş tohumun ortalaması ile $\pm$ standart sapma bandı
+ve hareketli ortalama penceresi bulunur. Öğrenme ve eval eğrilerinde y-ekseni
+\textbf{episode getirisidir} (anlık/per-step ödül değildir).
+
+% --- SONUCLAR TABLOSU (egitim sonrasi doldurulacak) ---
+\begin{table}[h]
+\centering\small
+\caption{Deterministik eval özeti (seed $\times$ metrik). Kaynak: \reff{sonuclar/sonuclar.csv}}
+\label{tab:ozet}
+\input{sonuclar_tablo.tex}
+\end{table}
+
+\subsection*{Grafik 1 -- Öğrenme Eğrisi}
+\IfFileExists{../sunum/grafikler/1_ogrenme_egrisi.png}{%
+\begin{center}\includegraphics[width=0.82\textwidth]{../sunum/grafikler/1_ogrenme_egrisi.png}\end{center}}{}
+\textbf{Yorum.} \emph{Gözlem:} Eğitim episode getirisi yaklaşık 290'dan başlayıp 0,5
+milyon adımda 470 dolayına tırmanır ve 0,6 milyondan sonra 480 düzeyinde platoya
+oturur; tohumlar arası standart sapma bandı zamanla daralır. \emph{Karşılaştırma:}
+Beş tohumun tamamı aynı seyri izler ve son üçte birde aralarındaki fark çok küçüktür,
+yani sonuç tohuma karşı kararlıdır. \emph{Açıklama:} PPO'nun clipped surrogate hedefi
+politikayı her güncellemede sınırlı adımlarla iyileştirdiğinden getiri düzgün ve
+sıçramasız artar; plato, ajanın altı odayı düzenli gezmeyi öğrenmesiyle ulaşılan
+tavandır. \emph{Sonuç:} 1,5 milyon adım bu ortamda PPO için yakınsamaya fazlasıyla
+yeter; ek eğitim getiriyi anlamlı biçimde artırmaz.
+
+\subsection*{Grafik 2 -- Test (Eval) Eğrisi}
+\IfFileExists{../sunum/grafikler/2_eval_egrisi.png}{%
+\begin{center}\includegraphics[width=0.82\textwidth]{../sunum/grafikler/2_eval_egrisi.png}\end{center}}{}
+\textbf{Yorum.} \emph{Gözlem:} Deterministik (greedy) eval getirisi yaklaşık 200'den
+0,4 milyon adımda 470 dolayına çıkar ve eğitim eğrisiyle neredeyse aynı platoda kalır.
+\emph{Karşılaştırma:} Deterministik eval, stokastik eğitim eğrisiyle aynı seviyeye
+oturur; aradaki fark ihmal edilebilir düzeydedir. \emph{Açıklama:} Bu, yüksek
+getirinin yalnızca eğitimdeki rastgele keşif sayesinde değil, öğrenilen politikanın
+kendisiyle elde edildiğini gösterir; greedy koşuda da başarı korunur.
+\emph{Sonuç:} Politika gerçekten genelleşmiştir ve sonuç eğitim eğrisiyle değil,
+ayrı bir deterministik koşuyla doğrulanmıştır (rehber B2 şartı).
+
+\subsection*{Grafik 3 -- Loss Eğrisi (Policy Gradient ve Value Loss)}
+\IfFileExists{../sunum/grafikler/3_loss_egrisi.png}{%
+\begin{center}\includegraphics[width=0.82\textwidth]{../sunum/grafikler/3_loss_egrisi.png}\end{center}}{}
+\textbf{Yorum.} \emph{Gözlem:} Value (critic) loss önce 0,3--0,4 milyon adım
+civarında 140 dolayında bir tepe yapar, ardından düzenli düşerek 30 seviyesine iner;
+policy gradient (actor) loss ise $-0{,}0065$ ile $-0{,}004$ arasında küçük kalıp
+yataya oturur. \emph{Karşılaştırma:} Critic loss'un tepe-sonra-düşüş seyri, getirinin
+en hızlı yükseldiği döneme denk gelir. \emph{Açıklama:} Ajan büyük ödülleri (yeni
+oda, altı-oda bonusu) keşfettikçe değer hedefleri büyür ve critic başta zorlanır
+(tepe); politika kararlılaşınca hedefler oturur ve critic loss düşer. Actor loss'un
+küçük ve yatay kalması, PPO'nun klips mekanizmasının güncellemeleri sınırlamasından
+kaynaklanır. \emph{Sonuç:} Critic'in düşen loss'u öğrenmenin sağlıklı yakınsadığını,
+actor loss'un düşük ve yatay olması ise eğitimin kararlı (patlamayan) olduğunu gösterir.
+
+\subsection*{Grafik 4 -- Hiperparametre Duyarlılığı}
+\IfFileExists{../sunum/grafikler/4_hiperparametre_duyarlilik.png}{%
+\begin{center}\includegraphics[width=0.82\textwidth]{../sunum/grafikler/4_hiperparametre_duyarlilik.png}\end{center}}{}
+\textbf{Yorum.} \emph{Gözlem:} \reff{ent\_coef}'te en yüksek ve en az değişken sonuç
+0,05'te (368) elde edilir; \reff{learning\_rate}'te en yüksek sonuç $10^{-4}$'te
+(375) olup oran büyüdükçe hafifçe düşer ($3\times10^{-4}$: 352, $10^{-3}$: 343). Bu
+koşular hiperparametre etkisini izole etmek için kısa bütçeyle (200k adım)
+yapıldığından getiriler 1,5 milyonluk ana koşulardan düşüktür. \emph{Karşılaştırma:}
+Her iki parametrede de farklar hata bantları içinde kalır; yani ajan, bu aralıkta
+hiperparametre seçimine fazla duyarlı değildir. \emph{Açıklama:} Yüksek
+\reff{ent\_coef} daha çok keşfe yol açtığından kısa bütçede odaları daha hızlı bulup
+biraz daha yüksek getiri verir; çok yüksek \reff{learning\_rate} ($10^{-3}$) ise
+güncellemeleri sertleştirip erken kararlılığı hafifçe bozar (keşif--sömürü dengesi).
+\emph{Sonuç:} Seçilen taban değerler ($\text{lr}=3\times10^{-4}$,
+$\text{ent\_coef}=0{,}005$) güvenli orta noktadır ve sonuç bu aralıkta robust
+olduğundan ince ayar kritik değildir.
+
+\subsection*{Grafik 5 -- Baseline Karşılaştırma}
+\IfFileExists{../sunum/grafikler/5_baseline_karsilastirma.png}{%
+\begin{center}\includegraphics[width=0.7\textwidth]{../sunum/grafikler/5_baseline_karsilastirma.png}\end{center}}{}
+\textbf{Yorum.} \emph{Gözlem:} Deterministik eval ortalama getirisi PPO ajanında 459,
+sezgisel (heuristic) taban politikada 402, rastgele politikada ise 49'dur.
+\emph{Karşılaştırma:} Getiri olarak PPO sezgiseli az farkla geçse de, kapsama
+(\%96,7'ye karşı \%79,9) ve çarpışma oranı (0,04'e karşı 0,45) bakımından fark çok
+büyüktür; rastgele politika her ölçütte çok geridedir. \emph{Açıklama:} Sezgisel
+politika ``ön açıksa ilerle'' kuralıyla bazı odaları gezebilir ama kapıları
+planlayamaz ve sık çarpar; PPO ise lidar ve öğrenilen değer fonksiyonu sayesinde hem
+daha çok oda gezer hem de neredeyse hiç çarpmaz. \emph{Sonuç:} Ajanın öğrenmesi
+gerçek bir kazanımdır; problem basit bir kuralla veya rastgelelikle çözülemez, bu da
+pekiştirmeli öğrenme seçimini doğrular (rehber B5).
+
+\section{Savunma Analizi}
+\label{sec:savunma}
+Bu bölüm, rehberin dört kavram alanını projeye uygulayarak yanıtlar.
+
+\textbf{Deterministik mi, stokastik mi?} Ortam \textbf{stokastiktir}; bu kod
+satırlarıyla kanıtlanır. Geçiş gürültüsü: \reff{step()} içinde hız komutlarına
+$\mathcal{N}(0,\sigma_{\text{wind}})$ rüzgar eklenir; aynı $(s,a)$ çifti farklı $s'$
+verir, yani $p(s'\mid s,a)$ dejenere değildir. Gözlem gürültüsü: lidar
+(\reff{\_compute\_lidar}) ve odometri (\reff{\_make\_obs}) ölçümlerine Gauss gürültüsü
+katılır. Bu nedenle aynı durumdan aynı eylem dizisi tekrar oynatıldığında aynı yörünge
+elde edilmez. Not: yalnızca başlangıç konumunun rastgele olması ortamı stokastik
+yapmaz; stokastiklik geçiş ve gözlem gürültüsünden gelir.
+
+\textbf{On-policy mi, off-policy mi?} PPO \textbf{on-policy}'dir. Veriyi üreten
+davranış politikası ile iyileştirilen hedef politika aynıdır; her rollout, güncel
+politika ile toplanır ve güncellemeden sonra atılır. Replay buffer yoktur. Bu, SAC ve
+DQN'in (off-policy, replay buffer'lı) tersidir ve PPO'nun neden daha çok örnek
+gerektirdiğini açıklar.
+
+\textbf{Markov özelliği.} Durum, anlık lidar, yönelim, hız (önceki eylem yoluyla) ve
+keşif istatistiklerini içerir. Tek bir gözlem, sonraki durumun dağılımını yaklaşık
+olarak belirlemeye yeter; çünkü hareketli engellerin konumu adım sayısının
+deterministik bir fonksiyonudur ve hız bilgisi gözlemde taşınır. Yine de gürültü ve
+sınırlı görüş nedeniyle Markov özelliği yalnızca yaklaşık sağlanır.
+
+\textbf{Kısmi gözlemlenebilirlik (POMDP).} Ortam \textbf{kısmi gözlemlenebilirdir}.
+Gerçek durum ile gözlem ayrışır: (i) poz/yönelim gözleme odometri gürültüsüyle girer,
+yani ajan gerçek konumunu tam bilmez; (ii) lidar yalnızca görüş hattındaki engelleri
+görür, duvar arkası bilinmez; (iii) hareketli engellerin gelecekteki konumu doğrudan
+gözlemde yoktur. Optimal karar için eksik olan bu bilgiyi ajan, önceki eylemi gözleme
+ekleyerek ve politikanın hız/yön bağlamını taşımasıyla kısmen telafi eder.
+
+\section{Sonuç}
+PPO, replay buffer kullanmadan, on-policy bir politika gradyanı yöntemi olarak, aynı
+ortamda hem rastgele hem sezgisel taban politikalarını belirgin biçimde geçmiştir.
+Örnek verimliliği off-policy yöntemlere göre düşük olsa da, paralel ortam toplama ve
+daha uzun eğitim ile yüksek oda kapsaması elde edilmiştir. Aynı ortam, seed ve
+protokol SAC teslimiyle birebir korunduğundan, bu rapordaki sonuçlar ekipteki diğer
+algoritmalarla doğrudan karşılaştırılabilir. Tüm grafikler \reff{sonuclar/loglar/}
+altındaki ham loglardan yeniden üretilebilir.
+
+\end{document}

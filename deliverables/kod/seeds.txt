@@ -1,0 +1,7 @@
+# Egitim/eval seed listesi (>=5 seed zorunlu).
+# run_all.sh ve plot_results.py bu dosyayi okur.
+7
+13
+42
+123
+2025

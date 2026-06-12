@@ -1,0 +1,13 @@
+# Model agirliklari ve buyuk kosu ciktilari (yeniden uretilebilir) — teslim disi
+kod/runs/
+kod/runs_hp/**/checkpoints/
+kod/runs_hp/**/tb/
+kod/runs_hp/**/*.zip
+# Cache / ara dosyalar
+**/__pycache__/
+*.pyc
+# LaTeX ara dosyalari
+rapor/*.aux
+rapor/*.log
+rapor/*.out
+rapor/*.toc
