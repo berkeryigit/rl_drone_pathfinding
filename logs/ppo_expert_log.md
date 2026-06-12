@@ -4275,3 +4275,46 @@ V9 eğitimi 2026-05-30 22:00'dan bu yana tamamen durmuş; training_metrics.csv s
 ### Müdahale
 **YOK** — `configs/ppo.yaml` zaten v10 optimal config'inde (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, clip_range=0.2). V9 tam post-mortem analizi tamamlandı: ent_coef=0.0015 + lr=7.5e-5 constant kombinasyonu Phase 1'de entropy çöküşüne neden oldu, v10 bu ikisini de düzeltiyor. %80+ eşiğini geçen config hatası tespit edilmedi.
 ---
+
+## [2026-06-12 00:04 UTC]
+**Step:** 193,248 (CSV 12+ GÜN STALE — v9 son crash kalıntısı) | **ep_rew_mean:** -173.85 (stale) | **entropy:** -4.212 (stale) | **std:** 0.985 (stale)
+
+### Durum
+V9 eğitimi 2026-05-30 22:00'dan itibaren tamamen durmuş; training_metrics.csv 20+ satırda aynı veriyi tekrarlıyor (193k step donmuş). V10 Gazebo eğitimi 12 gündür hiç başlatılmamış. configs/ppo.yaml v10 optimal parametrelerinde — acil config müdahalesi yok.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- V9 kalıcı olarak ~193k adımda çöktü. CSV'de 2026-05-30 22:00 sonrası 20+ satırın aynı değerleri tekrar etmesi (step=193248, rew=-173.85) training process'inin öldüğünü ve monitörün eski veriyi yazmaya devam ettiğini gösteriyor.
+- V9'da hiçbir +15 oda sıçraması gözlemlenmedi; tüm ep_rew_mean değerleri negatif kaldı. Phase 2'nin en iyisi -25 @84k (birkaç yeni voxel, oda reward'u değil).
+- V10 hiç başlatılmadı — mevcut reward eğrisi yok.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- HAYIR — v9'un yapısal ölüm nedeni. Phase 1 (142k–599k): sabit -270 reward, 600k step boyunca sıfır iyileşme. Sabit düşük lr + düşük ent_coef kombinasyonu policy'yi değersiz deterministik yerel minimuma kilitledi.
+- v10 ppo.yaml: `lr_schedule: linear, 3e-4→1e-5` — v3.0 Gazebo peak=133.35@501k ile kanıtlanmış. Değişiklik gerekmez.
+
+**c) Entropy/std değerleri keşif için yeterli miydi?**
+- V9 Phase 1: entropy_loss -3.89→-3.32 (sürekli -4.0 eşiğinin üstünde = deterministikleşme aktif), std 0.888→0.746 (0.7 kritik sınırına yaklaşmış). ent_coef=0.0015 → yetersiz keşif baskısı.
+- V9 Phase 2 (restart sonrası): entropy -4.21~-4.26, std ~0.99 — daha sağlıklı ancak 193k'da -4.21'e çıkarak yeniden eşiğe yaklaşmaya başlamıştı.
+- v10 ppo.yaml: `ent_coef=0.008` (v9'dan 5.3×). Beklenen entropy bandı: -4.4 ile -5.0 arası. Yeterli keşif sağlayacak.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9'da hiç oda geçişi olmadı. Referans: v3.0 Gazebo (aynı lr decay, n_envs=1): ilk oda ~200-250k, 3-4 oda ~400-500k, peak @430-610k.
+- V10 beklentisi (fresh start, n_envs=1, 1.5M total): ilk +15 sıçraması ~150-250k step, 4-5 oda ~400-600k step, 6 oda tamamı ~700-1000k step içinde.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py` → `collision_penalty=25` (şu an 10):** Fast_sim v4.8 en yüksek-etki bulgusu: 25 ile %0 çarpışma + 5 oda başarısı; 10 ile drone çarpışma-ölüm döngüsüne girerek oda keşfini blokluyor. V10 başlatılmadan önce uygulanmalı.
+2. **`drone_exploration_env.py` → `lidar_history=2` (obs 41-d→72-d):** Fast_sim v2 bulgusu: %80→%1 çarpışma oranı düşüşü. İki frame'in farkı proxy hız sinyali veriyor — [256,256] ağ mimarisiyle tam uyumlu.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **configs/ppo.yaml: HAYIR.** Tüm hyperparametreler (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, clip_range=0.2, gae_lambda=0.95, n_envs=1, total_timesteps=1.5M) v10 optimal değerlerinde; fast_sim 18-config zinciri + v3.0 Gazebo çift doğrulamayla kanıtlanmış. %80+ eşiğini aşan YAML hatası yok.
+- **Eğitim süreci: KRİTİK.** V10 12 gündür başlatılmamış. `runs/ppo_v10/` dizini oluşmamış. `./scripts/train.sh configs/ppo.yaml` hâlâ çalıştırılmamış.
+- **Env kodu (yüksek öncelik):** collision_penalty ve lidar_history önceki 3 analizde önerildi ama uygulandığı teyit edilmedi. V10 bu olmadan başlarsa v9 hatalarını tekrarlayacak.
+
+### v10 Önerisi
+1. **Env kodu önce** (`drone_exploration_env.py`): `collision_penalty: 10→25`, `lidar_history: 1→2`. Bu iki satır 12 gündür yapılmayı bekliyor — v10 sonucunu doğrudan belirleyecek.
+2. **Sonra `./scripts/train.sh configs/ppo.yaml`**: ppo.yaml eksiksiz hazır. v9'un faz-1 entropy çöküşü v10'da ent_coef=0.008 + lr linear decay ile önlenmiş. İlk oda kırılımı ~150-250k step bekleniyor.
+
+### Müdahale
+**YOK** — `configs/ppo.yaml` zaten v10 optimal config'inde; 12+ gündür 4 ayrı analizde aynı sonuç: hyperparametreler değişiklik gerektirmiyor. Env kodu değişiklikleri (collision_penalty, lidar_history) YAML scope'u dışında — bu analizde uygulanmadı. Eğitim başlatma operasyonel karar; config expertisi bunu tetikleyemez.
+---
