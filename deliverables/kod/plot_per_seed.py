@@ -164,16 +164,26 @@ def plot_combined(
     dfs: dict[int, pd.DataFrame | None],
     eval_data: dict[int, tuple],
     out_path: Path,
+    max_steps: int | None = None,
 ) -> None:
+    # max_steps belirtilmemisse tum seedlerin min adim sayisina kırp (adil karsilastirma)
+    valid_dfs = {s: df for s, df in dfs.items() if df is not None}
+    if max_steps is None:
+        max_steps = int(min(df["timestep"].max() for df in valid_dfs.values()))
+
     fig, axes = plt.subplots(2, 2, figsize=(16, 10))
     fig.suptitle(
-        "Tum Seedler — Karsilastirmali Egitim Ozeti",
+        f"Tum Seedler — Karsilastirmali Egitim Ozeti (ilk {max_steps//1000}k adim)",
         fontsize=14, fontweight="bold",
     )
 
     for i, seed in enumerate(seeds):
         df = dfs[seed]
         if df is None:
+            continue
+        # max_steps'e kadar kes
+        df = df[df["timestep"] <= max_steps]
+        if df.empty:
             continue
         color = COLORS[i % len(COLORS)]
         label = f"seed {seed}"
@@ -182,7 +192,7 @@ def plot_combined(
         # return
         axes[0, 0].plot(steps, smooth(df["ep_return"].values),
                         color=color, linewidth=1.6, label=label)
-        # eval
+        # eval — max_steps uygulanmaz (eval resumed training'de geç basliyor olabilir)
         ts, ret = eval_data[seed]
         if ts is not None and len(ts) > 0:
             axes[0, 1].plot(ts, ret, color=color, linewidth=1.6,
@@ -203,6 +213,17 @@ def plot_combined(
     for ax, (title, xlabel, ylabel) in zip(axes.flat, specs):
         _fmt_ax(ax, title, xlabel, ylabel)
         ax.legend(fontsize=8)
+
+    # Eval verisi yoksa not ekle
+    eval_ax = axes[0, 1]
+    has_eval = any(
+        eval_data[s][0] is not None and len(eval_data[s][0]) > 0
+        for s in seeds if dfs.get(s) is not None
+    )
+    if not has_eval:
+        eval_ax.text(0.5, 0.5, "eval verisi yok\n(evaluations.npz eksik)",
+                     ha="center", va="center", transform=eval_ax.transAxes,
+                     fontsize=9, color="gray")
 
     axes[1, 0].set_ylim(0, 105)
     axes[1, 1].set_ylim(0, 7)
@@ -230,6 +251,10 @@ def main(argv=None) -> None:
         "--out", type=Path,
         default=Path(__file__).resolve().parent / "../sunum/grafikler/per_seed",
     )
+    parser.add_argument(
+        "--max-steps", type=int, default=None,
+        help="Birlesik grafigi bu adima kadar kes (varsayilan: tum seedlerin minimumu)",
+    )
     args = parser.parse_args(argv)
 
     seeds = read_seeds(args.seeds_file)
@@ -255,7 +280,8 @@ def main(argv=None) -> None:
         )
 
     print("Birlesik karsilastirma grafigi:")
-    plot_combined(seeds, dfs, eval_data, out / "tum_seedler_karsilastirma.png")
+    plot_combined(seeds, dfs, eval_data, out / "tum_seedler_karsilastirma.png",
+                  max_steps=args.max_steps)
     print(f"\nTum grafikler: {out}")
 
 
