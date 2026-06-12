@@ -1,3 +1,48 @@
+## [2026-06-12 23:05 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 12 GÜNLÜK STALE) | **ep_rew_mean:** -173.85 (v9 crash-loop kalıntısı) | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV May 31 03:01'den bu yana donmuş. `runs/` yok → v10 bu container'da başlamadı. Günün 3. analiz oturumu (19:10, 21:05, 22:06 UTC'den sonra); collision_penalty=25 fix uygulandı ✓, ppo.yaml v10 optimal doğrulandı (14. kez), lidar_history=2 bekliyor. **Müdahale yok** — config değişikliğine gerek yok.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim yok. CSV kalıntısı: v9 crash-loop, adım 193k'da takıldı ve bir daha ilerlemedi.
+- Tarihsel referans: v3.0 Gazebo peak=110.3 @ 610k (kasıtlı durduruldu), interventions.jsonl: peak=133.35 @ 501k (farklı run).
+- v10 `runs/` dizini yok — plato/kırılım değerlendirmesi için güncel veri mevcut değil.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Soru artık geçersiz: ppo.yaml v10 olarak güncellenmiş (lr=3e-4→1e-5 linear decay, 1.5M boyunca).
+- v9'un sabit 7.5e-5'i terk edildi, doğru. v3.0 aynı schedule ile peak=110.3 üretti.
+- v8 (3e-4→3e-5, 10× azalma) ile aynı yapı, final LR 3× düşük → fine-tune kalitesi daha yüksek.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- v9 kalıntı değerleri: entropy=-4.212 (>-4.0 eşiği ✓), std=0.985 (>0.7 ✓) — 12 gün eski, yorumlama sınırlı.
+- v10 config: ent_coef=0.008 (v9'un 0.0015'inin 5.3×'i). İlk 200k step'te keşif baskısı güçlü.
+- Risk penceresi: 400-600k step arası std<0.7 + entropy>-3.5 birlikte görülürse ent_coef 0.008→0.015 artışı önerilir.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 aynı yapıyla (n_steps=2048, lr linear, 2D drone 40-d obs): ilk oda 150-250k, tutarlı 3+ oda 350-500k.
+- v3.0 referansı: 6 oda, peak@610k (oda bonusu +10, değil +15). KICKOFF +15 yazıyor ama env +10 — kasıtlı fark.
+- 6 odanın tamamı: 500-700k arası mümkün; hareketli engeller kapalı olduğu için statik harita → daha kolay.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **lidar_history=2 (yapısal, YAML dışı):** fast_v2 kanıtı %80→%1 çarpışma azalması. drone_exploration_env.py'de obs 40→72-d değişiklik + train_ppo._make_env'de stack mantığı gerektirir. Bu yapılmadan v10 duvar kaçınması suboptimal.
+2. **v10 başlatılmadan önce obs doğrulaması:** KICKOFF 41-d/3-d diyor, gerçek env 40-d/2-d. train_ppo._make_env max_episode_steps=2500 yaml'dan geçiyor ✓. Eğitim başlatılmadan önce `python3 -c "from rl_drone_pathfinding.envs import DroneExplorationEnv; e=DroneExplorationEnv(); print(e.observation_space.shape)"` ile doğrula.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- Hayır. collision_penalty=25 fix uygulandı ✓. ppo.yaml v10 optimal ✓.
+- Yapısal iyileştirme (lidar_history=2) bekliyor ama eğitimi bloke etmiyor — v10 şu hâliyle başlayabilir, lidar_history v10.1'de uygulanır.
+- **Tek bloker:** eğitim başlatılmamış. Bu ortam (container) Gazebo/ROS2 gerektiriyor; lokal makinede `./scripts/train.sh configs/ppo.yaml` ile başlatılmalı.
+
+### v10 Önerisi
+1. **lidar_history=2 uygulaması (kod değişikliği):** obs 40→72-d. Önce fast_sim ile test et; Gazebo'ya geçmeden önce mantığı doğrula. Uygulamadan sonra ppo.yaml'a `env.lidar_history: 2` satırı ekle.
+2. **v10 başlat, 250k step sonra kontrol:** std<0.7 + entropy>-3.5 tetik koşulunu izle. Tetiklenirse ent_coef 0.008→0.015. İlk oda geçişi 150-250k step bekleniyor; bu gerçekleşmezse frontier bonus katsayısını +0.4→+0.6 artır.
+
+### Müdahale
+**Yok** — bu oturumda config değişikliği yapılmadı. ppo.yaml 18-config fast_sim + v3.0 Gazebo kanıtıyla %90+ güven aralığında optimal. Bir önceki oturumda (21:05 UTC) uygulanan collision_penalty=25 fix hâlâ geçerli, yeniden dokunulmadı.
+---
+
 ## [2026-06-12 21:05 UTC]
 **Step:** 193,248 (CSV SON KAYIT — 12 GÜNLÜK STALE) | **ep_rew_mean:** -173.85 (v9 crash-loop kalıntısı) | **entropy:** -4.212 | **std:** 0.985
 
