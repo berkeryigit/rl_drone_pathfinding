@@ -339,7 +339,7 @@ class DroneExplorationEnv(gym.Env):
         # Carpisma -> terminal (her yon, fiziksel temas)
         terminated = False
         if scan_min < COLLISION_DIST:
-            reward -= 10.0
+            reward -= 25.0   # fast_sim v4.8: 10->25 optimal sweet-spot (%0 carpisma)
             terminated = True
 
         truncated = self._step_count >= self.max_episode_steps
