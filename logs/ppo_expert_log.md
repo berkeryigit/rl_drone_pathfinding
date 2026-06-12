@@ -4363,3 +4363,45 @@ V9 eğitimi 2026-05-30 22:00'da tamamen çöktü ve bir daha başlatılmadı; tr
 ### Müdahale
 **YOK** — `configs/ppo.yaml` v10 optimal config'inde; %80+ eşiğini aşan yeni bir YAML sorunu tespit edilmedi. V9 Post-mortem (lr constant + ent_coef düşük = entropy collapse) v10'da lr linear decay + ent_coef=0.008 ile zaten çözülmüş. Env kodu değişiklikleri YAML scope'u dışında, bu analizde uygulanmadı.
 ---
+
+## [2026-06-12 02:04 UTC]
+**Step:** 193,248 (CSV 13 GÜN STALE — değişmedi) | **ep_rew_mean:** -173.85 (stale) | **entropy:** -4.212 (stale) | **std:** 0.985 (stale)
+
+### Durum
+V10 Gazebo eğitimi hâlâ başlatılmamış (13 günlük atalet devam ediyor). Bu seans versions.jsonl'nin tam okunmasıyla önemli bir bilgi eklendi: fast_sim zinciri v5.0 ile KESİN kapatıldı. 18 config + 4 kaldıraç kategorisi tükendi — mevcut reward yapısı içinde temel trade-off indirgenemez (güvenlik vs. kapsam).
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV 2026-05-30 22:00'dan bu yana tamamen donmuş; v10 için sıfır veri. Önceki entry'yi tekrar etmemek için: v9 ömrü boyunca tek bir +15 oda sıçraması bile gözlemlenmedi.
+- **Yeni (versions.jsonl'den):** fast_sim zinciri Pareto frontunu net belirledi:
+  - **v4.8 (safe champion):** collision_penalty=25 → %0 çarpışma, 5 oda, voxel_mean=117
+  - **v4.10 (coverage champion):** v4.8 + 5M eğitim → %54 çarpışma, 6 oda, voxel_mean=281
+  - v4.9 (penalty=22), v4.11 (penalty=50+5M), v4.12 (curriculum), v4.13 (8M), v5.0 (lidar_history=3): hepsi başarısız → trade-off TEMEL.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Konu kapanmış: v10 ppo.yaml `lr=3e-4→1e-5 linear` kullanıyor. Değişiklik gerekmez.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- v10 ppo.yaml `ent_coef=0.008` ile hedef bant -4.4 ile -5.0 arası. Fast_sim v4.2 (ent_coef=0.02 → %85 çarpışma) ile v4.5 (ent_coef=0.005 → güvenli) arasında 0.008 dengeli bir seçim. Değişiklik gerekmez.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V10 henüz başlamadı. V3.0 Gazebo referansıyla (özdeş hyperparametreler): ilk +15 @ ~200k, 5-6 oda @ ~400-700k.
+- **YENİ insight:** Fast_sim v4.8 (1.5M, n_envs=8) 5 oda başarısına ~400-500k step içinde ulaştı. Gazebo n_envs=1 ve daha yavaş simülasyon ile bu ~600-900k'ya uzayabilir. 1.5M limit yeterli ama dar.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **Önce Pareto kararı verilmeli:** Berker'in seçim yapması gerekiyor — v4.8 hedefi mi (güvenli, deploy edilebilir, %0 crash) yoksa v4.10 hedefi mi (maks. kapsam, %54 crash ama 6 oda + 281 voxel)? Bu karar `collision_penalty` değerini (25 vs. 10) belirliyor. PPO expert yalnızca v4.8'i (collision_penalty=25) önerebilir; v4.10 seçilirse bilinçli bir risk kabul ediliyor.
+2. **`drone_exploration_env.py` → `lidar_history=2`:** Bu tartışmasız; v5.0 testi lidar_history=3'ün yardımcı olmadığını kanıtladı, ama history=2 hâlâ zorunlu. Fast_sim chain'in tek kavuşma noktası: lidar_history=2 her versiyonda kritik.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **configs/ppo.yaml: HAYIR** — 6. kez teyit ediliyor. Tüm hyperparametreler kanıtlanmış değerlerde.
+- **ent_coef=0.008 doğrulaması:** Fast_sim v4.5 (ent_coef ≈ 0.005, 5 oda, %8 crash) ve v4.2 (ent_coef=0.02, %85 crash) arasında 0.008 doğru bölgede. YAML değişikliği yok.
+- **Env kodu (kritik bloker):** `collision_penalty` ve `lidar_history` 6. kez öneriliyor. Her geçen gün proje backlog'unu artırıyor.
+
+### v10 Önerisi
+1. **Pareto seçim noktası:** Berker "güvenli deploy" (v4.8, collision_penalty=25) mi yoksa "maks. kapsam" (v4.10-tipi, collision_penalty=10, uzun eğitim) mi istediğine karar versin. İkisi aynı anda elde edilemiyor — bu fast_sim 18 config ile kesinleşti.
+2. **Ardından env kodu + eğitim başlatma:** `lidar_history=2` tartışmasız (6 öneri). Pareto kararına göre collision_penalty belirlendikten sonra `./scripts/train.sh configs/ppo.yaml` çalıştırılabilir. YAML hazır, engel sadece env kodu ve kullanıcı kararı.
+
+### Müdahale
+**YOK** — `configs/ppo.yaml` değiştirilmedi; %80+ eşiğini aşan YAML sorunu tespit edilmedi (6. kez). Yeni katkı: fast_sim v5.0 closure'ı ile Pareto front kesinleşti ve lidar_history=3'ün işe yaramadığı teyit edildi. Env kodu değişiklikleri YAML scope dışında; operasyonel karar (eğitim başlatma) kullanıcıya ait.
+---
