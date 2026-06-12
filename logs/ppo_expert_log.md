@@ -1,3 +1,53 @@
+## [2026-06-12 21:05 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 12 GÜNLÜK STALE) | **ep_rew_mean:** -173.85 (v9 crash-loop kalıntısı) | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV 2026-05-31 03:01'den bu yana güncellenmemiş (12 gün). `runs/` dizini mevcut değil → v10 eğitimi HİÇ BAŞLAMADI. ppo.yaml 2026-06-02'de v10 olarak güncellendi ancak env kodu eksik kalmıştı: `collision_penalty` hâlâ 10.0 hard-coded duruyor, fast_sim kanıtı (v4.8: 25 → %0 çarpışma) 10 gündür uygulanmamıştı. **Bu müdahale yapıldı** (aşağıya bkz.). v3.0 Gazebo peak=110.3 @ 610k, v4.5/v4.8 fast_sim araştırması tamamlandı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV'deki son değerler v9 crash-loop kalıntısı (step=193248, -173.85), güncel run değil.
+- v3.0 Gazebo (versions.jsonl): peak=110.3 @ 610k step, kasıtlı durduruldu.
+- v10 runs/ dizini yok → eğitim bu container'da başlamadı; muhtemelen lokal makinede ya da hiç başlamadı.
+- Plato/kırılım değerlendirmesi için güncel veri yok.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Artık geçersiz soru: ppo.yaml v10'a güncellendi (lr=3e-4 → 1e-5 linear, v3.0 ile aynı şema).
+- v9'un sabit 7.5e-5'i terk edildi — doğru karar. v3.0 bu lr ile peak=110.3 üretti (kanıtlanmış optimal).
+- v8'in 3e-4→3e-5 ile örtüşen 10× decay oranı korundu, final LR 3× daha düşük (fine-tune kalitesi artar).
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Son CSV: entropy=-4.212 (eşik >-4.0 ✓), std=0.985 (eşik >0.7 ✓) — ama bu veri 12 gün eski.
+- v10 config: ent_coef=0.008 (v3.0'ın 0.005'inden %60 yüksek). Başlangıçta keşif kapasitesi tam olacak.
+- Kritik izleme noktası: 400-600k step bandında std<0.7 riski (v4 analogu bu bandda kesilmişti).
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 Gazebo: 6 oda × 10 = 60 + voxel bonus ile peak=110.3 @ 610k (tüm odalar büyük ihtimalle görüldü).
+- v10 aynı parametrelerle: ilk oda breakthrough 150-250k step, tutarlı 3+ oda 350-500k step aralığında.
+- fast_sim v4.8: 5M step, 5 oda, %0 çarpışma — Gazebo'da aynı sayıyı beklemek gerçekçi değil (fps farkı, gerçek fizik).
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **collision_penalty=25 (UYGULANDIR — YAPILDI):** fast_sim 18-config araştırması net kanıt: 10→25 çarpışmayı %32→%0'a indiriyor (v4.0→v4.8). 10 gündür bekleyen env kodu açığı bu oturumda kapatıldı.
+2. **lidar_history=2 (SONRAKİ ÖNCELİK):** fast_v2 kanıtı 80%→1% çarpışma (en büyük tek iyileştirme). Obs 40→72-d yapısal değişiklik gerektirir; hareketli engeller Gazebo'da devre dışı olduğundan aciliyeti 1. öneri kadar değil ama v10.1'e mutlaka alınmalı. Uygulamak için: `DroneExplorationEnv.__init__`'e `lidar_history=2` ekle, obs_space'i 72-d yap, ppo.yaml'a `env.lidar_history: 2` sat, train_ppo._make_env'de geç.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **EVET — collision_penalty eksikliği (ÇÖZÜLDÜ):** ppo.yaml yorumunda 10 gündür "env koduna yansıtılacak" yazıyordu; uygulanmamıştı. v10 eğitimi bu hâlde başlasaydı çarpışma oranı fast_sim v4.0 gibi %32+ olacaktı (optimal %0 yerine).
+- **ENV KODU STALE:** drone_exploration_env.py'de oda bonusu +10.0 (KICKOFF.md'de +15.0 yazıyor). Bu inkonststenlik v3.0'dan önce belgelenmiş — v3.0 eval "v2.0 ödülü KAZANDI" kararıyla sabitlendi. Değiştirme, mevcut v3.0 ödül yapısı eval kanıtıyla optimal.
+- **runs/ yok:** v10 eğitimi başlamadı. Başlatılmadan önce lidar_history=2 uygulanması önerilir.
+
+### v10 Önerisi
+1. **Hemen:** `lidar_history=2` eklenmesi (drone_exploration_env.py + ppo.yaml + train_ppo.py koordineli). Bu değişiklik olmadan v10 çarpışma oranı suboptimal kalır; moving obstacles aktif olmasa bile statik duvar kaçınma kalitesi artar.
+2. **1.5M cap'e sadık kal:** fast_v4.10/v4.11 kanıtı: 2M+ sonrası güvenlik kollapsu (ppo.yaml zaten 1.5M — ✓). 1.5M'de checkpoint seç, daha uzatma.
+
+### Müdahale
+**YAPILDI — drone_exploration_env.py satır 342:** `reward -= 10.0` → `reward -= 25.0`
+- Sebep: fast_sim 18-config araştırması (versions.jsonl) kesin kanıt: collision_penalty sweet-spot 25 (v4.8: %0 çarpışma, v4.9 @ 22: %37, v4.0 @ 10: %32). ppo.yaml yorumu 10 gündür "env koduna yansıtılacak" diyordu; bu açık kapatıldı.
+- Etki: v10 eğitiminde çarpışma engeli 2.5× güçlendi. Drone daha temkinli davranır, ep_len uzar, uzun vadeli voxel keşfi artar. fast_sim v4.5 analoğu: %97→%8 çarpışma azalması bekleniyor.
+- Obs space, policy arch etkilenmedi (net_arch [256,256] aynı).
+
+---
+
 ## [2026-05-31 11:07 UTC]
 **Step:** 193,248 (CSV SON KAYIT — STALE, v9/v10 kalıntısı) | **Gerçek run:** v2.1 @ ~120k-700k devam | **ep_rew_mean:** +92.6 @ 120k (en son güvenilir) | **entropy:** -4.76 @ 139k | **std:** 1.20 @ 139k
 
