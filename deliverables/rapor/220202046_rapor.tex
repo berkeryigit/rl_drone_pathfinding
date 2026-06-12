@@ -256,6 +256,45 @@ daha çok oda gezer hem de neredeyse hiç çarpmaz. \emph{Sonuç:} Ajanın öğr
 gerçek bir kazanımdır; problem basit bir kuralla veya rastgelelikle çözülemez, bu da
 pekiştirmeli öğrenme seçimini doğrular (rehber B5).
 
+\section{PPO ve SAC Karşılaştırması}
+Ortam, seed listesi ve değerlendirme protokolü ekipteki SAC (\texttt{algo/td3})
+teslimiyle birebir aynı tutulduğundan, iki algoritma doğrudan karşılaştırılabilir.
+Tablo~\ref{tab:karsilastirma}, her iki algoritmanın beş tohum ortalamasını verir;
+SAC değerleri \texttt{algo/td3} branch'inin teslim ettiği \reff{sonuclar.csv}'den
+alınmıştır. Tek farklar algoritma ailesi ve eğitim bütçesidir.
+
+\begin{table}[h]
+\centering\small
+\caption{PPO ve SAC ortalama sonuçları (5 tohum, deterministik eval; aynı ortam ve protokol)}
+\label{tab:karsilastirma}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Ölçüt & PPO (bu çalışma) & SAC (\texttt{algo/td3}) \\
+\midrule
+Aile & on-policy & off-policy \\
+Replay buffer & yok & var \\
+Eğitim adımı & 1.5\,M & 500\,k \\
+Eğitim episode sayısı & $\sim$6081 & $\sim$1058 \\
+\midrule
+Ort. eval getirisi & \textbf{458.5} & 321.0 \\
+Eval başarı oranı (6 oda) & \textbf{0.96} & 0.27 \\
+Ort. kapsama \% & \textbf{96.7} & 92.6 \\
+Eval çarpışma oranı & \textbf{0.04} & 0.07 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+PPO, dört kalite ölçütünün tamamında (getiri, başarı, kapsama, çarpışma) SAC'ın
+önündedir; özellikle altı odanın tamamını gezme başarısında fark belirgindir (0,96'ya
+karşı 0,27). Ancak bu üstünlük bedelsiz değildir: PPO bu sonuca 1,5 milyon adımda
+ulaşırken SAC yalnızca 500 bin adım kullanmıştır. Bunun nedeni doğrudan algoritma
+ailesidir; SAC off-policy olduğu için replay buffer'daki her deneyimi defalarca
+kullanır ve adım başına daha örnek-verimlidir, PPO ise on-policy olduğundan her
+rollout verisini bir kez kullanıp atar. Dolayısıyla tablo, dersin temel ayrımını
+somutlaştırır: SAC az adımda makul bir politikaya hızla ulaşır, PPO ise daha çok adım
+karşılığında bu ortamda daha yüksek nihai başarıya çıkar. Karşılaştırmanın ortam
+tarafı tamamen adildir; eşit adım bütçesinde değerlendirme ileri bir çalışma konusudur.
+
 \section{Savunma Analizi}
 \label{sec:savunma}
 Bu bölüm, rehberin dört kavram alanını projeye uygulayarak yanıtlar.
