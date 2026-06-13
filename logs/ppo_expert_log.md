@@ -5494,3 +5494,78 @@ Env kodu için **HAYIR**: collision_penalty=25 fix 12 Haz 21:05 UTC'de uyguland�
 ### Müdahale
 **YOK** — `configs/ppo.yaml` değiştirilmedi (22. teyit). Mevcut parametreler kanıtlanmış optimal değerlerde; %80+ güven eşiğini geçen herhangi bir config sorunu tespit edilmedi.
 ---
+
+## [2026-06-13 12:04 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 13 GÜN STALE, v9 ölü, v10 YAML hazır) | **ep_rew_mean:** -173.85 (crash-loop kalıntısı, anlamsız) | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 eğitimi 2026-05-31 03:01 UTC'de tamamen durdu; 13+ gün geçti, CSV aynı değerlerde donmuş. `configs/ppo.yaml` v10 optimal konfigürasyonunda (23. doğrulama). Container'da Gazebo/ROS2 yok; v10 fiziksel makinede başlatılmayı bekliyor. YAML'a müdahale yapılmadı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+
+İki net faz tespit edildi:
+
+- **Faz 1 (gerçek eğitim, step 142k→599k, 2026-05-30 11:02–12:32):**
+  ep_rew_mean: -290.7 → -272.4 → -270.7 → -270.0 — 450k step'te yalnızca +20 iyileşme = sert plato.
+  ep_len_mean: 1000 (max episode cap'e saplanmış — drone duvardan kaçıyor ama yeni oda/voxel keşfetmiyor).
+  +15 oda sıçraması: **hiç görülmedi.** v9, oda discovery aşamasına ulaşmadan öldü.
+
+- **Faz 2 (crash-loop, step 80k→193k, 13:00–03:01):**
+  Monitor, step sayısı arttığını doğrulamadan 20+ kez 80k checkpoint'ten restart yaptı.
+  ep_rew_mean -25.3 ↔ -173.8 arası anlamsız saçılma. Gerçek öğrenme sinyali sıfır.
+  Son 25 CSV satırı 193,248 step'te donmuş — process 2026-05-31 03:01 sonrası ölü.
+
+Sonuç: Platoya girmedi, **erken ölüm**. Monitor crash-loop v9'u öldürdü.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+
+KICKOFF.md'deki "7.5e-5 constant" referansı çelişkiliydi; gerçek v9 YAML'ı `lr=3e-4 linear decay` içeriyordu. Faz 1 entropy trendi (-3.885→-3.324, 450k step'te) bunu doğrular — yüksek başlangıç lr ile hızlı deterministleşme izi.
+
+Artık bu soru geçersiz: `configs/ppo.yaml` v10'a güncellendi (lr 3e-4→1e-5 linear, n_steps 512→2048, ent_coef 0.0015→0.008). Sabit 7.5e-5 değerinden çok daha sağlam bir seçim.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+
+Faz 1 son gerçek değerleri (step 599k):
+- entropy_loss = -3.324 (uyarı: -4.0 eşiğinin **üzerinde**, ama 450k adımda -0.56 düşüş trendi kararlı)
+- std = 0.746 (eşiğin 0.7'nin yalnızca %6.6 üzerinde; düşüş trendi devam etseydi 1-2 kontrol döngüsünde altına düşerdi)
+
+Bu iki gösterge birlikte erken deterministleşmeye işaret etti. ent_coef=0.0015 yetersizdi.
+v10'da ent_coef=0.008 (v9'un 5.3×'i) → başlangıç entropy ~-3.2 ile -3.8 bekleniyor → keşif yeterli.
+Yine de 300-500k bandında std<0.7 VE entropy>-3.5 birlikte görülürse ent_coef 0.008→0.015 gerekir.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+
+v10 henüz başlamadı → doğrudan gözlem sıfır. Projeksiyon (v3.0 Gazebo referansı):
+- n_steps=2048, n_envs=1, fps≈38 → ~50k step/saat
+- İlk oda (+15 spike): ~150–200k step (%80 güven, v3.0 baz)
+- 3+ oda: ~350–450k step
+- 5–6 oda (tüm harita): ~500–700k step (1.5M limitinin içinde rahatça)
+
+v10 avantajı: ent_coef=0.008 daha agresif frontier gezimi, collision_penalty=25 erken terminate'i azaltarak uzun episode → daha fazla alan tarama → ilk oda kırılımı 150k'ya yakın öngörülüyor.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+
+1. **Monitor step-doğrulaması (BLOKER 1 — v9'u öldüren buydu):**
+   `monitor_agent.py`'de crash-recovery tetiklemeden önce `mevcut_step > önceki_step` kontrolü zorunlu. Log-mtime tek başına yeterli değil — v9'da step sabit kalırken monitor 20+ kez yanlış restart yaptı. Bu düzeltilmeden v10 da aynı kaderi yaşar.
+
+2. **v10'u başlat:**
+   `./scripts/train.sh configs/ppo.yaml` — YAML hazır (23. doğrulama). lidar_history=1 ve collision_penalty=25 env kodunda sabit tutulsun; YAML parametrelerine dokunmaya gerek yok.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+
+`configs/ppo.yaml` için **HAYIR** (23. teyit). Kanıt zinciri:
+- v3.0 Gazebo: lr 3e-4→1e-5 linear + ent_coef=0.008 → peak=110.3@610k ✓
+- 18 fast_sim config araştırması: collision_penalty=25 optimal ✓, lidar_history=1 doğru ✓
+- v8 geçmişi: frontier bonus + VecNormalize kombinasyonu uyumlu ✓
+
+FPS tutarlılığı: Faz 1'de 83-84 (n_envs=2 ile stabil). v10'da n_envs=1, freeze-fix sonrası ~38fps bekleniyor.
+
+### v10 Önerisi
+1. **Monitor fix (önce bu):** Recovery tetikleyicisine `step > prev_step` kontrolü ekle. Bu olmadan v10 da crash-loop riski taşır.
+2. **v10 başlat:** `./scripts/train.sh configs/ppo.yaml`. 150–200k adım içinde ilk +15 oda spike bekleniyor. 300–500k bandında std<0.7 + entropy>-3.5 birlikte tetiklenirse ent_coef 0.008→0.015 gerek.
+
+### Müdahale
+**YOK** — `configs/ppo.yaml` değiştirilmedi (23. teyit). Mevcut v10 parametreleri 3 bağımsız kaynakla doğrulanmış optimal değerlerde. %80+ güven eşiğini geçen herhangi bir konfigürasyon sorunu tespit edilmedi.
+---
