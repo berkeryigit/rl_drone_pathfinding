@@ -5057,3 +5057,63 @@ CSV 2026-05-31 03:01'den bu yana dondurulmuş durumda; v10 training hiç başlam
 ### Müdahale
 **YOK** — `configs/ppo.yaml` değiştirilmedi. Mevcut v10 config'i fast_sim 18-config ampirik zinciri ve v3.0 Gazebo çift doğrulaması ile tüm parametreler optimal. %80+ güven eşiğini aşan yeni bir YAML sorunu tespit edilmedi (15. teyit). Env kodu ve eğitim başlatma kararı kullanıcıya ait.
 ---
+
+## [2026-06-13 08:45 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 13 GÜNLÜK STALE) | **ep_rew_mean:** -173.85 (v9 crash-loop kalıntısı) | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV 2026-05-31 03:01'den bu yana dondurulmuş; v9 eğitimi 193k adımda crash loop ile kalıcı olarak sona erdi. v10 eğitimi bu container'da hiç başlamadı (`runs/ppo_v10/` dizini yok). **Düzeltme:** Bir önceki 00:10 UTC girişi `collision_penalty` hakkında yanıltıcı bilgi içeriyordu — env kodu **zaten** `reward -= 25.0` (commit b78bb0e, 2026-06-12 21:08 UTC). Bu giriş durumu doğrular.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- v9 CSV trend (crash-restart faz):
+  - step 49k: -102.9 → step 83k: **-25.3** (lokal peak, kısa episode lucky hit) → step 145k: -37.4 → step 193k: -173.85 (crash).
+  - Tüm eğitim boyunca +oda spikeleri SIFIR. Drone oda geçişi öğrenemedi; v9 harita değişimi + crash loop ortamı bunu engelledi.
+  - Faz-1 (step 142k→599k, ilk run): ep_len=1000 (sürekli timeout), ep_rew ≈ -270→-290 monoton. std 0.888→0.746 sıkışıyor. Plato var, kırılım yok.
+- **Sonuç:** v9 eğitim başarısız kapandı. Yeni referans v3.0 Gazebo (peak=110.3 @ 610k, interventions.jsonl doğrulaması).
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru muydu?**
+- Görev tanımı v9 durumunu tarif ediyor; ppo.yaml **zaten v10 olarak güncellenmiş** (2026-06-02).
+- Retrospektif: Faz-1 verisinde std 0.888→0.746 yalnızca 460k adımda — sabit düşük lr gradyan baskısını yetersiz tuttu, oda geçişi sıfır. v8 (3e-4→3e-5 linear) +113 peak üretmişti, karşılaştırma nettir.
+- v10 config'deki `lr: 3e-4→1e-5 linear` doğru seçimdir. v3.0 Gazebo aynı schedule ile peak=110.3 kanıtladı.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- v9 Faz-2 değerleri: entropy_loss ∈ [-4.21, -4.26] (entropy ≈ 4.2 nats, -4.0 eşiği üstünde ✓), std ∈ [0.985, 1.003] (0.7 eşiğinin çok üzerinde ✓).
+- Faz-1: std 0.888→0.746, -4.0'ın altına geçilmedi ama eşiğe yaklaşıyordu. Crash önce geldi.
+- v10 ent_coef=0.008 (v9'un 0.0015'inin 5×'i, v3.0'ın 0.005'inin 1.6×'i) ile başlangıç keşfi çok daha güçlü olacak. İzleme bandı: 400–600k step arası std < 0.7 riski.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 henüz başlamadı → beklenti tahmini:
+  - İlk +10 room spike: **100–250k step** (v3.0 referansı: oda bonusu=10, aynı lr schedule)
+  - Tutarlı 3+ oda: **300–500k step**
+  - 5–6 oda (6×10=60 + voxel bonus → peak ~100+): **600k–1.2M step**
+- Fast_sim v4.8 (collision_penalty=25, 5M step): 5 oda, %0 çarpışma. Gazebo fps daha düşük olduğu için bu sayıya ulaşmak daha uzun sürer ama 1.5M budget içinde 5 oda mümkün.
+- Hareketli engeller Gazebo'da devre dışı → statik harita avantajı → tahmin güvenilirliği yüksek.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **[TAMAMLANDI ✓] collision_penalty=25:** b78bb0e (2026-06-12 21:08). `reward -= 25.0` satırı env kodda mevcut. Fast_sim v4.8 %0 çarpışma → v10 için geçerli. **Yeniden dokunmaya gerek yok.**
+2. **[BEKLEYEN] lidar_history=2 (env yapısal değişiklik):** Mevcut obs=40-d, action=2-d. lidar_history=2 eklenirse obs → 72-d. Fast_sim v2 kanıtı: hareketli engel çarpışması %80→%1. Uygulama: `DroneExplorationEnv.__init__`'e `self._lidar_buf = deque(maxlen=2)`, observation_space=(72,), ppo.yaml'a `env.lidar_history: 2` ekle. Gazebo'da hareketli engeller devre dışı olduğundan **v10'u bloke etmiyor**; lidar_history=2 v10.1 hedefi.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml için HAYIR** — v10 config 15+ kez doğrulandı, tüm parametreler optimal. %80+ eşiğini geçen yeni sorun tespit edilmedi.
+- **Env kodu için HAYIR** — collision_penalty=25 uygulandı. lidar_history=2 eksik ama v10 Gazebo'yu bloke etmiyor (hareketli engeller zaten kapalı).
+- **Tek gerçek bloker:** Gazebo/ROS2 gerektiren v10 eğitimini başlatmak lokal makine gerektirir, bu container'da mümkün değil.
+
+**Env kodu GERÇEK durumu (kod inceleme sonucu, 2026-06-13):**
+| Parametre | KICKOFF.md İddiası | Gerçek Kod |
+|---|---|---|
+| obs_dim | 41-d | **40-d** (32 lidar + 2 yaw + 2 vel + 2 explore + 2 stats) |
+| action_dim | 3-d [vx,vz,wz] | **2-d [v,w]** |
+| room_bonus | +15.0 | **+10.0** (line 326) |
+| time_penalty | -0.001/step | **-0.01/step** (line 315) |
+| collision_penalty | -10.0 | **-25.0 ✓** (line 342, b78bb0e) |
+| lidar_history | 1 | **1** (72-d uygulanmadı) |
+
+### v10 Önerisi
+1. **lidar_history=2 (v10.1 için, v10 başlangıcını bloke etmiyor):** obs 40-d → 72-d değişikliği. Uygulama öncesinde fast_sim ile 50k-step pilot test önerilir. ppo.yaml net_arch=[256,256] bu boyutu sorunsuz işler.
+2. **v10 eğitimini başlat:** `./scripts/train.sh configs/ppo.yaml` — ppo.yaml hazır, env kodu hazır. İlk 50k step sonrası ep_rew_mean > -50 bekleniyor (çarpışma baskısı sayesinde); aksi hâlde spawn/reset mantığını kontrol et.
+
+### Müdahale
+**YOK** — `configs/ppo.yaml` değiştirilmedi. 16. teyit: v10 YAML parametrelerinde %80+ güven eşiğini geçen sorun yok. Env kodu collision_penalty=25 doğrulandı ✓, lidar_history=2 eksikliği konfigürasyon sorunu değil (env yapısal değişiklik, kapsam dışı). Bir önceki 00:10 UTC girişinin collision_penalty yanıltıcı ifadesi bu giriş ile düzeltildi.
+---
