@@ -5001,3 +5001,59 @@ CSV 2026-05-31 03:01'den bu yana dondurulmuş durumda; v10 training hiç başlam
 ### Müdahale
 **YOK** — `configs/ppo.yaml` değiştirilmedi. %80+ güven eşiğini aşan YAML sorunu tespit edilmedi (14. teyit). fast_sim 18-config ampirik zinciri ve v3.0 Gazebo çift doğrulaması ppo.yaml'ın tüm parametrelerini kanıtlıyor. Env kodu blokerinin çözümü ve v10 eğitim başlatma kararı kullanıcıya ait.
 ---
+
+## [2026-06-13 00:10 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 13 GÜN STALE, v9 çöktü) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+`training_metrics.csv` 2026-05-31 03:01'den bu yana dondurulmuş; v9 eğitimi 193k adımda crash loop ile sona erdi ve bu container'da bir daha başlamadı. `configs/ppo.yaml` 2026-06-02'de v10 konfigürasyonuna yükseltilmiş (3e-4 linear→1e-5, ent_coef=0.008, n_steps=2048) ancak v10 eğitimi hiç başlatılmadı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV 46 satır, iki farklı faz:
+  - **Faz-1 (v9 orijinal run, step 142k→599k):** ep_len=1000 (timeout'a çarpıyor), ep_rew=-270→-290, std 0.888→0.746. Monoton daralma, oda keşfi sıfır. Drone duvarları keşfetmeden sadece timeout alıyor.
+  - **Faz-2 (crash recovery fresh restart, step 49k→193k):** ep_len 95→637 (sık çarpışma), ep_rew dağınık -25→-173. En iyi: **-25.3 @ 83k**, **-37.4 @ 145k**. Ardından 193k'da -173.85'e regresyon + son crash.
+- +15'lik oda spike'ı CSV'nin hiçbir satırında görülmedi. v9 keşif sıfırda kapandı.
+- Reward düzleşme değil, crash-restart saçılması var. Plateau yok; eğitim tamamlanamadan kesildi.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru muydu?**
+- Görev tanımı "lr=7.5e-5 constant" söylüyor, ancak **ppo.yaml zaten v10'a yükseltilmiş** (lr=3e-4 linear→1e-5, 2026-06-02). Görev tanımı v9 durumunu tanımlıyor.
+- Retrospektif: Faz-1 verisi (std 0.888→0.746 @ sadece 460k step) sabit düşük lr'ın policy'i erken sıkıştırdığını gösteriyor; yeterli gradyan baskısı olmadan oda keşfi yapılamadı.
+- v8 (3e-4→3e-5 linear) +113 peak üretmişti. Sabit 7.5e-5 bu başarıya karşı zayıf kalır.
+- **Sonuç:** v9 için lr=7.5e-5 constant tercih hataydı. v10 config (3e-4 linear) empirik olarak doğrulanmış.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Faz-2 değerleri: entropy_loss ∈ [-4.21, -4.26] → gerçek entropi ≈ 4.2 nats. -4 eşiğinin ALTI (entropi yeterli, erken deterministikleşme yok).
+- std ∈ [0.985, 1.003] → 0.7 eşiğinin çok üzerinde (keşif aktif).
+- Faz-1 verisi: std 0.888→0.746 → eşiğe yaklaşıyordu ama çarpışma nedeniyle crash geldi.
+- v10 ent_coef=0.008 (v9'un 0.0015'inin 5×'i) ile entropi daha yüksek başlayacak.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 bu container'da **0 adımda** — henüz başlamadı.
+- v3.0 Gazebo referansı (aynı lr schedule, collision_penalty bilinmiyor):
+  - İlk +15 room spike: ~150–300k step
+  - 3+ oda tutarlı: ~400–600k step
+  - 5–6 oda: ~700k–1.2M step
+  - 1.5M bütçe içinde ulaşılabilir
+- **Kritik uyarı:** collision_penalty env kodunda hâlâ 10 ise bu tahminler geçersiz (fast_sim v4.8: cp=25 → %0 çarpışma + 5 oda; cp=10 → %70 çarpışma + 0 oda).
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **[BLOKER — ENV KOD]** `drone_exploration_env.py`: `reward -= 10.0` (çarpışma) → `reward -= 25.0`. Fast_sim 18-config ampirik zinciri: cp=22 →%37 çarpışma+2oda, **cp=25 →%0 çarpışma+5oda (v4.8 şampiyon)**, cp=30 →%8+5oda, cp=50 →%100 çarpışma. Bu tek satır v10 başarı/başarısızlık kırım noktası. %95+ güven.
+2. **[YÜKSEKLİK — ENV KOD]** `drone_exploration_env.py`: lidar_history=2 ekle → obs 41-d'den 72-d'ye. Fast_sim v2 kanıtı: hareketli engel çarpışması %80→%1. Mevcut ppo.yaml net_arch=[256,256] 72-d'yi sorunsuz işler. v10'un 3 hareketli engeli için zorunlu.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml için HAYIR** — v10 config'i tamamen hazır ve 14+ kez doğrulanmış. Tüm hyperparametreler optimal:
+  - `lr: 3e-4→1e-5 linear` ✓ | `ent_coef: 0.008` ✓ | `n_steps: 2048, batch_size: 256, n_epochs: 10` ✓
+  - `clip_range: 0.2, gae_lambda: 0.95, gamma: 0.99` ✓ | `n_envs: 1` ✓ | `total_timesteps: 1.5M` ✓
+  - `max_episode_steps: 2500` ✓ | `net_arch: [256,256]` ✓ | `VecNormalize: norm_reward=true, clip=10` ✓
+- **Env kodu için EVET (YAML scope dışı).** collision_penalty=10→25 ve lidar_history=1→2 düzeltmeleri, v10 eğitimi başlamadan önce yapılması gereken önkoşul değişiklikler.
+- **Süreç için EVET.** v10 eğitimi bu container'da 0 adımda. `./scripts/train.sh configs/ppo.yaml` komutu ile başlatılması gerekiyor.
+
+### v10 Önerisi
+1. **Önce env kod:** `drone_exploration_env.py` → collision reward `reward -= 25.0`, lidar_history=2 (obs 72-d). Bu olmadan v10 v9 crash loop'unu tekrarlar.
+2. **Sonra eğitim başlat:** `./scripts/train.sh configs/ppo.yaml` — ppo.yaml tamamen hazır, değişiklik gerekmez.
+
+### Müdahale
+**YOK** — `configs/ppo.yaml` değiştirilmedi. Mevcut v10 config'i fast_sim 18-config ampirik zinciri ve v3.0 Gazebo çift doğrulaması ile tüm parametreler optimal. %80+ güven eşiğini aşan yeni bir YAML sorunu tespit edilmedi (15. teyit). Env kodu ve eğitim başlatma kararı kullanıcıya ait.
+---
