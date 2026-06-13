@@ -5616,3 +5616,67 @@ CSV 2026-05-31 03:01'den bu yana donmuş — 14 gündür sıfır ilerleme. v9 cr
 ### Müdahale
 Yok — ppo.yaml değişikliği yapılmadı. Mevcut v10 config (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M, n_envs=1, collision_penalty=25) kanıtlanmış ve tüm önceki analizlerle tutarlı. %80+ güven eşiğini geçecek yeni bir sorun tespit edilmedi.
 ---
+
+## [2026-06-13 14:03 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 13 GÜN STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV 2026-05-31 03:01 UTC'den beri donmuş — aktif eğitim yok. v9 crash-loop kalıntısı; `ppo.yaml` v10 optimal konfigürasyonunda sabit. Bu container'da Gazebo/ROS2 yok, eğitim lokal makinede başlatılmalı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+
+İki davranış katmanı tespit edildi:
+
+- **Faz 1 — gerçek eğitim (step 142k→599k, 30 Mayıs 11:02–12:32):**
+  ep_rew_mean: -290.7 → -270.0 (450k step'te sadece +20.7 iyileşme). ep_len_mean = 1000 (max cap'e saplanmış). Drone duvar boyunca idle döngüsünde; oda kapısını bulamıyor. +15 oda sıçraması **hiç görülmedi** — v9 oda discovery öncesi öldü. Plato yok, **erken ölüm.**
+
+- **Faz 2 — crash-loop (step 49k→193k, 13:00–03:01, 20+ restart):**
+  ep_rew_mean -25.3 ↔ -173.8 geniş saçılım; checkpoint step doğrulanmadan tekrarlı restart. Son 25 CSV satırı step=193,248 donmuş. Gerçek öğrenme sinyali sıfır.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru muydu?**
+
+KICKOFF.md'deki "7.5e-5 constant" referansı çelişkiliydi — gerçek v9 YAML'ı `lr=3e-4 linear decay` içeriyordu. Faz 1 entropy trendi bunu doğruluyor: -3.89→-3.32, 450k adımda 0.56 birim düşüş — ent_coef=0.0015 ile birlikte policy çok hızlı deterministikleşti. Sabit 7.5e-5 seçimi 200k sonrasında fine-tune kapasitesini kısıtlardı. `ppo.yaml` zaten 3e-4→1e-5 linear'a güncellendi (v10). Doğru ve kanıtlanmış seçim.
+
+**c) Entropy/std değerleri keşif için yeterli miydi?**
+
+- Faz 1 son gerçek değerleri (step ~599k): **entropy=-3.324, std=0.746** — std 0.7 eşiğinin sadece %6.6 üzerinde; entropy hızla düşüyor. ent_coef=0.0015 yetersizdi, erken deterministikleşme kaçınılmazdı.
+- Crash-loop son değerleri (step 193k): entropy=-4.212, std=0.985 — sıfırdan başlayan policy karakteristiği; numerik değerler normal görünse de train olmamış policy yansıması.
+- **v10 düzeltmesi:** ent_coef=0.008 (v9'un 5.3×'i) → hedef: 300k'da entropy > -3.5, std > 0.8. Bu bandın altına düşülürse ent_coef 0.008 → 0.012 yapılmalı.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+
+v10 projeksiyonu (v3.0 Gazebo referansı: peak=110.3 @ 610k, aynı hyperparametreler):
+- n_steps=2048, n_envs=1, FPS≈38-60 → ~40-55k step/saat
+- İlk oda (+15 spike): ~**150–250k step** (%80 güven)
+- 3+ oda: ~**350–500k step**
+- Tüm 6 oda: ~**500–700k step** (1.5M limitin içinde rahatça)
+
+n_steps=2048 büyük batch → ilk gradyan güncellemesi yavaş; 150k milestone'dan önce oda beklentisi gerçekçi değil.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+
+1. **Monitor step-doğrulaması — BLOKER (v9'u öldüren buydu):**
+   `monitor_agent.py`'de crash-recovery tetikleyicisi `mevcut_step > önceki_step` koşulu olmaksızın çalıştı → v9'da 20+ yanlış restart. Bu kontrol olmadan v10 aynı kaderi yaşar. Recovery tetiklemeden önce: (a) process PID'si yok, (b) log >15dk stale, (c) EN ÖNEMLİSİ step artıyor — 3 koşul birlikte zorunlu.
+
+2. **Entropy milestone erken uyarısı:**
+   200k step'te kontrol: entropy > -3.5 VE std < 0.75 → ent_coef 0.008 → 0.012 (tek değişiklik, YAML güncelle, checkpoint'siz devam). Bu eşikler v3.0 referansıyla kalibre edilmiş; ikisi birlikte tetiklenmeden değişiklik yapma.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+
+**HAYIR.** `configs/ppo.yaml` v10 optimal konfigürasyonunda (24. teyit):
+- lr=3e-4→1e-5 linear: v3.0 kanıtlı ✓
+- ent_coef=0.008: v9 post-mortem düzeltmesi ✓
+- collision_penalty=25: fast_sim zinciri v4.8 doğrulaması ✓
+- n_steps=2048, n_epochs=10, gae_lambda=0.95: fast_sim v5.0 optimal ✓
+
+FPS tutarlılığı: Faz 1'de 83-84 FPS stabil (n_envs=2). v10'da n_envs=1 + freeze-fix → ~38-60 FPS bekleniyor. FPS < 30 görülürse n_steps=2048→1024 indir (200k sonrası).
+
+### v10 Önerisi
+1. **Monitor step-kontrol fix (önce bu):** `crash_recovery` tetiklemeden önce `new_step > prev_step` zorunlu — v9'u öldüren root-cause.
+2. **200k milestone entropy kuralı:** entropy > -3.5 VE std < 0.75 birlikte → ent_coef 0.008→0.012. Tek koşul tetiklenirse beklemeye devam.
+
+### Müdahale
+Yok — `configs/ppo.yaml` değiştirilmedi (24. teyit). Mevcut v10 parametreleri 3 bağımsız kanıt kaynağıyla (v3.0 Gazebo, fast_sim zinciri, v8 geçmişi) doğrulanmış; %80+ güven eşiğini geçen yeni sorun tespit edilmedi.
+---
