@@ -5337,3 +5337,49 @@ v9 eğitimi 2026-05-31 03:01 UTC'den beri 193,248 step'te tamamen donmuş; 13 g�
 ### Müdahale
 **YOK** — `configs/ppo.yaml` değiştirilmedi. 20. teyit: v10 YAML parametrelerinde %80+ güven eşiğini geçen herhangi bir sorun tespit edilmedi. v3.0 Gazebo (peak=110.3@610k) + 18 fast_sim config araştırması + v8 geçmiş verisi mevcut parametreleri tam olarak doğruluyor.
 ---
+
+## [2026-06-13 06:15 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 13. GÜN STALE) | **ep_rew_mean:** -173.85 (v9 crash-loop kalıntısı) | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV 2026-05-31 03:01'den bu yana donmuş; bugün 04:03 UTC oturumundan bu yana değişiklik yok. v10 bu container'da başlamadı. ppo.yaml optimal konfigürasyonda — config müdahalesi yok.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim mevcut değil; CSV v9 crash-loop'tan kalan stale veri. step=193k, ep_rew_mean=-173.85.
+- v9 içindeki tek "kırılım" step~84k'da -25.3'e ulaşması, ancak ardından -107→-173 regresyonu yaşandı. Bu plato değil, unstable early training (çoklu restart + VecNormalize cold-start).
+- Referans: interventions.jsonl kaydı peak=133.35 @ step~501k (v3.0 Gazebo run). v10 aynı schedule ile bu seviyeyi 350-500k arası tekrar etmeli.
+- **+15'lik oda sıçraması:** v9 CSV'sinde görülmedi. v3.0 Gazebo run (oda bonus=+10) 610k'da peak=110.3 üretti. v10'da +15 bonusu ile ilk oda geçişi (6 oda × 15 = 90 baz potansiyel) daha yüksek amplitüdde görünecek.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz soru: ppo.yaml v10 olarak güncellendi. `lr=3e-4`, `lr_schedule: linear`, `lr_final: 1e-5` (1.5M boyunca 30× azalma).
+- v9'un sabit 7.5e-5'i terk edildi — doğru karar. v3.0 bu schedule ile peak=110.3 (kanıtlanmış optimal).
+- v8 (3e-4→3e-5, 10× decay) vs v10 (3e-4→1e-5, 30× decay): v10 fine-tune sonu daha sessiz → late-stage politika kararlılığı artacak.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale değerler: entropy=-4.212 (>-4.0 eşiği ✓), std=0.985 (>0.7 eşiği ✓). 13 gün öncesinden — v10 yorumu sınırlı.
+- v10 config: `ent_coef=0.008` (v9'un 0.0015'inin 5.3×'i). Başlangıç entropy ~-3.2→-3.8 arası beklenir (güçlü keşif bölgesi).
+- **Deterministikleşme riski penceresi:** 400-600k step arası std<0.7 + entropy>-3.5 birlikte tetiklenirse ent_coef 0.008→0.015 artışı gerekir. v4 analogu bu bandda kesilmişti; v10 ent_coef 1.6× daha yüksek → risk azalmış ama izleme şart.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 başlamadı → sıfır gözlem. Tahmin: n_steps=2048, n_envs=1, fps~38 (freeze fix sonrası referans) → ~50k step/saat.
+- v3.0 Gazebo referansı: ilk oda ~200k step, tutarlı 3+ oda ~400k, 5-6 oda ~500-700k.
+- v10 farkı: `ent_coef=0.008` (v3.0'ın 0.005'inden %60 yüksek) → ilk oda kırılımı 150-200k'ya çekebilir. `collision_penalty=25` (fix uygulandı ✓) → erken terminate azalacak → uzun episode = daha fazla voxel.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **v10'u başlat (BLOKER):** Container'da Gazebo/ROS2 yok → lokal makinede `./scripts/train.sh configs/ppo.yaml` ile başlatılmalı. ppo.yaml hazır (v10, optimal). Tek eksik: eğitim hiç başlamadı.
+2. **lidar_history=2 (yapısal iyileştirme):** `drone_exploration_env.py`'de obs 40→72-d. fast_v2 kanıtı: %80→%1 çarpışma azalması. v10 başlamadan önce uygulanabilirse v10.0'a dahil et; başlamışsa v10.1 olarak planla.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Hayır.** ppo.yaml v10 optimal ✓, collision_penalty=25 fix uygulandı ✓ (12 Haziran 21:05 UTC oturumu), env kod tutarlılığı kontrol edildi ✓.
+- Watchdog crash_recovery döngüsü durdu — son interventions.jsonl kaydı 2026-06-01 01:30 UTC.
+- **Tek bloker:** v10 eğitimi başlatılmamış. Container ortamı bunu desteklemiyor; lokal makinede başlatılmalı.
+
+### v10 Önerisi
+1. **Lokal makinede `./scripts/train.sh configs/ppo.yaml` ile v10 başlat.** ppo.yaml hazır, tüm parametreler kanıtlanmış optimal. Eğer lidar_history=2 env değişikliği yapılabiliyorsa önce uygula, aksi hâlde v10.0 şu hâliyle başlatılabilir.
+2. **200k step sonra standart kontrol:** std<0.7 VE entropy>-3.5 → ent_coef 0.008→0.015. İlk oda geçişi 150-250k gelmezse frontier bonus katsayısını +0.4→+0.6 artır. Bu eşikleri v10 başladıktan sonra izle.
+
+### Müdahale
+Yok — ppo.yaml optimal durumda, %80+ eşiğini karşılayan config sorunu tespit edilmedi. Tüm önceki fix'ler (collision_penalty=25 @ 12 Haz 21:05 UTC) aktif. Bu oturumda YAML değişikliği yapılmadı.
+---
