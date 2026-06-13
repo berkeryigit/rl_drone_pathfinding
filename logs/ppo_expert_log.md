@@ -5163,3 +5163,43 @@ CSV 2026-05-31 03:01'den bu yana dondurulmuş; v9 eğitimi 193k adımda crash lo
 ### Müdahale
 **YOK** — `configs/ppo.yaml` değiştirilmedi. 16. teyit: v10 YAML parametrelerinde %80+ güven eşiğini geçen sorun yok. Env kodu collision_penalty=25 doğrulandı ✓, lidar_history=2 eksikliği konfigürasyon sorunu değil (env yapısal değişiklik, kapsam dışı). Bir önceki 00:10 UTC girişinin collision_penalty yanıltıcı ifadesi bu giriş ile düzeltildi.
 ---
+
+## [2026-06-13 12:00 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 13 GÜN STALE, v9 crash-loop) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+Durum önceki girişlerden (00:10, 04:03, 08:45 UTC) itibaren değişmedi. v10 bu container'da hiç başlamadı. **Yeni bulgu:** `versions.jsonl` v5.0 kaydı, önceki girişlerdeki "lidar_history=2" önerisini geçersiz kılıyor — aşağıya bakınız.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV v9 crash-loop durumunda dondurulmuş. Son anlamlı değer: step 83k → ep_rew_mean=-25.3 (lokal peak). Aktif eğitim yok, trend değerlendirmesi mümkün değil.
+- v10 runs/ dizini oluşturulmamış. Platoya girme/kırılım başlama sorusu v10 başlayana kadar yanıtsız.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Geçersiz — ppo.yaml zaten v10 (`lr: 3e-4→1e-5 linear, lr_schedule: linear`). v3.0 Gazebo aynı schedule ile peak=110.3@610k kanıtladı.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale v9 değerleri: entropy=-4.212 (>-4.0 ✓), std=0.985 (>0.7 ✓). v10 başlamadan anlamsız.
+- v10 `ent_coef=0.008` ile başlangıç entropisi çok daha yüksek olacak.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 başlayana kadar tahmin aynı: ilk +10 room spike ~100–250k step, 5-6 oda ~600k–1.2M step, 1.5M bütçe içinde ulaşılabilir.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **[TAMAMLANDI ✓] collision_penalty=25:** `drone_exploration_env.py` satır 342, commit b78bb0e. Değişiklik gerekmez.
+2. **[REVİZE EDİLDİ ⚠️] lidar_history ÖNCE DEĞİŞTİRME:** `versions.jsonl` v5.0 kaydı → `lidar_history 2→3` voxel'i 281→106'ya düşürdü ve v4.8 (%0 çarpışma, history=1, 117 voxel) tarafından domine edildi. Ekstra lidar history, fast_sim'de bile keşim performansını iyileştirmedi. Gazebo'da hareketli engeller kapalı olduğundan mevcut `lidar_history=1` (obs=40-d, action=2-d) **optimaldir**. Önceki girişlerdeki lidar_history=2 önerisi GERİ ÇEKILDI.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml için HAYIR** (17. teyit). Tüm parametreler optimal:
+  - `lr: 3e-4→1e-5 linear` ✓ | `ent_coef: 0.008` ✓ | `n_steps: 2048, batch_size: 256, n_epochs: 10` ✓
+  - `clip_range: 0.2, gae_lambda: 0.95, gamma: 0.99` ✓ | `n_envs: 1` ✓ | `total_timesteps: 1.5M` ✓
+- **Env kodu için HAYIR** — collision_penalty=25 ✓, lidar_history=1 **kasıtlı olarak korunmalı** (v5.0 bulgusu).
+
+### v10 Önerisi
+1. **Doğrudan v10 başlat:** `./scripts/train.sh configs/ppo.yaml` — ppo.yaml hazır, env kodu hazır. lidar_history DEĞİŞTİRME (v5.0 öldürdü).
+2. **50k step izleme kriteri:** ep_rew_mean > -50 bekleniyor (collision_penalty=25 sayesinde); bunu sağlayamazsa spawn/reset mantığını kontrol et, hyperparameter değil.
+
+### Müdahale
+**YOK** — `configs/ppo.yaml` değiştirilmedi. 17. teyit: v10 YAML parametrelerinde %80+ güven eşiğini geçen sorun yok. **Kritik güncelleme:** Önceki girişlerdeki lidar_history=2 önerisi `versions.jsonl` v5.0 ampirik kanıtıyla geri çekildi — lidar_history=1 optimaldır.
+---
