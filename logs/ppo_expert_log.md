@@ -6013,3 +6013,58 @@ V9 eğitimi kalıcı olarak ölü; son anlamlı adım 2026-05-31 03:01 UTC (193k
 ### Müdahale
 Yok — `configs/ppo.yaml` değiştirilmedi (29. teyit). CSV 15 gün stale; V9 ölü; V10 konfigürasyonu fast_sim (18 config) + V3.0 Gazebo (peak=110.3) + V8 (peak=+113) üç bağımsız kaynakla doğrulanmış; %80+ güven eşiğini geçen yeni sorun tespit edilmedi.
 ---
+
+## [2026-06-13 22:05 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 14 GÜN + 19 SAAT STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 training 2026-05-31 03:01'den beri tamamen donmuş; configs/ppo.yaml halihazırda v10-optimal. Training çalışmıyor, runs/ppo_v10/ dizini mevcut değil — v10 henüz başlatılmamış. Gazebo makinesinde env kodu güncellemesi yapılmadan başlatılmamalı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- V9 kronolojiği (CSV tam okuma):
+  - İlk 4 satır (11:02-12:32): Muhtemelen eski TB olaylarından gelen stale veri — step 142k-599k iken ckpt=80k, ep_len=1000 sabit. Güvenilir değil.
+  - Gerçek v9 başlangıcı ~13:02: step=49k, rew=-102, ep_len=245
+  - En iyi an: 13:52 → step=84k, rew=**-25.3**, ep_len=95 (erken keşif fazı)
+  - 80k checkpointinden 22 kez restart (14:00-20:55): step 90-135k arasında +oscillasyon, rew -29 ile -110 arası, GELİŞME YOK
+  - 140k ckpt sonrası: step=146k, rew=-37 (ikinci en iyi)
+  - 180k ckpt ile ÖLÜM: 22:00'da step=193k, rew=-174; ardından TÜM SATIRLAR AYNI
+- **Sonuç:** Plato yok — crash-loop kurbanı. +15 oda sıçraması hiçbir zaman gözlemlenmedi. ep_rew_mean pozitife hiç geçmedi.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- V9 için artık geçersiz soru. ppo.yaml tamamen v10 (`lr=3e-4 → 1e-5 linear, 1.5M boyunca`).
+- V9'un sabit 7.5e-5'i: erken fazda yetersiz keşif (ilk 100k'da lr çok düşük), crash-loop bağlamında kök neden değil (transport/env hatası dominine etti).
+- V10'un 3e-4→1e-5 linear schedule'ı: V3.0 Gazebo'da peak=110.3 kanıtladı. Doğru seçim.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut stale değerler (193k noktasından): entropy=-4.212, std=0.985
+- Eşik değerlendirmesi:
+  - entropy=-4.212 → uyarı eşiği -4.0'ın BİRAZ ALTINDAydı (daha az keşif). Ancak ent_coef=0.0015 (v9) ile 193k'da bu normal.
+  - std=0.985 → sağlıklı (0.7 eşiğinin çok üstünde)
+- V10 beklentisi (ent_coef=0.008, 5.3× artış): ilk 150k'da entropy -3.2 ile -3.8 arası beklenir; std 300k+ sonra 0.75-0.85 aralığına gelmeli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9 için: Sıfır — ölü.
+- V10 (V3.0 referansı, özdeş hyperparamlar, statik harita, n_envs=1):
+  - 1. oda: 175–275k step
+  - 3+ oda: 350–500k step
+  - 6/6 oda: 575–750k step
+- **Not:** `lidar_history=2` ve `collision_penalty=25` env koduna eklenmeden bu tahminler %15-20 kaymaya açık.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **[BLOKER] `drone_exploration_env.py` → `lidar_history=2`:** Obs 41-d→72-d (32 lidar × 2 frame). `train_ppo.py` observation_space da 72-d güncellenmeli. Fast_sim v4.8 kanıtı: çarpışma oranı %80→%0. Bu güncelleme olmadan V10 başlatılmamalı.
+2. **[BLOKER] `drone_exploration_env.py` → `collision_penalty=25`:** Fast_sim v4.8 tatlı nokta. 22=kollapsa, 30=aşırı-tedirgin, 25=optimal. Bu iki env değişikliği YAML'dan bağımsız, Gazebo makinesinde uygulanmalı.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **configs/ppo.yaml:** Hayır. V10 hyperparameter konfigürasyonu kanıtlanmış optimal, değişiklik gerekmez.
+- **Gerçek acil:** V10 training hâlâ başlatılmamış. runs/ppo_v10/ yok. Başlatmak için önce env kodu güncellemesi şart.
+- CSV 14+ gün stale kalması: monitor_agent.py durmuş veya süreç hayatta değil. Bu beklenen — Gazebo yok.
+
+### v10 Önerisi
+1. **Env kodu önce:** `drone_exploration_env.py` lidar_history=2 + collision_penalty=25 → `train_ppo.py` obs shape=72 güncelle. Gazebo makinesinde, V10 başlamadan.
+2. **İlk 100k izleme kriteri:** ep_rew_mean > -50 görülmezse (V3.0: -40@50k referansı) env kodu doğrulama yap — training değil, env'daki obs/action pipeline'ı kontrol et.
+
+### Müdahale
+Yok — `configs/ppo.yaml` değiştirilmedi. V10 konfigürasyonu 3 bağımsız kanıtla doğrulanmış (fast_sim 18 config + V3.0 Gazebo peak=110.3 + V8 peak=+113). %80+ eşiğini geçen yeni sorun tespit edilmedi. Tüm bekleyen aksiyon itemleri Gazebo makinesinde env kodu güncellemesini bekliyor.
+---
