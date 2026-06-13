@@ -5203,3 +5203,49 @@ Durum önceki girişlerden (00:10, 04:03, 08:45 UTC) itibaren değişmedi. v10 b
 ### Müdahale
 **YOK** — `configs/ppo.yaml` değiştirilmedi. 17. teyit: v10 YAML parametrelerinde %80+ güven eşiğini geçen sorun yok. **Kritik güncelleme:** Önceki girişlerdeki lidar_history=2 önerisi `versions.jsonl` v5.0 ampirik kanıtıyla geri çekildi — lidar_history=1 optimaldır.
 ---
+
+## [2026-06-13 06:04 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 13 GÜN STALE, v9 crash-freeze) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 eğitimi 31 Mayıs 03:01 UTC'den bu yana 193,248 step'te donmuş; bugün 13 Haziran, 13 gün geçti. `configs/ppo.yaml` zaten v10'a geçirilmiş (`version: v10`, `lr: 3e-4→1e-5 linear`, `ent_coef: 0.008`). Bu container'da v10 Gazebo eğitimi henüz başlatılmamış.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- v9 CSV trajektörü: -324 (64k) → -102 (49k restart) → -25 (83k, lokal peak) → crash-loop (80k etrafında saatlerce) → -173 (193k) → FREEZE.
+- Hiçbir zaman +15 oda sıçraması yaşanmadı; reward pozitif bölgeye girmeden eğitim dondu.
+- Monitor'ün 80k checkpoint'ten 20+ kez false-recovery yapması öğrenme sürekliliğini sabote etti.
+- Platoya değil, monitor kaynaklı tekrarlı restart döngüsüne girdi; gerçek bir plato tespiti mümkün değil.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru muydu?**
+- KICKOFF notundaki "7.5e-5 constant" ifadesi gerçek config ile çelişiyordu (config'de 3e-4 linear decay vardı). Config v10'a geçince bu soru geçersizleşti.
+- v3.0 Gazebo run: `3e-4→1e-5 linear` ile peak=110.3@610k kanıtlandı. Linear decay doğru seçim. Constant lr daha zayıf olurdu.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- v9 son değerler: entropy=-4.212 (threshold -4.0'ın hemen altında, tehlikeli), std=0.985 (>0.7 ✓).
+- v10'da `ent_coef=0.008` (v9'un 5.3x'i) başlangıç entropisini çok daha yüksek tutacak; erken deterministikleşme riski minimize.
+- v9 entropy değerleri stale, v10 referansı için anlamsız.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 baseline tahmin (v3.0 Gazebo + fast_sim bulgularına göre):
+  - İlk oda geçişi (+15 spike): ~80-150k step
+  - 5-6 oda keşfi: ~600k-1.2M step
+  - 1.5M toplam bütçe içinde ulaşılabilir (v4.10 fast_sim'de 5.76 oda @5M kanıtladı; Gazebo daha yavaş yakınsar ama aynı yönde).
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **[CONFIRMED ✓] Mevcut ppo.yaml parametreleri optimal:** v3.0 Gazebo (peak=110.3) + 18 fast_sim config araştırmasıyla kanıtlanmış. `lr linear`, `ent_coef=0.008`, `n_steps=2048`, `n_envs=1`, `total_timesteps=1.5M` — değiştirme.
+2. **[CONFIRMED ✓] collision_penalty=25, lidar_history=1 optimal:** `drone_exploration_env.py` satır 342'de collision=25 (v4.8: %0 çarpışma). lidar_history=1 (v5.0'da h=2/3 test edildi → voxel 281→106, kötüleşti). Bu iki yapısal seçim kilitle.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml için HAYIR** (18. teyit). Tüm parametreler kanıtlanmış optimal değerlerde.
+- v10 Gazebo eğitimi bu container'da başlatılamamış (Gazebo/ROS2 servisleri yok). Eğitim başlatmak kullanıcı tarafında fiziksel ortam gerektirir.
+- **İzleme kriteri (v10 başladığında):** İlk 50k step sonrası ep_rew_mean > -50 beklenmeli; sağlanamazsa spawn/reset mantığını kontrol et (hyperparameter değil).
+
+### v10 Önerisi
+1. **Doğrudan v10 başlat:** `./scripts/train.sh configs/ppo.yaml` — ppo.yaml hazır, env kodu hazır. `lidar_history` ve `collision_penalty` DEĞİŞTİRME.
+2. **Monitor crash-loop sorununu çöz:** Önceki v9'da monitor yanlış crash-recovery ile 20+ kez 80k checkpoint'ten restart yaptı. Yeni bir eğitimde monitor'ün `step` artışını doğruladıktan sonra recovery yapması şart; salt log-mtime kontrolü yeterli değil.
+
+### Müdahale
+**YOK** — `configs/ppo.yaml` değiştirilmedi. 18. teyit: v10 YAML parametrelerinde %80+ güven eşiğini geçen sorun yok. v3.0 Gazebo + 18 fast_sim config araştırması parametreleri doğruladı; yapılacak değişiklik bulunmuyor. Monitor crash-loop riski not edildi.
+---
