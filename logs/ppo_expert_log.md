@@ -1,3 +1,46 @@
+## [2026-06-13 20:10 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 14 GÜN STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV 2026-05-31 03:01'den beri donmuş; v9 training step=193k'da crash-loop'a girdi, bir daha ilerlemedi. ppo.yaml v10 optimal (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, collision_penalty=25). fast_sim araştırması tam kapandı (v4.13/v5.0 ile tüm kollar tükendi). **Config değişikliğine gerek yok.**
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- v9 aktif değil. CSV'deki tek gerçek trend: step~84k'da -25.3 (erken pik), ardından 108-193k arası -54→-174 (regresyon + crash-loop). Plato değil — erken oscillation + stabilizasyon öncesi crash.
+- +15 oda sıçraması: v9'da HİÇ gözlemlenmedi. ep_rew_mean negatif bölgeden çıkmadı; 6 oda tamamen erişilmedi.
+- v10 runs/ dizini yok → güncel plato/kırılım değerlendirmesi mümkün değil.
+
+**b) lr=7.5e-5 constant seçimi doğru mu?**
+- Artık geçersiz soru: ppo.yaml tamamen v10 (`lr=3e-4 → 1e-5 linear`, v8'in 3e-4→3e-5'inin 3× daha agresif fine-tune'u). v9 sabit 7.5e-5 terk edildi — doğru karar.
+- v3.0 Gazebo aynı schedule'la peak=110.3 üretti (610k step). Kanıtlanmış optimal.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut stale: entropy=-4.212 (eşik -4.0, borderline ✓), std=0.985 (eşik 0.7, güvenli ✓).
+- v10 ent_coef=0.008 (v9'un 5.3×'i) → ilk 150k'da entropy -3.2 ile -3.8 arası beklenir; 400-600k arası deterministikleşme riski izlenmeli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 referans: ilk oda 150-250k, 3+ oda 350-500k, 6 oda 500-700k.
+- **YENİ KISIT (fast_sim kanıtı):** total_timesteps=1.5M DOĞRU — 2M+ sonrası safety collapse kaçınılmaz (v4.10@5M: collision=%54; v4.13@8M: voxel 281→134). 1.5M sınırı v10 için zorunlu.
+- Hareketli engeller devre dışı → statik harita → oda geçişi ihtimali yüksek.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **total_timesteps=1.5M kesinlikle aşma:** fast_sim v4.10/v4.11/v4.13 ve v5.0 toplam 5 deney ile teyit etti — "daha uzun eğit = daha fazla kapsam" geçersiz. 2M+ sonrası politika cesur-crash rejimine giriyor. Mevcut 1.5M limiti değiştirme.
+2. **lidar_history=2 (env kod değişikliği — YAML dışı):** fast_sim v2 kanıtı: çarpışma %80→%1. `drone_exploration_env.py` obs stack'ini 40-d→72-d'ye çıkarmak v10'u duvar kaçınmada v4.8 seviyesine taşır. Bu yapılmadan v10 collision=%0 garanti edilemiyor.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- Hayır. ppo.yaml v10 optimal ✓. collision_penalty=25 uygulandı ✓ (06-12 21:05 oturumu). 
+- fast_sim araştırması tamamen kapandı: v5.0 ile son kol (lidar_history=3) test edildi, trade-off aşılamadı, tüm kaldıraçlar tükendi. Gazebo v10 için hiçbir fast_sim koşu eklemeye gerek yok.
+- **Bloker:** Bu container Gazebo/ROS2 barındırmıyor. Lokal makinede `./scripts/train.sh configs/ppo.yaml` ile v10 başlatılmalı.
+
+### v10 Önerisi
+1. **1.5M step sınırına uy:** fast_sim 5 bağımsız deneyle kanıtladı; 1.5M sonrası checkpoint sweep yap, en iyi ep_rew_mean checkpoint'ini al — sona kadar gitme.
+2. **lidar_history=2 uygula (v10.1):** Önce `drone_exploration_env.py`'de obs 40→72-d, ardından `train.sh` ile fresh start. Entropy >-3.8 + std >0.80 @ 250k step birlikte görülürse keşif sağlıklı.
+
+### Müdahale
+**Yok** — ppo.yaml değişikliğine gerek yok. fast_sim araştırması kapandı; yeni veri yok; config mevcut hâliyle optimal. Gazebo v10 lokal makinede başlatıldığında bu log güncellenecek.
+---
+
 ## [2026-06-13 04:03 UTC]
 **Step:** 193,248 (CSV SON KAYIT — HÂLÂ STALE, 13 GÜN) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
 
