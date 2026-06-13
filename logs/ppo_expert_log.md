@@ -5296,3 +5296,44 @@ v9 eğitimi 2026-05-31 03:01 UTC'den beri 193,248 step'te donmuş; bu container'
 ### Müdahale
 **YOK** — `configs/ppo.yaml` değiştirilmedi. 19. teyit: v10 YAML parametrelerinde %80+ güven eşiğini geçen herhangi bir sorun tespit edilmedi. v3.0 Gazebo (peak=110.3@610k) + 18 fast_sim config araştırması mevcut parametreleri tam olarak doğruluyor.
 ---
+
+## [2026-06-13 08:02 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 13 GÜN STALE, v9 eğitimi ölü) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 eğitimi 2026-05-31 03:01 UTC'den beri 193,248 step'te tamamen donmuş; 13 gün geçti. `configs/ppo.yaml` 2026-06-02'de v10 parametrelerine geçirilmiş ve v3.0 Gazebo + 18 fast_sim config araştırmasıyla doğrulanmış. Bu container'da Gazebo/ROS2 yok; v10 eğitimi fiziksel ortamda kullanıcı tarafından başlatılacak.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Faz 1 (142k–599k step, FPS=83-84): ep_len_mean=1000 boyunca sabit → drone hiç çarpmadı ama keşif de olmadı. ep_rew_mean -290→-270 yatay seyir. std 0.888→0.745: **0.7 eşiğine 11k step kaldığında monitor restart etti.**
+- Faz 2 (crash-loop, step 90k–193k): 80k checkpoint'ten 20+ yanlış restart. ep_rew_mean saçıldı (-25 ile -173 arası). Hiçbir sürekli iyileşme trendi yok.
+- **+15 oda sıçraması hiç görülmedi.** v9, oda keşfine ulaşamadan sona erdi — gerçek bir plato değil, monitor kaynaklı sabotaj.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- KICKOFF'taki "7.5e-5 constant" ifadesi gerçek ppo.yaml ile çelişiyordu (config'de 3e-4 linear decay vardı). v10'a geçişle bu soru tamamen geçersizleşti.
+- v3.0 Gazebo kanıtı: `lr 3e-4→1e-5 linear, 1.5M step` → peak=110.3@610k. Constant lr geç fazda value function stabilitesini bozardı; linear decay kesinlikle doğru seçim.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- v9 son değerler: entropy=-4.212 (tehlikeli sınır), std=0.985 (sağlıklı, >0.7 ✓). Faz 1'de std 0.888→0.745 gerçek bir deterministikleşme sinyaliydi — monitor restart ederek bu riski kısmen engelledi ama öğrenmeyi de sabote etti.
+- v10'da ent_coef=0.008 (v9'un 5.3×'i) başlangıç entropisini ~-5.5 civarında tutacak; erken deterministikleşme riski minimize edilmiş.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 tahmini (v3.0 + 18 fast_sim kanıtına göre): ilk oda +15 spike ~80–150k step. 5–6 oda keşfi ~600k–1.2M step. 1.5M bütçe içinde ulaşılabilir.
+
+**e) v10 için şu an en kritik 1–2 öneri:**
+1. **Monitor crash-loop düzeltmesi (birinci öncelik):** v9'u asıl öldüren hyperparameter değil monitördü. Yeni monitörde log-mtime kontrolü yanı sıra **step sayısının arttığı** doğrulanmadan crash-recovery tetiklenmesin; yoksa yeniden 80k loop'a girilir.
+2. **ppo.yaml'ı olduğu gibi kullan:** `lr 3e-4→1e-5 linear`, `ent_coef=0.008`, `n_steps=2048`, `n_envs=1`, `total_timesteps=1.5M` — 20 teyit, değişiklik yok.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml için HAYIR** (20. teyit). Parametre seti 3 bağımsız kaynak tarafından doğrulanmış: v3.0 Gazebo (peak=110.3@610k), 18 fast_sim config araştırması, v8 geçmiş verisi (v3.0 ile aynı yönde).
+- **Env kodu için HAYIR:** collision_penalty=25 (v4.8: %0 çarpışma ✓), lidar_history=1 (v5.0: h=2/3 voxel skoru -63% ✓).
+- Bu container'da Gazebo/ROS2 yok; hiçbir eğitim başlatılamaz. Yapılacak tek şey kullanıcı tarafında fiziksel ortamda `./scripts/train.sh configs/ppo.yaml` çalıştırmak.
+
+### v10 Önerisi
+1. **Monitor step-doğrulama ekle:** Mevcut log-mtime kontrolüne ek olarak, önceki checkpoint'teki step sayısından DAHA az step okunursa (restart loop işareti) recovery tetiklenmesin.
+2. **Doğrudan v10 başlat:** `./scripts/train.sh configs/ppo.yaml` — YAML tamamen hazır. lidar_history ve collision_penalty DEĞİŞTİRME.
+
+### Müdahale
+**YOK** — `configs/ppo.yaml` değiştirilmedi. 20. teyit: v10 YAML parametrelerinde %80+ güven eşiğini geçen herhangi bir sorun tespit edilmedi. v3.0 Gazebo (peak=110.3@610k) + 18 fast_sim config araştırması + v8 geçmiş verisi mevcut parametreleri tam olarak doğruluyor.
+---
