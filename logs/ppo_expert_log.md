@@ -6068,3 +6068,44 @@ V9 training 2026-05-31 03:01'den beri tamamen donmuş; configs/ppo.yaml halihaz�
 ### Müdahale
 Yok — `configs/ppo.yaml` değiştirilmedi. V10 konfigürasyonu 3 bağımsız kanıtla doğrulanmış (fast_sim 18 config + V3.0 Gazebo peak=110.3 + V8 peak=+113). %80+ eşiğini geçen yeni sorun tespit edilmedi. Tüm bekleyen aksiyon itemleri Gazebo makinesinde env kodu güncellemesini bekliyor.
 ---
+
+## [2026-06-13 23:30 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 14 GÜN STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 training 2026-05-31 03:01'den beri donmuş; ppo.yaml v10-optimal. Bu oturumda env kodu doğrudan incelendi: önceki oturumların "blocker" saydığı `collision_penalty=25` env'da **zaten uygulanmış** (line 342). Gerçek blocker: `lidar_history=2` (hâlâ single frame, obs 40-d). Ayrıca dokümantasyon tutarsızlığı tespit edildi.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- V9 kronolojiği netleşti: en iyi an step=84k → ep_rew_mean=-25.3 (ep_len=95, drone duvardan kaçmayı öğrenmiş). Ardından crash-loop. +15 (şimdi +10) oda sıçraması HİÇ gözlemlenmedi. Training ölü.
+- Plato yok — kronik crash-loop kurbanı (transport deadlock + stale log detection loop).
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz soru. ppo.yaml tamamen v10 (`lr=3e-4 → 1e-5 linear`). V9'un 7.5e-5 sabit lr'si hem crash-loop hem de zaten terk edildi.
+- V10 linear schedule: V3.0 Gazebo peak=110.3@610k ile kanıtlanmış. Değiştirme.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale değerler (193k): entropy=-4.212 (uyarı eşiği -4.0 altında, borderline), std=0.985 (sağlıklı).
+- V10 ent_coef=0.008 (5.3×) ile ilk 200k'da entropy -3.2/-3.8 arasında beklenir. Yeterli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9 için sıfır — ölü. V10 için V3.0 referansı: 1. oda ~175-275k, 3+ oda ~350-500k, 6/6 oda ~575-750k.
+- **Dikkat:** Env'daki oda ödülü +10.0 (KICKOFF dokümantasyonu +15.0 yazıyor — tutarsızlık). VecNormalize norm_reward=true ile bu scale farkı eğitimi bloklamaz ama zirve reward tahminlerini ~%25 etkiler. V3.0 peak=110.3 da +10 oda ödülüyle elde edildi; baz çizgisi tutarlı.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **[BLOKER — GERÇEK]** `drone_exploration_env.py`: `lidar_history=2` → obs 40→72-d (32 × 2 frame + 8 meta). train_ppo.py observation_space da 72-d güncellenmeli. Fast_sim v4.8 kanıtı var.
+2. **[DÜZELTME]** `collision_penalty=25` ZATEN uygulanmış (line 342, önceki oturum hatalı "blocker" demişti). Bu maddeyi yapılacaklar listesinden çıkar.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- configs/ppo.yaml: Hayır. Değişiklik yok, 30+ oturum boyunca tutarlı.
+- Env kodu: lidar_history=2 Gazebo makinesinde uygulanacak (bu repo'da PR hazırlanabilir).
+- KICKOFF.md dokümantasyonu güncellenmeli (+15→+10 oda ödülü).
+
+### v10 Önerisi
+1. **Tek kalan blocker:** `drone_exploration_env.py` → `lidar_history=2` (obs 40-d→72-d). `collision_penalty=25` zaten mevcut — önceki oturumların blocker tanımı hatalıydı.
+2. **ppo.yaml sabit:** linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, total_timesteps=1.5M. Dokunma.
+
+### Müdahale
+Yok — `configs/ppo.yaml` değiştirilmedi. Yeni bulgu: `collision_penalty=25` env'da zaten uygulanmış (line 342). `lidar_history=2` tek kalan env blocker'ı; bu değişiklik Gazebo makinesinde uygulanacak, ppo.yaml kapsamında değil.
+---
