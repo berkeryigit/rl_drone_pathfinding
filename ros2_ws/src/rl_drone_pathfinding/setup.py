@@ -25,14 +25,13 @@ setup(
     zip_safe=True,
     maintainer='Berker Yigit',
     maintainer_email='berkerygt@gmail.com',
-    description='RL-based indoor drone exploration with Lidar + Odometry (PPO).',
+    description='RL-based indoor drone exploration with Lidar + Odometry (DQN, Fast2D).',
     license='MIT',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'train_ppo = rl_drone_pathfinding.agents.train_ppo:main',
-            'eval_ppo = rl_drone_pathfinding.agents.eval_ppo:main',
-            'env_smoke_test = rl_drone_pathfinding.envs.smoke_test:main',
+            # DQN eğitim ve değerlendirme scriptleri
+            # (deliverables/kod/ altındaki standalone scriptler kullanılır)
         ],
     },
 )

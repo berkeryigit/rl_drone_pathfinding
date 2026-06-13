@@ -1,0 +1,94 @@
+A. Ne Yükleyeceksiniz? (teslim şablonu)
+Tek arşiv (ogrno_AdSoyad.zip) + ayrı video. Arşiv yapısı birebir:
+
+
+123456789_AdSoyad.zip
+
+├── rapor/123456789_rapor.pdf ← 6–8 sayfa (Word/PowerPoint kabul edilir)
+
+├── sunum/123456789_sunum.pptx/pdf
+
+├── sunum/grafikler/ ← HER grafik ayrıca PNG
+
+├── kod/ env/ train.py evaluate.py config.yaml
+
+│ requirements.txt(==) seeds.txt run_all.sh README.md
+
+├── sonuclar/loglar/ ← tfevents VEYA CSV ham log (ZORUNLU)
+
+├── sonuclar/sonuclar.csv ← seed × metrik özeti
+
+└── DEGISIKLIK_LISTESI.md ← önceki gönderime göre ne değişti (madde madde)
+
+Yüklenmeyecekler: .venv/, __pycache__/, ara model ağırlıkları, parçalı arşiv, .txt/.docx içine yapıştırılmış kod. Bulut linki teslim sayılmaz. Yasaklar: import gym (eski API), np.random.seed()/np.random.choice() — doğrusu numpy.random.default_rng.
+
+DEGISIKLIK_LISTESI.md yeni ve zorunludur: beyan edilmeyen değişiklik yapılmamış sayılır; beyan edilen her madde önceki teslimle karşılaştırılır. İlk teslimse “ilk teslim” yazınız.
+
+B. Zorunlu Grafik Standardı (5 grafik)
+Her grafikte: başlık, birimli eksen etiketi, lejant, seed bilgisi (≥5 seed, ortalama ± std bandı), hareketli ortalama penceresi.
+
+#	Grafik	Kural
+1	Öğrenme eğrisi	y: episode getirisi (asla anlık/per-step ödül değil); x: episode veya kümülatif adım — ikisi de geçerlidir, etiket net olmalı
+2	Test (eval) eğrisi	Eğitilmiş politikanın deterministic/greedy koşusu; eğitim eğrisi tek başına kanıt değildir
+3	Loss eğrisi + ≥1 paragraf yorum	Tablo/grid yöntemlerde (loss yoksa) yerine değer/politika heatmap’i
+4	Hiperparametre duyarlılığı	≥2 parametre × ≥3 değer; keşif–sömürü yorumu zorunlu
+5	Baseline karşılaştırma	Rastgele politika ve/veya basit heuristik vs ajanınız. Statik/küçük ızgara tipi ortam teslim edenlerde ZORUNLU; diğer projelerde bonus (+)
+En sık yapılan ve en pahalı hata: y-ekseninde anlık ödül. CartPole’da bu eksen tamamen düz çizgi verir ve 21 katlık öğrenmeyi gizler — böyle bir grafik değerlendirilemez sayılır.
+
+Her grafiğe 4 cümlelik yorum (zorunlu model): Gözlem (ne görüyorum?) → Karşılaştırma (koşullar arası fark?) → Açıklama (teorik neden?) → Sonuç (pratik çıkarım?). Yorumsuz grafik puanlanmaz.
+
+B. Zorunlu Grafik Standardı (5 grafik)
+Her grafikte: başlık, birimli eksen etiketi, lejant, seed bilgisi (≥5 seed, ortalama ± std bandı), hareketli ortalama penceresi.
+
+#	Grafik	Kural
+1	Öğrenme eğrisi	y: episode getirisi (asla anlık/per-step ödül değil); x: episode veya kümülatif adım — ikisi de geçerlidir, etiket net olmalı
+2	Test (eval) eğrisi	Eğitilmiş politikanın deterministic/greedy koşusu; eğitim eğrisi tek başına kanıt değildir
+3	Loss eğrisi + ≥1 paragraf yorum	Tablo/grid yöntemlerde (loss yoksa) yerine değer/politika heatmap’i
+4	Hiperparametre duyarlılığı	≥2 parametre × ≥3 değer; keşif–sömürü yorumu zorunlu
+5	Baseline karşılaştırma	Rastgele politika ve/veya basit heuristik vs ajanınız. Statik/küçük ızgara tipi ortam teslim edenlerde ZORUNLU; diğer projelerde bonus (+)
+En sık yapılan ve en pahalı hata: y-ekseninde anlık ödül. CartPole’da bu eksen tamamen düz çizgi verir ve 21 katlık öğrenmeyi gizler — böyle bir grafik değerlendirilemez sayılır.
+
+Her grafiğe 4 cümlelik yorum (zorunlu model): Gözlem (ne görüyorum?) → Karşılaştırma (koşullar arası fark?) → Açıklama (teorik neden?) → Sonuç (pratik çıkarım?). Yorumsuz grafik puanlanmaz.
+
+C. “Neden RL?” Gerekçesi (raporda zorunlu bölüm)
+Çevreniz şu sorulara cevap vermek zorunda: Eylem gelecekteki durumu etkiliyor mu (ardışıklık)? Ödül gecikmeli mi? Dinamik bilinmiyor veya uzay büyük mü? Aynı sonuç A*/DP/basit kuralla daha ucuza alınabiliyor mu?
+
+Statik, deterministik, tek hedefli küçük ızgara — adı ne olursa olsun — RL gerektirmez; BFS/A* aynı çözümü kıyaslanamaz ucuzlukta verir. Böyle bir ortam teslim ediyorsanız B5 baseline grafiği zorunludur ve “çevre seçimi” kaleminden kayıp yaşarsınız. “Ortamım stokastik” iddiası kod satırıyla ispatlanır; yalnız başlangıç konumunun rastgele olması ortamı stokastik yapmaz.
+
+D. Savunma ve Final Soruları — Neye Hazırlanacaksınız?
+Sözlü savunmada ve finalde dört kavram alanından katmanlı sorular gelecek: (1) deterministik/stokastik, (2) on-policy/off-policy, (3) Markov özelliği, (4) kısmi gözlemlenebilirlik (POMDP). Soru listesi [Savunma Soru Listesi — LİNK] sayfasında açıktır; model cevaplar verilmez. Her merdivenin son basamağı kendi projenize uygulamadır (“durum vektörünün her bileşenini say; geleceği tahmin için eksik bilgi var mı?”) — bu basamağın cevabı hiçbir kaynaktan kopyalanamaz, yalnız kendi kodunuzdan çıkar.
+
+Final soruları ek olarak şunları kapsar: kod–rapor tutarsızlığı tespiti, basit bir RL çevresinin MDP formülasyonu, grafik okuma/yorumlama. Soruların bir bölümü kendi teslim dosyalarınızdan üretilir.
+
+E. Sık Sorulan Sorular (puanlama)
+Önerim kabul edilmişti, neden eleştiriliyor? Öneri eleme aşamasıdır (tutorial-tipi konu ve aşırı basit yöntem elenir); içerik onayı değildir. Değerlendirme, teslim edilen ortamın gerçek hâline göre yapılır.
+
+Eksiğimi tamamlarsam tam not alır mıyım? Hayır. Sonradan kazanılan puanlara indirim katsayısı uygulanır; zamanında eksiksiz teslim edenlerin sıralaması korunur. Geç sunum ve hiç-göndermeme durumlarında tam puan mümkün değildir.
+
+Notum nasıl yükselir? Yeniden gönderiminiz değerlendirildikten ve (kod yükleyenler için) kısa sözlü savunma yapıldıktan sonra, yalnız eksik kalemler yeniden puanlanır.
+
+Veri bütünlüğü: Sentetik eğri/log üretimi telafi kapsamı dışındadır; ayrıca değerlendirilir.
+
+Yükleyecekleriniz (2 dosya):
+
+ogrno_AdSoyad.zip — Rehber §A’daki klasör yapısına birebir uygun arşiv
+
+ogrno_video.mp4 — tek parça video
+
+Gönderim kabul KOŞULLARI (biri eksikse değerlendirme yapılmaz):
+
+ DEGISIKLIK_LISTESI.md arşivin kökünde — önceki gönderime göre her değişiklik madde madde; ilk teslimse “ilk teslim”
+
+ sonuclar/loglar/ altında ham log (tfevents veya CSV) — grafikleriniz bu loglardan doğrulanacak
+
+ 5 grafik PNG olarak sunum/grafikler/ altında; y-ekseni episode getirisi (anlık ödül değil); her grafiğin altında 4 cümlelik yorum (Gözlem→Karşılaştırma→Açıklama→Sonuç)
+
+ Ödül formülü raporda LaTeX + kodda satır numarası, birebir aynı
+
+ requirements.txt (==), seeds.txt (≥5), config.yaml, run_all.sh
+
+ Statik/küçük ızgara ortam ise: baseline (rastgele politika/heuristik) karşılaştırma grafiği zorunlu
+
+Bilmeniz gerekenler: Kod yükleyenler 5 dakikalık sözlü savunmaya çağrılabilir (kendi kodunuzdan rastgele seçilen satırları açıklarsınız). Sonradan kazanılan puanlara indirim katsayısı uygulanır; tam puan mümkün değildir. Raporda anlatıp kodda/logda bulunmayan her deney, tutarlılık kaleminden ağır kesintidir. Final sınavındaki proje soruları kendi teslim dosyalarınızdan üretilecektir — bu teslim, finalde cevaplayacağınız soruların kaynağıdır; başkasına/yapay zekâya yaptırılmış bir teslim, finalde savunamayacağınız bir teslimdir.
+
+Bulut linki (Drive/WeTransfer) teslim sayılmaz. import gym ve np.random.seed() kullanan kod sert kural ihlali

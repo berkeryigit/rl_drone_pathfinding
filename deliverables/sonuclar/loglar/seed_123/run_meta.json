@@ -1,0 +1,40 @@
+{
+  "seed": 123,
+  "total_timesteps": 1000000,
+  "config_file": "config.yaml",
+  "start_time": "2026-06-12T20:25:12",
+  "device": "cuda",
+  "cuda_available": true,
+  "gpu_name": "NVIDIA GeForce RTX 3070 Laptop GPU",
+  "dqn_config": {
+    "policy": "MlpPolicy",
+    "learning_rate": 0.0001,
+    "buffer_size": 100000,
+    "learning_starts": 10000,
+    "batch_size": 64,
+    "tau": 1.0,
+    "gamma": 0.99,
+    "train_freq": 4,
+    "gradient_steps": 1,
+    "target_update_interval": 1000,
+    "exploration_fraction": 0.15,
+    "exploration_initial_eps": 1.0,
+    "exploration_final_eps": 0.05,
+    "policy_kwargs": {
+      "net_arch": [
+        256,
+        256
+      ]
+    }
+  },
+  "env_config": {
+    "max_episode_steps": 600,
+    "dt": 0.12,
+    "lidar_noise_std": 0.015,
+    "odom_noise_std": 0.004,
+    "wind_std": 0.015,
+    "collision_penalty": -40.0,
+    "all_rooms_bonus": 60.0,
+    "random_start": true
+  }
+}

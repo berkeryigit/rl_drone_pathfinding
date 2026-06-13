@@ -1,0 +1,36 @@
+# DQN — Fast2D Drone Keşif Ortamı
+# Tüm değerler sabitlenmiş sürümlerdir (== ile)
+
+env:
+  max_episode_steps: 600        # Episode başına maksimum adım
+  dt: 0.12                      # Simülasyon zaman adımı (s)
+  lidar_noise_std: 0.015        # Lidar gürültüsü std (m) → stokastik gözlem
+  odom_noise_std: 0.004         # Odometri gürültüsü std → POMDP koşulu
+  wind_std: 0.015               # Rüzgar gürültüsü std → stokastik geçiş
+  collision_penalty: -40.0      # Çarpışma cezası
+  all_rooms_bonus: 60.0         # Tüm odaları keşfetme bonusu
+  random_start: true            # Rastgele başlangıç → stokastik ortam
+
+dqn:
+  policy: "MlpPolicy"
+  learning_rate: 1.0e-4         # Adam optimizer öğrenme hızı
+  buffer_size: 100000           # Replay buffer büyüklüğü
+  learning_starts: 10000        # Bu kadar adımdan sonra eğitim başlar
+  batch_size: 64                # Mini-batch büyüklüğü
+  tau: 1.0                      # Hedef ağ güncelleme katsayısı (hard update)
+  gamma: 0.99                   # İndirim faktörü
+  train_freq: 4                 # Her N adımda bir güncelleme
+  gradient_steps: 1             # Her güncelleme başına gradient adımı
+  target_update_interval: 1000  # Hedef ağ güncelleme sıklığı (adım)
+  exploration_fraction: 0.15    # Epsilon decay'in eğitimin kaçta birinde bitmesi
+  exploration_initial_eps: 1.0  # Başlangıç epsilon (tam keşif)
+  exploration_final_eps: 0.05   # Minimum epsilon (sömürü ağırlıklı)
+  policy_kwargs:
+    net_arch: [256, 256]        # 2 gizli katman, 256 nöron
+
+train:
+  seed: 42                      # Varsayılan seed (run_all.sh ile ezer)
+  total_timesteps: 1000000      # Toplam eğitim adımı
+  save_freq: 100000             # Checkpoint kaydetme sıklığı
+  run_dir: "runs"               # Çıktı dizini kökü
+  resume_from: null             # Devam edilecek model (null = yeni başlat)
