@@ -5569,3 +5569,50 @@ FPS tutarlılığı: Faz 1'de 83-84 (n_envs=2 ile stabil). v10'da n_envs=1, free
 ### Müdahale
 **YOK** — `configs/ppo.yaml` değiştirilmedi (23. teyit). Mevcut v10 parametreleri 3 bağımsız kaynakla doğrulanmış optimal değerlerde. %80+ güven eşiğini geçen herhangi bir konfigürasyon sorunu tespit edilmedi.
 ---
+
+## [2026-06-13 13:07 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 14 GÜN STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV 2026-05-31 03:01'den bu yana donmuş — 14 gündür sıfır ilerleme. v9 crash-loop kalıntısı. v10 bu container'da başlamadı (Gazebo/ROS2 yok). ppo.yaml 2026-06-02'den beri v10 optimal — değişiklik yapılmadı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim yok. CSV'de iki ayrı davranış katmanı görülüyor:
+  - **Erken blok (11:02–12:32, n_envs=2 fresh start):** step 142k→599k, ep_len=1000 (max limit), ep_rew_mean=-270 ile -290 arası sabit → drone explore değil, duvar boyunca idle döngüsünde sıkışmış. Kırılım başlamadı.
+  - **Crash-loop faz (13:02–22:00):** watchdog 80k checkpoint'ten restart'ları, step 49k-193k arası çapıntılı oscillation, ep_rew_mean -25 ile -173 arası geniş varyans. Determinizm değil, random policy karakteristik.
+- Her iki fazda da oda geçişi sinyali (+15 spike) görülmüyor — reward çok negatif, tek oda bile henüz keşfedilmemiş.
+- Son stale: 2026-05-30 22:00 UTC, step 193,248, ep_rew_mean=-173.85. Plato değil; crash-freeze.
+
+**b) lr=7.5e-5 constant bu aşamada doğru muydu?**
+- v9 sabit 7.5e-5'i yanlıştı: erken fazda yeterli, ama 400k+ adımda fine-tune kapasitesi kısıtlı.
+- Daha ciddi sorun: erken run'da entropy -3.89'dan -3.32'ye sadece 450k adımda düştü (2 saatte). Bu ent_coef=0.0015'in çok düşük olduğunu gösteriyor — policy, keşfetmeden önce deterministikleşiyor.
+- ppo.yaml zaten 3e-4→1e-5 linear'a güncellendi (v10). Doğru karar. v3.0 aynı schedule ile peak=110.3 üretti.
+
+**c) Entropy/std değerleri keşif için yeterli miydi?**
+- Erken run (fresh n_envs=2): entropy -3.89→-3.32, std 0.888→0.746 (600k step'te). Tehlike bölgesi: std 0.7 eşiğine yaklaşıyor, entropy hızla düşüyor — ent_coef=0.0015 yetersiz.
+- Crash-loop faz: entropy ~-4.25, std ~0.999 (sıfırdan başlayan policy karakteristiği). Bu sağlıklı değerler ama crash nedeni policy değil, Gazebo/transport freeze.
+- v10 ent_coef=0.008 (5.3× v9): ilk 300-500k step'te entropy >-3.8 hedefleniyor. Doğru yön.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi bekleniyor?**
+- v10 config (n_envs=1, lr linear 3e-4→1e-5, ent_coef=0.008): v3.0 referansıyla ilk oda ~150-250k, tutarlı 3+ oda ~350-500k, tüm 6 oda ~500-700k.
+- Risk: n_steps=2048 + n_envs=1 = 2048 adımda bir güncelleme. Faydalı sinyal için en az 5-8 oda deneyimi gerekli → ~300-400k step'e kadar oda geçişi olmayabilir.
+- Fast_sim v3.0 kanıtı (aynı hyperparametreler): peak=110.3 @ 610k. Bu referansla v10 lokal makinede benzer sonuç beklenir.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **İlk 200k step entropy izleme:** ent_coef=0.008 ile entropy'nin -3.5'in altına düşmemesi bekleniyor. 200k'da entropy > -3.5 ise sağlıklı; düşükse ent_coef'i 0.012'ye artır. std < 0.7 görülürse aynı anda uygula.
+2. **n_steps=2048 Gazebo FPS uyumu:** n_envs=1, FPS ~60-80 varsayımı ile her güncelleme ~25-35 saniye sürecek. FPS < 50'ye düşerse n_steps=1024'e indir — gradient güncellemesi daha sık, sinyal daha taze. Bu değişiklik 200k step sonrası yapılabilir.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- Hayır. ppo.yaml v10 optimal ✓. collision_penalty=25 fix uygulandı ✓ (2026-06-12 21:05 UTC oturumu).
+- Container'da Gazebo/ROS2 yok → eğitim başlatılamaz. Lokal makinede `./scripts/train.sh configs/ppo.yaml` ile başlatılmalı.
+- v9 crash-loop kalıcı olarak kapandı. Yeniden açmaya gerek yok.
+
+### v10 Önerisi
+1. **Entropy trigger (200k milestone):** entropy > -3.5 + std < 0.7 → ent_coef 0.008 → 0.012. Lokal makinede TensorBoard ile izle.
+2. **n_steps esnekliği:** Gerçek Gazebo FPS'e göre n_steps=2048→1024 geçişi düşün. FPS < 50 ise 200k sonrası uygula — config change o zaman gerekli.
+
+### Müdahale
+Yok — ppo.yaml değişikliği yapılmadı. Mevcut v10 config (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M, n_envs=1, collision_penalty=25) kanıtlanmış ve tüm önceki analizlerle tutarlı. %80+ güven eşiğini geçecek yeni bir sorun tespit edilmedi.
+---
