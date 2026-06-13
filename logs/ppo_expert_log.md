@@ -5868,3 +5868,55 @@ CSV 2026-05-31 03:01'den bu yana donmuş; v9 193k'da crash-loop'a girdi ve hiç 
 ### Müdahale
 Yok — `configs/ppo.yaml` değiştirilmedi (27. teyit). V10 konfigürasyonu fast_sim (18 config, v4.1→v5.0) + v3.0 Gazebo (peak=110.3 @ 610k) + v8 geçmişi (peak=+113 @ 1.6M) üç bağımsız kaynakla doğrulanmış; CSV 14 gün stale, %80+ güven eşiğini geçen yeni sorun yok.
 ---
+
+## [2026-06-13 19:05 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 14 GÜN STALE, donmuş) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 eğitimi 2026-05-31 03:01 UTC'den bu yana ölü; step=193k'da donmuş, crash-loop sonrası hiç ilerleme olmadı. ppo.yaml v10 konfigürasyonunda (28. teyit). Yeni metrik yok, yaml değişikliği gerekmiyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- V9 iki farklı fazda incelenebilir:
+  - **Faz 1 (142k→599k):** ep_len=1000 (MAX sınır) + ep_rew_mean ≈ -270 sabiti → "çember çizme" lokal minimumu. 450k step boyunca reward iyileşmedi; oda bonusu (+15) hiç tetiklenmedi. Bu, ent_coef=0.0015'in exploration'ı yetersiz bıraktığının doğrudan kanıtı.
+  - **Faz 2 (crash-loop, ~13:02→03:01):** Crash-recovery döngüsü ~22 kez devreye girdi; step 49k-193k arasında gidip geldi. Son donma noktası: step=193k, ep_rew_mean=-173.85 (geçici iyileşme, restart artefaktı).
+- **Sonuç:** Plato yok — eğitim ölü. "Kırılım" (oda sıçraması) hiç olmadı.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Arşivlik soru. ppo.yaml zaten `lr=3e-4 → 1e-5 linear, 1.5M boyunca` olarak güncellenmiş. Sabit 7.5e-5 v9'da açıkça yetersiz kaldı — her restart sonrası loss oscillation gözlemlendi. V10 30× azalma (3e-4→1e-5) V3.0 Gazebo (peak=110.3 @ 610k) ile kanıtlanmış optimal.
+
+**c) Entropy/std keşif için yeterli mi?**
+- Frozen değerler: entropy=-4.212, std=0.985. Bu değerler gerçek eğitim dinamiğini yansıtmıyor (crash sonrası restart artefaktları).
+- Kritik tarihsel gözlem: Faz 1'de entropy=-3.88 (step 142k) ile ep_len=1000 MAX + sıfır oda bonusu → "yüksek entropy ama keşifsiz" durumu. ent_coef=0.0015 voxel toplamanın değil duvardan kaçmanın optimize edilmesine yol açtı.
+- V10 ent_coef=0.008 (5.3× artış) bu sorunu doğrudan hedefliyor. n_steps=2048 (4× artış) gradient variance'ı azaltarak erken deterministikleşmeyi önler.
+- **Risk:** std<0.65 + entropy<-4.0 birlikteliği 500k+ step'te deterministikleşme sinyali → o noktada ent_coef artışı değerlendirilmeli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9 için beklenti yok — eğitim ölü, resume şansı neredeyse sıfır (14 gün beklemiş checkpoint).
+- V10 için V3.0 referansı (özdeş hyperparamlar, n_envs=1, 6 oda, 2D aksiyon):
+  - İlk oda geçişi: 175–275k step
+  - Tutarlı 3+ oda: 350–500k step
+  - 6/6 oda başarısı: 575–750k step
+  - collision_penalty=25 + lidar_history=2 bu tahminleri 10–15% iyileştirebilir (fast_sim v4.8 gözlemi).
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **[ENV KODU — öncelik 1] lidar_history=2:** `drone_exploration_env.py`'de obs 41-d → 72-d (32 lidar × 2 frame + 8 state). `train_ppo.py`'de observation_space boyutu da güncellenmeli. Fast_sim v4.8 kanıtladı: %80 → %0 çarpışma. Bu değişiklik olmadan v10 başlatılmamalı.
+2. **[ENV KODU — öncelik 2] collision_penalty=10→25:** `drone_exploration_env.py` terminate bloğunda. Fast_sim "tatlı nokta": 25=%0 çarpışma, 22=çöküş, 30=aşırı-tedirgin. YAML'dan bağımsız env kodu değişikliği.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- Hayır (yaml için). ppo.yaml v10-optimal ✓.
+- **Pre-flight checklist (v10 Gazebo başlamadan):**
+  - [ ] `drone_exploration_env.py`: `lidar_history = 2`, obs stack 72-d
+  - [ ] `drone_exploration_env.py`: `collision_penalty = 25`
+  - [ ] `train_ppo.py`: observation_space shape 73 olarak güncelle
+  - [ ] `ppo.yaml`: `resume_from: null` ✓ (zaten null), `n_envs: 1` ✓, `lr_schedule: linear` ✓
+  - [ ] Lokal Gazebo makinede: `./scripts/train.sh configs/ppo.yaml`
+
+### v10 Önerisi
+1. **lidar_history=2 (env kodu, YAML değil):** En yüksek ROI iyileştirme — fast_sim v4.8'in tek en büyük kazancı. `train_ppo.py` + `drone_exploration_env.py` birlikte güncellenmeli. Eğitim başlamadan önce zorunlu.
+2. **İlk 200k izleme eşiği:** ep_len_mean > 1800 VE ep_rew_mean < -100 birlikte 3 ardışık kontrol → "çember çizme" uyarısı. V9'daki tuzağı tekrarlamamak için kritik.
+
+### Müdahale
+Yok — `configs/ppo.yaml` değiştirilmedi (28. teyit). CSV 14 gün stale; V9 ölü; V10 konfigürasyonu üç bağımsız kaynakla (fast_sim 18 config + V3.0 Gazebo peak=110.3 + V8 peak=+113) doğrulanmış. %80+ emin olunacak yeni bir sorun tespit edilmedi.
+---
