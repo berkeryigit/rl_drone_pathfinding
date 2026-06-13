@@ -5680,3 +5680,50 @@ FPS tutarlılığı: Faz 1'de 83-84 FPS stabil (n_envs=2). v10'da n_envs=1 + fre
 ### Müdahale
 Yok — `configs/ppo.yaml` değiştirilmedi (24. teyit). Mevcut v10 parametreleri 3 bağımsız kanıt kaynağıyla (v3.0 Gazebo, fast_sim zinciri, v8 geçmişi) doğrulanmış; %80+ güven eşiğini geçen yeni sorun tespit edilmedi.
 ---
+
+## [2026-06-13 15:05 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 13+ GÜNLÜK STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV 2026-05-31 03:01'den bu yana tamamen donmuş; son 25 satır aynı değerlerin tekrarı (watchdog crash_recovery döngüsü). v9 step 193k'da crash-loop'a girdi, hiç ilerlemedi. v10 bu container'da başlamadı — Gazebo Harmonic + ROS2 Jazzy yok. ppo.yaml 2026-06-02 itibarıyla v10 optimal konfigürasyonda; YAML değişikliğine gerek yok.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- v9 aktif değil. CSV kronolojiği: ilk 4 satır (step 142k-599k) erken v9 run'ından (11:02-12:32 UTC), crash öncesi; entropy -3.88'den -3.32'ye düşüyor, std 0.888→0.745, ep_len=1000 (max episode sınırına çarpıyor — drone oda geçişi yapamıyor).
+- Crash recovery sonrası restart: step 49k→83k arası en iyi performans: ep_rew_mean=-25.3 @ step 83k, ep_len=95 (çok kısa — büyük ihtimalle oda bonusu değil, ölüm sonrası reward). Bu değer aldatıcı: kısa episode + yüksek crash frequency = düşük ortalama değil, az step × daha az çarpışma. Gerçek keşif göstergesi değil.
+- Step 145k-149k: ep_rew_mean -37 ile -47 (biraz toparlanma). 193k: -173.85, ep_len=637 (crash azaldı, uzun episode ama reward negatif — zaman cezası + duvar cezası birikimi). Crash-loop başladı, daha fazla ilerleme yok.
+- **Sonuç: Kırılım yok, plato da yok — v9 erken fazda crash-loop ile terminate etti.**
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Soru artık geçersiz: ppo.yaml v10'a güncellenmiş (lr=3e-4, lr_schedule=linear, lr_final=1e-5, 1.5M boyunca). v9'un sabit 7.5e-5'i terk edildi, doğru karar.
+- V8 lineer decay (3e-4→3e-5, 10× azalma) ile karşılaştırılırsa, v10 schedule (3e-4→1e-5, 30× azalma) daha agresif fine-tune sağlar. v3.0 aynı schedule ile peak=110.3 @ 610k üretti — kanıtlanmış optimal.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut değerler 13 gün eski: entropy=-4.212, std=0.985. Bu değerler erken crash-loop anına ait. Yorumlama sınırlı.
+- v10 konfigürasyonunda ent_coef=0.008 (v9'un 0.0015'inin 5.3×'i). İlk 200k step'te entropy -3.2 ile -3.8 arası beklenir — sağlıklı keşif bölgesi.
+- v9 CSV başlangıcında (step 142k) entropy=-3.89 göstermişti, ep_len=1000 (max sınırında). Bu v10'a iyi referans: ent_coef düşük olsa bile erken fazda entropi yüksek kalabiliyor, ancak oda geçişi için yeterli exploration basıncı yok.
+- **v10 riski:** 400-700k arasında std<0.7 + entropy>-3.5 birlikte görülürse deterministikleşme uyarısı.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 aktif değil, tahmin v3.0 referansına dayanıyor (aynı hyperparamlar, n_envs=1, 6 oda, 2D action).
+- v3.0 (oda bonus +10, collision_penalty=10): ilk oda 150-250k, tutarlı 3+ oda 350-500k, tüm 6 oda 500-700k.
+- v10 farkları: collision_penalty=25 (duvar cezası arttı → daha temkinli drone → oda kapısından geçiş yavaşlayabilir), ent_coef=0.008 (daha fazla exploration → oda geçişi hızlanabilir). Net etki: tahmin aralığı değişmez, ±25k kayma.
+- **Beklenti: ilk oda keşfi 175-275k step arası, 6/6 oda 550-750k step arası.**
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **lidar_history=2 env kodu değişikliği:** `drone_exploration_env.py`'de obs 40→72-d (32×2 lidar + 8 diğer). fast_sim v4.2→v5.0 zinciri: %80→%1 çarpışma azalması. Bu olmadan v10 duvar yakınında suboptimal, collision_penalty=25 ile birleşince çok sık terminate → reward sinyali gürültülü. Bu *YAML dışı* bir değişiklik, eğitim başlatılmadan önce yapılmalı.
+2. **200k step erken durdurma kriteri:** ep_rew_mean < -50 ve ep_len < 150 ikisi birlikte 200k step'te hâlâ geçerliyse → ent_coef 0.008→0.015 (exploration basıncı artır). Tek bir kriter yetmez — kısa episode crash'dan da gelebilir.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- Hayır. ppo.yaml v10 optimal konfigürasyonunda ✓. collision_penalty=25 fix uygulandı ✓ (2026-06-02 öncesi). Watchdog crash_recovery döngüsü durdu (son kayıt 2026-05-31 03:01).
+- **Tek bloker:** Eğitim bu container'da çalışamaz. Lokal makinede (Gazebo Harmonic + ROS2 Jazzy mevcut ortamda) `./scripts/train.sh configs/ppo.yaml` ile başlatılmalı.
+- Not: interventions.jsonl'daki son kayıt (2026-06-01 01:30) v3.0 run'ı için milestone. v10 için henüz intervention kaydı yok — eğitim başlamadı.
+
+### v10 Önerisi
+1. **lidar_history=2** → `drone_exploration_env.py` obs stack, train_ppo._make_env güncellemesi. Eğitim başlatılmadan önce fast_sim üzerinde doğrula.
+2. **200k step checkpoint kontrolü:** ep_rew_mean < -50 **ve** ep_len < 150 → ent_coef 0.008→0.015; ilk oda yoksa frontier bonus 0.4→0.6. İkisi birden olmadan alarm verme.
+
+### Müdahale
+Yok — ppo.yaml zaten v10 optimal konfigürasyonunda (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M, n_envs=1). Değişiklik yapılmadı.
+---
