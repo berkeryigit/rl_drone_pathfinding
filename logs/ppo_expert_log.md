@@ -5383,3 +5383,47 @@ CSV 2026-05-31 03:01'den bu yana donmuş; bugün 04:03 UTC oturumundan bu yana d
 ### Müdahale
 Yok — ppo.yaml optimal durumda, %80+ eşiğini karşılayan config sorunu tespit edilmedi. Tüm önceki fix'ler (collision_penalty=25 @ 12 Haz 21:05 UTC) aktif. Bu oturumda YAML değişikliği yapılmadı.
 ---
+
+## [2026-06-13 10:05 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 13. GÜN STALE, v9 ölü) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 eğitimi 2026-05-31 03:01 UTC'den bu yana tamamen donmuş; bugün 10:05 UTC itibarıyla 13 gün, ~7 saat geçti. `configs/ppo.yaml` 2026-06-02'de v10'a geçirilmiş ve v3.0 Gazebo + 18 fast_sim config araştırmasıyla 20+ kez doğrulanmış. Bu container'da Gazebo/ROS2 yok; v10 eğitimi yalnızca fiziksel ortamda kullanıcı tarafından başlatılabilir.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- **Faz 1 (step 142k–599k, FPS=83–84):** ep_len_mean=1000 sabit → drone max episode'a çarptı ama keşif etmedi. ep_rew_mean -290→-270 yatay (negatif plato). std 0.888→0.745: 0.7 eşiğine 11k step kala monitor çökmeye başladı.
+- **Faz 2 (crash-loop, step 90k–193k):** 80k checkpoint'ten 20+ kez yanlış restart. ep_rew_mean -25↔-173 arası saçıldı, süreklilik yok.
+- **+15 oda sıçraması:** CSV'nin hiçbir noktasında görülmedi. v9, oda keşfine ulaşmadan monitor sabotajıyla sona erdi. Gerçek plato değil, erken ölüm.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- KICKOFF'taki "7.5e-5 constant" ifadesi gerçek YAML ile çelişiyordu; config 3e-4 linear decay içeriyordu. v10'a geçişle bu soru tamamen geçersiz.
+- Kanıt: v3.0 Gazebo `lr 3e-4→1e-5 linear, 1.5M` → peak=110.3@610k. Constant lr geç fazda value function kararsızlığı üretirdi. Mevcut `lr_schedule: linear, lr_final: 1e-5` kesinlikle doğru.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale v9 son değerleri: entropy=-4.212 (>-4.0 sınırı ✓ ama kıl payı), std=0.985 (>0.7 ✓). Bu veriler 13 gün öncesine ait; yorumu sınırlı.
+- Kritik bulgu: Faz 1'de std 0.888→0.745 gerçek deterministikleşme sinyaliydi. Eğer monitor restart etmeseydi std muhtemelen <0.7'ye düşerdi. ent_coef=0.0015 (v9) bu riski kontrol etmeye yetmedi.
+- v10'da ent_coef=0.008 (v9'un 5.3×'i) → başlangıç entropy ~-3.2→-3.8 arası beklenir. Erken deterministikleşme riski belirgin şekilde azaldı. Yine de 400-600k bandında std<0.7 + entropy>-3.5 birlikte tetiklenirse ent_coef 0.008→0.015 gerekir.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 eğitimi başlamadı → gerçek gözlem yok. Tahmin: n_steps=2048, n_envs=1, ~38 fps → ~50k step/saat.
+- v3.0 referansı: ilk oda ~200k step, 3+ oda ~400k, 5-6 oda ~500–700k.
+- v10 avantajları: `ent_coef=0.008` (v3.0'ın 0.005'inden %60 yüksek) + `collision_penalty=25` (erken terminate azaltır, uzun episode = daha fazla frontier gezimi) → ilk oda kırılımı 150–200k'ya çekilebilir.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **Monitor crash-loop düzeltmesi (BLOKER 1):** v9'u asıl öldüren hyperparameter değil, monitördü. Yeni monitörde `step sayısı arttı mı?` doğrulanmadan crash-recovery tetiklenmesin. Log-mtime yalnızca yardımcı kriter olmalı.
+2. **v10'u başlat (BLOKER 2):** `./scripts/train.sh configs/ppo.yaml` — YAML hazır, parametreler 20+ kez doğrulandı. lidar_history ve collision_penalty DEĞİŞTİRME.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml için HAYIR** (21. teyit). 3 bağımsız kaynak doğruladı: v3.0 Gazebo (peak=110.3@610k), 18 fast_sim config araştırması, v8 geçmişi.
+- **Env kodu için HAYIR:** collision_penalty=25 ✓ (12 Haz 21:05 UTC fix), lidar_history=1 ✓ (v5.0: h=2/3 voxel skoru −63%).
+- Bu container'da Gazebo/ROS2 yok; hiçbir eğitim başlatılamaz. Yapılacak tek şey kullanıcı tarafında fiziksel ortamda v10'u başlatmak.
+
+### v10 Önerisi
+1. **Monitor step-doğrulaması (birinci öncelik):** Recovery tetikleyiciye `mevcut_step > onceki_step` koşulu ekle; aksi hâlde v9'daki 80k crash-loop yeniden oluşur.
+2. **Direkt başlat:** `./scripts/train.sh configs/ppo.yaml` — v10 YAML tam hazır. 150-200k step sonrası ilk oda +15 spike bekleniyor.
+
+### Müdahale
+**YOK** — `configs/ppo.yaml` değiştirilmedi (21. teyit). v10 parametreleri kanıtlanmış optimal değerlerde. %80+ güven eşiğini geçen herhangi bir sorun tespit edilmedi.
+---
