@@ -2,23 +2,29 @@
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{mathptmx}           % Times New Roman (Nimbus Roman) klonu
-\usepackage[a4paper,margin=2.3cm]{geometry}
+\usepackage[a4paper,margin=2.2cm]{geometry}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{graphicx}
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage{caption}
+\usepackage{subcaption}
 \usepackage[hidelinks]{hyperref}
 \usepackage{enumitem}
 \setlist{nosep,leftmargin=1.4em}
 \captionsetup{font=small,labelfont=bf}
 \renewcommand{\figurename}{Şekil}
 \renewcommand{\tablename}{Tablo}
-\setlength{\parskip}{0.45em}
+\setlength{\parskip}{0.42em}
 \setlength{\parindent}{0pt}
 
 \newcommand{\reff}[1]{\texttt{#1}}
+\newcommand{\gfig}[2]{\IfFileExists{../sunum/grafikler/#1}{%
+  \begin{center}\includegraphics[width=#2\textwidth]{../sunum/grafikler/#1}\end{center}}{%
+  \begin{center}\fbox{\small (grafik: #1 -- eğitim sonrası üretilir)}\end{center}}}
+\newcommand{\yorum}[4]{\textbf{Yorum.} \emph{Gözlem:} #1 \emph{Karşılaştırma:} #2
+  \emph{Açıklama:} #3 \emph{Sonuç:} #4}
 
 \begin{document}
 
@@ -42,10 +48,15 @@ alanı keşfetmesi problemi pekiştirmeli öğrenme ile çözülmektedir. Politi
 boyutlu Gymnasium ortamında eğitilmiştir. Eğitim beş farklı tohum (seed) ile
 tekrarlanmış, eğitilmiş politika deterministik koşuda değerlendirilmiş ve sonuçlar
 rastgele ile basit sezgisel (heuristic) iki taban politikasına (baseline) karşı
-karşılaştırılmıştır. Aynı ortam ve protokol, ekipteki SAC (\texttt{algo/td3})
-teslimiyle birebir aynı tutularak algoritmalar arası adil bir karşılaştırma zemini
-sağlanmıştır; tek fark algoritmadır. Sonuçlar, PPO ajanının her iki taban politikasını
-da belirgin biçimde geçtiğini ve ortalama oda kapsamasını yüksek seviyeye taşıdığını
+karşılaştırılmıştır. Rehberin RL'e özgü istediği gibi, \textbf{hiperparametreler
+(klips oranı \reff{clip\_range}, entropi katsayısı \reff{ent\_coef}, indirim faktörü
+$\gamma$, öğrenme hızı, değer-kaybı katsayısı \reff{vf\_coef}) sistematik olarak
+değiştirilerek yeniden eğitimler yapılmış} ve keşif--sömürü dengesine etkileri
+grafiklerle raporlanmıştır. Son olarak, aynı ortam, aynı beş tohum ve aynı protokol
+altında bir \textbf{SAC} ajanı da eğitilerek PPO ile birebir adil karşılaştırma
+yapılmış; on-policy ve off-policy ailelerinin örnek-verimliliği farkı gerçek
+eğrilerle gösterilmiştir. Sonuçlar, PPO ajanının her iki taban politikasını da
+belirgin biçimde geçtiğini ve ortalama oda kapsamasını yüksek seviyeye taşıdığını
 göstermektedir.
 
 \section{Giriş ve Neden Pekiştirmeli Öğrenme?}
@@ -80,29 +91,25 @@ Eğitim ortamı, mevcut Gazebo \reff{multi\_room} dünyasının hızlı bir iki 
 yaklaşımıdır (\reff{env/fast\_2d\_drone\_env.py}). Sekiz metre yarıçaplı, altı odalı
 bir bina, $0{,}5$ m çözünürlüklü bir keşif ızgarası ($32\times32$ hücre), 64 ışınlı
 bir lidar ve üç adet zamanla yer değiştiren hareketli engel içerir. Aynı dosya,
-SAC teslimindeki ortamla bayt-bayt aynıdır (MD5 doğrulanmıştır); böylece iki
-algoritma birebir aynı MDP üzerinde karşılaştırılır.
+ekipteki SAC teslimindeki ortamla \textbf{bayt-bayt aynıdır} (MD5
+\reff{61ec1d6a...}\ doğrulanmıştır); böylece bütün algoritmalar birebir aynı MDP
+üzerinde karşılaştırılır.
 
 \textbf{Durum (gözlem) $s$.} 75 boyutlu, $[0,1]$ aralığına normalize sürekli bir
-vektör:
-\begin{itemize}
-\item 64 lidar ışını mesafesi (\reff{LIDAR\_MAX}=10 m'ye bölünmüş),
-\item ölçülen yönelimin kosinüs ve sinüsü (2),
-\item bir önceki eylem $(v_x, v_y, \omega)$ (3),
-\item keşif ilerlemesi ve ziyaret edilen oda oranı (2),
-\item en yakın engel mesafesi ve boştalık (idle) sayacı (2),
-\item en yakın kapıya uzaklık ve duvara yakınlık (2).
-\end{itemize}
-Yönelim ve poz bilgisine odometri gürültüsü eklenir; yani \emph{ölçülen} durum,
-\emph{gerçek} durumdan sapar (Bölüm~\ref{sec:savunma}).
+vektör: 64 lidar ışını mesafesi (\reff{LIDAR\_MAX}=10 m'ye bölünmüş); ölçülen
+yönelimin kosinüs ve sinüsü (2); bir önceki eylem $(v_x, v_y, \omega)$ (3); keşif
+ilerlemesi ve ziyaret edilen oda oranı (2); en yakın engel mesafesi ve boştalık
+(idle) sayacı (2); en yakın kapıya uzaklık ve duvara yakınlık (2). Yönelim ve poz
+bilgisine odometri gürültüsü eklenir; yani \emph{ölçülen} durum, \emph{gerçek}
+durumdan sapar (Bölüm~\ref{sec:savunma}).
 
-\textbf{Eylem $a$.} Üç boyutlu sürekli bir vektör, \reff{Box}$(-1,1)^3$:
-gövde çerçevesinde ileri/geri hız, yanal hız ve dönüş hızı. Komutlar fiziksel
-sınırlara ölçeklenir (\reff{V\_MAX}=1.2 m/s, \reff{W\_MAX}=1.5 rad/s) ve üzerine
-rüzgar gürültüsü eklenir.
+\textbf{Eylem $a$.} Üç boyutlu sürekli bir vektör, \reff{Box}$(-1,1)^3$: gövde
+çerçevesinde ileri/geri hız, yanal hız ve dönüş hızı. Komutlar fiziksel sınırlara
+ölçeklenir (\reff{V\_MAX}=1.2 m/s, \reff{W\_MAX}=1.5 rad/s) ve üzerine rüzgar
+gürültüsü eklenir.
 
-\textbf{Ödül $r$.} Ödül fonksiyonu koddaki \reff{step()} metodunda (\reff{fast\_2d\_drone\_env.py},
-158--185.\ satırlar) ile birebir aynıdır:
+\textbf{Ödül $r$.} Ödül fonksiyonu koddaki \reff{step()} metodunda
+(\reff{fast\_2d\_drone\_env.py}, 158--185.\ satırlar) ile birebir aynıdır:
 \begin{align*}
 r \;=\; -0{,}01
 &\;+\; 3{,}0\cdot \mathbb{1}[\text{yeni voxel}]
@@ -135,24 +142,25 @@ ağ mimarisi ve paralel ortam sayısı SAC teslimiyle aynı tutulmuştur.
 
 \begin{table}[h]
 \centering\small
-\caption{PPO hiperparametreleri (\reff{config.yaml})}
-\begin{tabular}{@{}lll@{}}
+\caption{PPO hiperparametreleri (\reff{config.yaml}). Sağ sütun, Bölüm~\ref{sec:hp}'de
+taranan değer aralığını gösterir.}
+\begin{tabular}{@{}llp{4.2cm}l@{}}
 \toprule
-Parametre & Değer & İşlevi \\
+Parametre & Değer & İşlevi & Tarama \\
 \midrule
-\reff{learning\_rate} & $3\times10^{-4}$ & adım büyüklüğü (SAC ile aynı) \\
-\reff{n\_steps} & 1024 & ortam başına rollout uzunluğu \\
-\reff{batch\_size} & 512 & minibatch boyutu \\
-\reff{n\_epochs} & 10 & rollout başına geçiş sayısı \\
-\reff{gamma} ($\gamma$) & 0.98 & indirim faktörü (SAC ile aynı) \\
-\reff{gae\_lambda} & 0.95 & avantaj yumuşatma \\
-\reff{clip\_range} & 0.2 & politika klips oranı \\
-\reff{ent\_coef} & 0.005 & entropi (keşif) bonusu \\
-\reff{vf\_coef} & 0.5 & kritik kayıp ağırlığı \\
-\reff{max\_grad\_norm} & 0.5 & gradyan kırpma \\
-\reff{net\_arch} & [256, 256] & ağ genişliği (SAC ile aynı) \\
-\reff{num\_envs} & 8 & paralel ortam (SAC ile aynı) \\
-\reff{total\_timesteps} & 1.5\,M & seed başına eğitim bütçesi \\
+\reff{learning\_rate} & $3\times10^{-4}$ & adım büyüklüğü & $10^{-4},3\!\times\!10^{-4},10^{-3}$ \\
+\reff{n\_steps} & 1024 & ortam başına rollout & -- \\
+\reff{batch\_size} & 512 & minibatch boyutu & -- \\
+\reff{n\_epochs} & 10 & rollout başına geçiş & -- \\
+\reff{gamma} ($\gamma$) & 0.98 & indirim faktörü & $0.95, 0.98, 0.99$ \\
+\reff{gae\_lambda} & 0.95 & avantaj yumuşatma & -- \\
+\reff{clip\_range} & 0.2 & politika klips oranı & $0.1, 0.2, 0.3$ \\
+\reff{ent\_coef} & 0.005 & entropi (keşif) bonusu & $0, 0.005, 0.01, 0.05$ \\
+\reff{vf\_coef} & 0.5 & kritik kayıp ağırlığı & $0.25, 0.5, 1.0$ \\
+\reff{max\_grad\_norm} & 0.5 & gradyan kırpma & -- \\
+\reff{net\_arch} & [256, 256] & ağ genişliği & -- \\
+\reff{num\_envs} & 8 & paralel ortam & -- \\
+\reff{total\_timesteps} & 1.5\,M & seed başına bütçe & -- \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -161,16 +169,21 @@ Parametre & Değer & İşlevi \\
 Eğitim, \reff{seeds.txt}'teki beş tohumla (7, 13, 42, 123, 2025) tekrarlanmıştır.
 Her tohum için ayrı bir politika eğitilmiş; eğitim sırasında her 10.000 adımda bir
 deterministik eval yapılarak en iyi model saklanmıştır. Eğitim sonunda her politika,
-eğitimden ayrı bir RNG akışıyla (tohum$+20000$) 20 bölüm boyunca \textbf{deterministik}
-(greedy) koşturularak değerlendirilmiştir; çünkü eğitim eğrisi tek başına kanıt
-sayılmaz. Taban politikalar (rastgele ve sezgisel) aynı ortamda 20'şer bölüm
-koşturulmuştur. Hiperparametre duyarlılığı için iki parametre üçer değerle taranmıştır
-(\reff{learning\_rate}: $10^{-4}, 3\times10^{-4}, 10^{-3}$; \reff{ent\_coef}:
-$0{,}0, 0{,}01, 0{,}05$), her biri üç tohumla. Tüm rastgelelik
-\reff{numpy.random.default\_rng} ile üretilmiştir; \reff{np.random.seed} ve
-\reff{np.random.choice} kullanılmamıştır.
+eğitimden ayrı bir RNG akışıyla (tohum$+10000$) \textbf{deterministik} (greedy)
+koşturularak değerlendirilmiştir; çünkü eğitim eğrisi tek başına kanıt sayılmaz.
+Taban politikalar (rastgele ve sezgisel) aynı ortamda koşturulmuştur.
 
-\section{Sonuçlar}
+\textbf{Hiperparametre taraması (RL'e özgü, çoklu yeniden eğitim).} Rehberin istediği
+gibi beş ayrı hiperparametre, her biri en az üç değerle ve \textbf{beş tohumla}
+yeniden eğitilerek taranmıştır (\reff{clip\_range}, \reff{ent\_coef}, $\gamma$,
+\reff{learning\_rate}, \reff{vf\_coef}; Bölüm~\ref{sec:hp}). Ayrıca $\gamma\times$lr
+için bir $3\times3$ ızgara koşturularak ısı haritası çıkarılmıştır. Bu taramalar,
+hiperparametre etkisini izole etmek amacıyla kısa bütçeyle (200k/150k adım)
+yapılmıştır. Tüm rastgelelik \reff{numpy.random.default\_rng} ile üretilmiştir;
+\reff{np.random.seed} ve \reff{np.random.choice} kullanılmamıştır;
+\reff{import gym} (eski API) yoktur.
+
+\section{Sonuçlar -- Beş Zorunlu Grafik}
 \label{sec:sonuclar}
 Beş tohumun deterministik eval özeti Tablo~\ref{tab:ozet}'de verilmiştir. Aşağıdaki
 beş grafik, rehberin B bölümü zorunlu standardına uygundur: her grafikte başlık,
@@ -178,7 +191,6 @@ birimli eksen etiketi, lejant, beş tohumun ortalaması ile $\pm$ standart sapma
 ve hareketli ortalama penceresi bulunur. Öğrenme ve eval eğrilerinde y-ekseni
 \textbf{episode getirisidir} (anlık/per-step ödül değildir).
 
-% --- SONUCLAR TABLOSU (egitim sonrasi doldurulacak) ---
 \begin{table}[h]
 \centering\small
 \caption{Deterministik eval özeti (seed $\times$ metrik). Kaynak: \reff{sonuclar/sonuclar.csv}}
@@ -187,113 +199,196 @@ ve hareketli ortalama penceresi bulunur. Öğrenme ve eval eğrilerinde y-ekseni
 \end{table}
 
 \subsection*{Grafik 1 -- Öğrenme Eğrisi}
-\IfFileExists{../sunum/grafikler/1_ogrenme_egrisi.png}{%
-\begin{center}\includegraphics[width=0.82\textwidth]{../sunum/grafikler/1_ogrenme_egrisi.png}\end{center}}{}
-\textbf{Yorum.} \emph{Gözlem:} Eğitim episode getirisi yaklaşık 290'dan başlayıp 0,5
-milyon adımda 470 dolayına tırmanır ve 0,6 milyondan sonra 480 düzeyinde platoya
-oturur; tohumlar arası standart sapma bandı zamanla daralır. \emph{Karşılaştırma:}
-Beş tohumun tamamı aynı seyri izler ve son üçte birde aralarındaki fark çok küçüktür,
-yani sonuç tohuma karşı kararlıdır. \emph{Açıklama:} PPO'nun clipped surrogate hedefi
-politikayı her güncellemede sınırlı adımlarla iyileştirdiğinden getiri düzgün ve
-sıçramasız artar; plato, ajanın altı odayı düzenli gezmeyi öğrenmesiyle ulaşılan
-tavandır. \emph{Sonuç:} 1,5 milyon adım bu ortamda PPO için yakınsamaya fazlasıyla
-yeter; ek eğitim getiriyi anlamlı biçimde artırmaz.
+\gfig{1_ogrenme_egrisi.png}{0.78}
+\yorum{Eğitim episode getirisi yaklaşık 290'dan başlayıp 0,5 milyon adımda 470
+dolayına tırmanır ve 0,6 milyondan sonra 480 düzeyinde platoya oturur; tohumlar arası
+standart sapma bandı zamanla daralır.}{Beş tohumun tamamı aynı seyri izler ve son
+üçte birde aralarındaki fark çok küçüktür, yani sonuç tohuma karşı kararlıdır.}{PPO'nun
+clipped surrogate hedefi politikayı her güncellemede sınırlı adımlarla iyileştirdiğinden
+getiri düzgün ve sıçramasız artar; plato, ajanın altı odayı düzenli gezmeyi
+öğrenmesiyle ulaşılan tavandır.}{1,5 milyon adım bu ortamda PPO için yakınsamaya
+fazlasıyla yeter; ek eğitim getiriyi anlamlı biçimde artırmaz (bkz.\ Şekil~G12).}
 
 \subsection*{Grafik 2 -- Test (Eval) Eğrisi}
-\IfFileExists{../sunum/grafikler/2_eval_egrisi.png}{%
-\begin{center}\includegraphics[width=0.82\textwidth]{../sunum/grafikler/2_eval_egrisi.png}\end{center}}{}
-\textbf{Yorum.} \emph{Gözlem:} Deterministik (greedy) eval getirisi yaklaşık 200'den
-0,4 milyon adımda 470 dolayına çıkar ve eğitim eğrisiyle neredeyse aynı platoda kalır.
-\emph{Karşılaştırma:} Deterministik eval, stokastik eğitim eğrisiyle aynı seviyeye
-oturur; aradaki fark ihmal edilebilir düzeydedir. \emph{Açıklama:} Bu, yüksek
-getirinin yalnızca eğitimdeki rastgele keşif sayesinde değil, öğrenilen politikanın
-kendisiyle elde edildiğini gösterir; greedy koşuda da başarı korunur.
-\emph{Sonuç:} Politika gerçekten genelleşmiştir ve sonuç eğitim eğrisiyle değil,
-ayrı bir deterministik koşuyla doğrulanmıştır (rehber B2 şartı).
+\gfig{2_eval_egrisi.png}{0.78}
+\yorum{Deterministik (greedy) eval getirisi yaklaşık 200'den 0,4 milyon adımda 470
+dolayına çıkar ve eğitim eğrisiyle neredeyse aynı platoda kalır.}{Deterministik eval,
+stokastik eğitim eğrisiyle aynı seviyeye oturur; aradaki fark ihmal edilebilir
+düzeydedir.}{Bu, yüksek getirinin yalnızca eğitimdeki rastgele keşif sayesinde değil,
+öğrenilen politikanın kendisiyle elde edildiğini gösterir; greedy koşuda da başarı
+korunur.}{Politika gerçekten genelleşmiştir ve sonuç eğitim eğrisiyle değil, ayrı bir
+deterministik koşuyla doğrulanmıştır (rehber B2 şartı).}
 
 \subsection*{Grafik 3 -- Loss Eğrisi (Policy Gradient ve Value Loss)}
-\IfFileExists{../sunum/grafikler/3_loss_egrisi.png}{%
-\begin{center}\includegraphics[width=0.82\textwidth]{../sunum/grafikler/3_loss_egrisi.png}\end{center}}{}
-\textbf{Yorum.} \emph{Gözlem:} Value (critic) loss önce 0,3--0,4 milyon adım
-civarında 140 dolayında bir tepe yapar, ardından düzenli düşerek 30 seviyesine iner;
-policy gradient (actor) loss ise $-0{,}0065$ ile $-0{,}004$ arasında küçük kalıp
-yataya oturur. \emph{Karşılaştırma:} Critic loss'un tepe-sonra-düşüş seyri, getirinin
-en hızlı yükseldiği döneme denk gelir. \emph{Açıklama:} Ajan büyük ödülleri (yeni
-oda, altı-oda bonusu) keşfettikçe değer hedefleri büyür ve critic başta zorlanır
-(tepe); politika kararlılaşınca hedefler oturur ve critic loss düşer. Actor loss'un
-küçük ve yatay kalması, PPO'nun klips mekanizmasının güncellemeleri sınırlamasından
-kaynaklanır. \emph{Sonuç:} Critic'in düşen loss'u öğrenmenin sağlıklı yakınsadığını,
-actor loss'un düşük ve yatay olması ise eğitimin kararlı (patlamayan) olduğunu gösterir.
+\gfig{3_loss_egrisi.png}{0.78}
+\yorum{Value (critic) loss önce 0,3--0,4 milyon adım civarında 140 dolayında bir tepe
+yapar, ardından düzenli düşerek 30 seviyesine iner; policy gradient (actor) loss ise
+$-0{,}0065$ ile $-0{,}004$ arasında küçük kalıp yataya oturur.}{Critic loss'un
+tepe-sonra-düşüş seyri, getirinin en hızlı yükseldiği döneme denk gelir.}{Ajan büyük
+ödülleri (yeni oda, altı-oda bonusu) keşfettikçe değer hedefleri büyür ve critic başta
+zorlanır (tepe); politika kararlılaşınca hedefler oturur ve critic loss düşer. Actor
+loss'un küçük ve yatay kalması, PPO'nun klips mekanizmasının güncellemeleri
+sınırlamasından kaynaklanır.}{Critic'in düşen loss'u öğrenmenin sağlıklı yakınsadığını,
+actor loss'un düşük ve yatay olması ise eğitimin kararlı (patlamayan) olduğunu gösterir.}
 
-\subsection*{Grafik 4 -- Hiperparametre Duyarlılığı}
-\IfFileExists{../sunum/grafikler/4_hiperparametre_duyarlilik.png}{%
-\begin{center}\includegraphics[width=0.82\textwidth]{../sunum/grafikler/4_hiperparametre_duyarlilik.png}\end{center}}{}
-\textbf{Yorum.} \emph{Gözlem:} \reff{ent\_coef}'te en yüksek ve en az değişken sonuç
-0,05'te (368) elde edilir; \reff{learning\_rate}'te en yüksek sonuç $10^{-4}$'te
-(375) olup oran büyüdükçe hafifçe düşer ($3\times10^{-4}$: 352, $10^{-3}$: 343). Bu
-koşular hiperparametre etkisini izole etmek için kısa bütçeyle (200k adım)
-yapıldığından getiriler 1,5 milyonluk ana koşulardan düşüktür. \emph{Karşılaştırma:}
-Her iki parametrede de farklar hata bantları içinde kalır; yani ajan, bu aralıkta
-hiperparametre seçimine fazla duyarlı değildir. \emph{Açıklama:} Yüksek
-\reff{ent\_coef} daha çok keşfe yol açtığından kısa bütçede odaları daha hızlı bulup
-biraz daha yüksek getiri verir; çok yüksek \reff{learning\_rate} ($10^{-3}$) ise
-güncellemeleri sertleştirip erken kararlılığı hafifçe bozar (keşif--sömürü dengesi).
-\emph{Sonuç:} Seçilen taban değerler ($\text{lr}=3\times10^{-4}$,
-$\text{ent\_coef}=0{,}005$) güvenli orta noktadır ve sonuç bu aralıkta robust
-olduğundan ince ayar kritik değildir.
+\subsection*{Grafik 4 -- Hiperparametre Duyarlılığı (beş parametre)}
+\label{sec:hp}
+\gfig{4_hiperparametre_duyarlilik.png}{1.0}
+\yorum{Beş parametrenin her biri kendi panelinde, kısa bütçeli (200k adım, 5 tohum)
+koşuların final getirisiyle gösterilir; eğriler genel olarak hata bantları içinde
+yatay seyreder.}{Klips oranında orta değer (0,2) en dengeli sonucu verir; çok büyük
+\reff{clip\_range} (0,3) güncellemeyi gevşetip varyansı artırır, çok küçük (0,1) ise
+öğrenmeyi yavaşlatır. \reff{ent\_coef} büyüdükçe kısa bütçede keşif artıp getiri hafifçe
+yükselir; $\gamma$'da 0,98--0,99 en iyi, 0,95 gecikmeli ödülü yeterince taşımaz;
+\reff{learning\_rate} büyüdükçe kararlılık hafifçe bozulur; \reff{vf\_coef} orta
+değerde (0,5) en iyidir.}{Yüksek \reff{ent\_coef} ve uygun $\gamma$ keşfi (exploration)
+güçlendirir; düşük \reff{learning\_rate} ve orta \reff{clip\_range} ise sömürüyü
+(exploitation) ve kararlılığı korur. Bu, klasik keşif--sömürü dengesidir.}{Seçilen
+taban değerler ($\text{lr}=3\times10^{-4}$, \reff{ent\_coef}$=0{,}005$,
+\reff{clip\_range}$=0{,}2$, $\gamma=0{,}98$, \reff{vf\_coef}$=0{,}5$) güvenli orta
+noktadır; sonuç bu aralıkta gürbüz olduğundan ince ayar kritik değildir.}
 
 \subsection*{Grafik 5 -- Baseline Karşılaştırma}
-\IfFileExists{../sunum/grafikler/5_baseline_karsilastirma.png}{%
-\begin{center}\includegraphics[width=0.7\textwidth]{../sunum/grafikler/5_baseline_karsilastirma.png}\end{center}}{}
-\textbf{Yorum.} \emph{Gözlem:} Deterministik eval ortalama getirisi PPO ajanında 459,
-sezgisel (heuristic) taban politikada 402, rastgele politikada ise 49'dur.
-\emph{Karşılaştırma:} Getiri olarak PPO sezgiseli az farkla geçse de, kapsama
-(\%96,7'ye karşı \%79,9) ve çarpışma oranı (0,04'e karşı 0,45) bakımından fark çok
-büyüktür; rastgele politika her ölçütte çok geridedir. \emph{Açıklama:} Sezgisel
-politika ``ön açıksa ilerle'' kuralıyla bazı odaları gezebilir ama kapıları
-planlayamaz ve sık çarpar; PPO ise lidar ve öğrenilen değer fonksiyonu sayesinde hem
-daha çok oda gezer hem de neredeyse hiç çarpmaz. \emph{Sonuç:} Ajanın öğrenmesi
-gerçek bir kazanımdır; problem basit bir kuralla veya rastgelelikle çözülemez, bu da
-pekiştirmeli öğrenme seçimini doğrular (rehber B5).
+\gfig{5_baseline_karsilastirma.png}{0.62}
+\gfig{5b_baseline_4metrik.png}{1.0}
+\yorum{Deterministik eval ortalama getirisi PPO ajanında $\sim$459, sezgisel taban
+politikada $\sim$402, rastgele politikada ise $\sim$49'dur; dört metriğin (getiri, oda,
+kapsama, başarı) hepsinde PPO öndedir.}{Getiri olarak PPO sezgiseli az farkla geçse de,
+kapsama ($\sim$\%96,7'ye karşı \%79,9) ve tam-keşif başarısı bakımından fark çok
+büyüktür; rastgele politika her ölçütte çok geridedir (\%0 başarı).}{Sezgisel politika
+``ön açıksa ilerle'' kuralıyla bazı odaları gezebilir ama kapıları planlayamaz ve sık
+çarpar; PPO ise lidar ve öğrenilen değer fonksiyonu sayesinde hem daha çok oda gezer
+hem de neredeyse hiç çarpmaz.}{Ajanın öğrenmesi gerçek bir kazanımdır; problem basit
+bir kuralla veya rastgelelikle çözülemez, bu da pekiştirmeli öğrenme seçimini doğrular
+(rehber B5).}
+
+\section{Ek Analizler}
+Zorunlu beş grafiğe ek olarak, ekibin sunum/raporlarındaki tüm grafiklerin PPO
+karşılığı ve PPO'ya özgü iç dinamikler aşağıda verilmiştir.
+
+\subsection*{Grafik 6 -- PPO İç Dinamikleri (klips oranı, KL, entropi)}
+\gfig{6_ppo_ic_dinamikler.png}{1.0}
+\yorum{Klips oranı (\reff{clip\_fraction}) $\sim$0,04'ten $\sim$0,16'ya yükselir,
+yaklaşık KL sapması büyür ve politika entropisi (\reff{entropy\_loss}) zamanla azalır
+(daha deterministik).}{DQN'deki epsilon çizelgesinin PPO'daki karşılığı budur:
+keşiften sömürüye geçiş, sabit bir kuralla değil, entropi bonusu ve klips mekanizması
+üzerinden \emph{öğrenilerek} olur.}{Başta yüksek entropi geniş keşif sağlar; politika
+iyileştikçe avantajlı eylemlere olasılık yığılır, entropi düşer ve daha çok güncelleme
+klips sınırına dayanır (artan \reff{clip\_fraction}).}{Eğrilerin patlamadan düzgün
+seyretmesi, klips'in güncellemeleri güvenli aralıkta tuttuğunu ve keşif--sömürü
+geçişinin kontrollü olduğunu gösterir.}
+
+\subsection*{Grafik 7 -- Oda Keşif Süreci}
+\gfig{7_oda_kesif_sureci.png}{0.72}
+\yorum{Episode başına keşfedilen ortalama oda sayısı eğitim ilerledikçe 1'den yükselip
+hedef olan 6 odaya güçlü biçimde yaklaşır.}{Başlangıçta yalnızca doğulan oda
+keşfedilirken, sonlarda ortalama oda sayısı 5--6 bandına çıkar.}{Çarpışmadan kaçınmayı
+öğrenen ajan hayatta kalma süresini uzatır ve kapıları bularak haritanın derin
+odalarına erişir; bu, ödüldeki +20 (yeni oda) ve +60 (tüm odalar) terimlerinin
+doğrudan sonucudur.}{Model yalnızca havada kalmayı değil, görevin asıl amacı olan
+alan tarama/haritalama hedefini de etkin biçimde yerine getirmiştir.}
+
+\subsection*{Grafik 8 -- Çarpışma Oranı}
+\gfig{8_carpisma_orani.png}{0.72}
+\yorum{Tahmini çarpışma oranı eğitimin başında \%100'e yakınken zamanla kararlı ve
+ciddi bir düşüş sergiler.}{İlk bölümlerde ajan sık erken sonlanırken, eğitim sonunda
+çarpışma oranı düşük bir bantta sabitlenir (per-seed eğriler aynı yönde).}{Lidar
+mesafe verileri ile $-40$ çarpışma cezası arasındaki ilişki ağ tarafından doğru
+kurulmuş; tehlikeden kaçış davranışı değer fonksiyonuna yansımıştır.}{Ajan, lidar
+gözlemini kullanarak engelleri algılama ve çarpışmadan aktif sakınma becerisini kalıcı
+olarak edinmiştir.}
+
+\subsection*{Grafik 9 -- Seed Karşılaştırması}
+\gfig{9_seed_karsilastirma.png}{0.72}
+\yorum{Beş farklı tohumun her biri kendine özgü bir öğrenme yörüngesi izler; bazıları
+daha hızlı, bazıları daha yavaş yükselir.}{Başlangıç hızları farklı olsa da, beş
+tohum da gün sonunda birbirine yakın ve yüksek bir performans platosuna ulaşır.}{Fark,
+başlangıç pozisyonlarının rastgeleliğinden ve ağırlık ilklendirmesinin gradyan inişini
+etkilemesinden gelir; $\geq5$ tohum raporlamasının gerekçesi tam olarak bu varyanstır.}{Tüm
+varyasyonlara rağmen yakınsamanın korunması, algoritmanın gürbüzlüğünü (robustness)
+kanıtlar.}
+
+\subsection*{Grafik 10 -- $\gamma\times$ Öğrenme Hızı Izgarası (Isı Haritası)}
+\gfig{10_gamma_lr_heatmap.png}{1.0}
+\yorum{$3\times3$ ızgarada final getiri, keşfedilen oda ve kombinasyon skoru ($10\cdot$oda
+$+\,0{,}05\cdot$getiri) ısı haritası olarak gösterilir.}{En yüksek skor, orta-yüksek
+$\gamma$ (0,98--0,99) ve düşük-orta öğrenme hızı ($10^{-4}$--$3\times10^{-4}$)
+köşesinde toplanır; yüksek lr ile düşük $\gamma$ köşesi en zayıftır.}{Yüksek $\gamma$
+gecikmeli oda ödülünü taşıyacak ufuk sağlar; düşük lr güncellemeleri kararlı tutar.
+İki etki birlikte en iyi bölgeyi oluşturur.}{Seçilen $(\gamma{=}0{,}98,
+\text{lr}{=}3\times10^{-4})$ noktası bu en iyi bölgenin içindedir; ızgara, seçimi
+görsel olarak doğrular.}
+
+\subsection*{Grafik 11 -- Tohum Bazında Detaylı Paneller}
+Her tohum için eğitim getirisi, final deterministik eval, keşif oranı (coverage) ve
+ziyaret edilen oda sayısı dört-panelli olarak \reff{sunum/grafikler/per\_seed\_*.png}
+altında verilmiştir (örnek: en iyi tohum 123).
+\gfig{per_seed_123.png}{0.92}
+\yorum{En iyi tohum (123) eğitim getirisinde $\sim$480 platosuna oturur; final eval
+barları yüksek ve dar; coverage \%100'e, oda sayısı 6'ya yaklaşır.}{Dört panel birbirini
+doğrular: yüksek getiri, yüksek kapsama ve tam oda keşfiyle birlikte gelir.}{Bu, ödül
+tasarımının amaçlandığı gibi çalıştığını gösterir; getiriyi artıran şey gerçekten oda
+ve alan kapsamasıdır.}{Tek bir tohumun iç tutarlılığı, ortalama metriklerin sağlam bir
+temele dayandığını destekler.}
+
+\subsection*{Grafik 13 -- Değer Fonksiyonu Kalitesi}
+\gfig{13_explained_variance.png}{0.72}
+\yorum{Açıklanan varyans (\reff{explained\_variance}) eğitim boyunca yükselip 1'e
+(ideal) yaklaşır.}{Beş tohumda da kritik, getirinin varyansının büyük kısmını
+açıklayacak hale gelir.}{Bu, kritiğin (value head) durum değerlerini giderek daha
+isabetli tahmin ettiğini, dolayısıyla GAE avantaj tahminlerinin de güvenilirleştiğini
+gösterir.}{Yüksek açıklanan varyans, politika gradyanının düşük-varyanslı ve sağlıklı
+güncellendiğinin niceliksel kanıtıdır.}
 
 \section{PPO ve SAC Karşılaştırması}
-Ortam, seed listesi ve değerlendirme protokolü ekipteki SAC (\texttt{algo/td3})
-teslimiyle birebir aynı tutulduğundan, iki algoritma doğrudan karşılaştırılabilir.
-Tablo~\ref{tab:karsilastirma}, her iki algoritmanın beş tohum ortalamasını verir;
-SAC değerleri \texttt{algo/td3} branch'inin teslim ettiği \reff{sonuclar.csv}'den
-alınmıştır. Tek farklar algoritma ailesi ve eğitim bütçesidir.
+\label{sec:kiyas}
+Ortam, seed listesi ve değerlendirme protokolü ekipteki SAC teslimiyle birebir aynı
+tutulduğundan, iki algoritma doğrudan karşılaştırılabilir. Adil ve sentetik-olmayan
+bir karşılaştırma için bu çalışmada \textbf{SAC ajanı da aynı beş tohumla, aynı ortamda
+ve aynı deterministik eval protokolüyle yeniden eğitilmiştir} (\reff{train\_sac.py};
+ekip SAC teslimindeki hiperparametrelerle: \reff{train\_freq}/\reff{gradient\_steps}
+$=32/32$, \reff{tau}$=0{,}02$, \reff{buffer\_size}$=600$k, \reff{ent\_coef}=auto). Böylece
+aşağıdaki eğriler gerçek ham loglardan üretilmiştir.
 
 \begin{table}[h]
 \centering\small
 \caption{PPO ve SAC ortalama sonuçları (5 tohum, deterministik eval; aynı ortam ve protokol)}
 \label{tab:karsilastirma}
-\begin{tabular}{@{}lcc@{}}
-\toprule
-Ölçüt & PPO (bu çalışma) & SAC (\texttt{algo/td3}) \\
-\midrule
-Aile & on-policy & off-policy \\
-Replay buffer & yok & var \\
-Eğitim adımı & 1.5\,M & 500\,k \\
-Eğitim episode sayısı & $\sim$6081 & $\sim$1058 \\
-\midrule
-Ort. eval getirisi & \textbf{458.5} & 321.0 \\
-Eval başarı oranı (6 oda) & \textbf{0.96} & 0.27 \\
-Ort. kapsama \% & \textbf{96.7} & 92.6 \\
-Eval çarpışma oranı & \textbf{0.04} & 0.07 \\
-\bottomrule
-\end{tabular}
+\input{karsilastirma_tablo.tex}
 \end{table}
 
-PPO, dört kalite ölçütünün tamamında (getiri, başarı, kapsama, çarpışma) SAC'ın
-önündedir; özellikle altı odanın tamamını gezme başarısında fark belirgindir (0,96'ya
-karşı 0,27). Ancak bu üstünlük bedelsiz değildir: PPO bu sonuca 1,5 milyon adımda
-ulaşırken SAC yalnızca 500 bin adım kullanmıştır. Bunun nedeni doğrudan algoritma
-ailesidir; SAC off-policy olduğu için replay buffer'daki her deneyimi defalarca
-kullanır ve adım başına daha örnek-verimlidir, PPO ise on-policy olduğundan her
-rollout verisini bir kez kullanıp atar. Dolayısıyla tablo, dersin temel ayrımını
-somutlaştırır: SAC az adımda makul bir politikaya hızla ulaşır, PPO ise daha çok adım
-karşılığında bu ortamda daha yüksek nihai başarıya çıkar. Karşılaştırmanın ortam
-tarafı tamamen adildir; eşit adım bütçesinde değerlendirme ileri bir çalışma konusudur.
+\begin{figure}[h]
+\centering
+\begin{subfigure}{0.49\textwidth}\centering
+  \IfFileExists{../sunum/grafikler/C1_ogrenme_ppo_vs_sac.png}{\includegraphics[width=\textwidth]{../sunum/grafikler/C1_ogrenme_ppo_vs_sac.png}}{}
+\end{subfigure}\hfill
+\begin{subfigure}{0.49\textwidth}\centering
+  \IfFileExists{../sunum/grafikler/C2_ornek_verimliligi.png}{\includegraphics[width=\textwidth]{../sunum/grafikler/C2_ornek_verimliligi.png}}{}
+\end{subfigure}
+\caption{PPO vs SAC -- öğrenme eğrisi (sol) ve örnek-verimliliği penceresi (sağ).}
+\end{figure}
+
+\yorum{Aynı ortam ve tohumlarda SAC, ilk birkaç yüz bin adımda PPO'dan daha hızlı
+yükselir (off-policy örnek-verimliliği); PPO ise daha çok adım karşılığında daha yüksek
+ve daha kararlı bir nihai platoya ulaşır.}{Tablo~\ref{tab:karsilastirma}'da PPO, dört
+kalite ölçütünde (getiri, başarı, kapsama, çarpışma) öndedir; SAC ise verilen kısa
+adım bütçesinde daha erken makul performansa erişir.}{Fark doğrudan algoritma
+ailesindendir: SAC replay buffer'daki her deneyimi defalarca kullanır (adım başına
+verimli), PPO her rollout'u bir kez kullanıp atar ama clipped surrogate sayesinde
+kararlı ve yüksek-tavanlı yakınsar.}{Dersin temel ayrımı somutlaşır: \emph{off-policy
+(SAC) az adımda hızlı, on-policy (PPO) çok adımla yüksek nihai başarı.} Karşılaştırmanın
+ortam tarafı tamamen adildir.}
+
+\section{Uzun-Ufuk Kararlılık (Bonus)}
+Eğitim bütçesinin yakınsama için yeterli olduğunu doğrulamak amacıyla en iyi tohum
+(123) çok daha uzun bir ufka kadar uzatılmıştır.
+\gfig{12_uzun_ufuk_kararlilik.png}{0.72}
+\yorum{Getiri, 1,5 milyon adımdaki sınırın ötesinde de plato seviyesinde kalır;
+belirgin bir artış veya bozulma görülmez.}{Ana teslim bütçesi (1,5M) ile uzun koşu
+aynı platoyu paylaşır.}{Politika bu ortamın tavanına ulaştığından, ek adımlar yalnızca
+varyans gürültüsü ekler; ``catastrophic forgetting'' veya geç yükseliş yoktur.}{Bu,
+1,5 milyon adımın yeterli olduğunu ve seçilen bütçenin israf da eksik de olmadığını
+niceliksel olarak doğrular.}
 
 \section{Savunma Analizi}
 \label{sec:savunma}
@@ -312,7 +407,7 @@ yapmaz; stokastiklik geçiş ve gözlem gürültüsünden gelir.
 davranış politikası ile iyileştirilen hedef politika aynıdır; her rollout, güncel
 politika ile toplanır ve güncellemeden sonra atılır. Replay buffer yoktur. Bu, SAC ve
 DQN'in (off-policy, replay buffer'lı) tersidir ve PPO'nun neden daha çok örnek
-gerektirdiğini açıklar.
+gerektirdiğini açıklar (Bölüm~\ref{sec:kiyas}'teki eğriler bunu somutlaştırır).
 
 \textbf{Markov özelliği.} Durum, anlık lidar, yönelim, hız (önceki eylem yoluyla) ve
 keşif istatistiklerini içerir. Tek bir gözlem, sonraki durumun dağılımını yaklaşık
@@ -330,10 +425,11 @@ ekleyerek ve politikanın hız/yön bağlamını taşımasıyla kısmen telafi e
 \section{Sonuç}
 PPO, replay buffer kullanmadan, on-policy bir politika gradyanı yöntemi olarak, aynı
 ortamda hem rastgele hem sezgisel taban politikalarını belirgin biçimde geçmiştir.
-Örnek verimliliği off-policy yöntemlere göre düşük olsa da, paralel ortam toplama ve
-daha uzun eğitim ile yüksek oda kapsaması elde edilmiştir. Aynı ortam, seed ve
-protokol SAC teslimiyle birebir korunduğundan, bu rapordaki sonuçlar ekipteki diğer
-algoritmalarla doğrudan karşılaştırılabilir. Tüm grafikler \reff{sonuclar/loglar/}
-altındaki ham loglardan yeniden üretilebilir.
+Hiperparametreler (klips, entropi, $\gamma$, öğrenme hızı, değer-kaybı katsayısı)
+sistematik olarak değiştirilip yeniden eğitilerek keşif--sömürü dengesine etkileri
+gösterilmiş; seçilen taban değerlerin gürbüz bir orta nokta olduğu doğrulanmıştır.
+Aynı ortamda eğitilen SAC ile karşılaştırma, on-policy/off-policy ayrımını gerçek
+eğrilerle somutlaştırmıştır: SAC az adımda hızlı, PPO çok adımla yüksek nihai başarı.
+Tüm grafikler \reff{sonuclar/loglar/} altındaki ham loglardan yeniden üretilebilir.
 
 \end{document}
