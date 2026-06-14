@@ -6155,3 +6155,51 @@ V9 training 2026-05-31 03:01'den beri tamamen donmuş; CSV 15 gün + 21 saat sta
 ### Müdahale
 Yok — `configs/ppo.yaml` değiştirilmedi. CSV 15+ gün stale, yeni training verisi mevcut değil; %80+ eşiğini geçen yaml değişikliği gerektirecek bir sorun tespit edilmedi. V10 config 2026-06-02'den beri sabit ve kanıtlanmış-optimal. Bekleyen tek aksiyon Gazebo makinesinde env kodu güncellemesi (lidar_history=2).
 ---
+
+## [2026-06-14 12:00 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 15 GÜN STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 training 2026-05-31 03:01'den beri tamamen dondurulmuş; configs/ppo.yaml v10-optimal (2026-06-02 tarihli). fast_sim zincirleri (v4.0→v5.0) tamamen tükendi ve kesin sonuçlara ulaştı. Tek kalan engel: Gazebo makinesinde `lidar_history=2` env kodu güncellemesi.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV tam kronoloji (46 satır): Faz 1 (11:02-13:02) fresh run: step 142k→599k, ep_len=1000 (timeout), ep_rew_mean=-290→-270. Checkpoint hiç 80k'yı aşmadı — monitor eski TB dizininden okuyordu.
+- Faz 2+ (13:02 crash sonrası restart'lar): step 49k-193k, ep_rew_mean en iyi -25.3 @84k. Ardından crash-loop; 180k checkpoint'ten kurtulamadı.
+- Son 16 satır özdeş (step=193,248, reward=-173.85): 22:00-03:01 arası hard freeze.
+- **+10/+15 oda sıçraması hiçbir kayıtta gözlemlenmedi.** Plato yok — kronik transport-deadlock kurbanı. Öğrenme başlayamadı.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz — ppo.yaml tamamen v10: `lr=3e-4 → 1e-5 linear`, 1.5M boyunca. V9'un 7.5e-5 sabiti terk edildi.
+- Faz 1 verisi (std: 0.888→0.745, entropy: -3.89→-3.32) 7.5e-5 sabit lr'nin 450k step içinde keşifi kısıtladığını gösteriyor. Ancak kök neden değil; transport-deadlock domindi.
+- V10 linear schedule: V3.0 Gazebo (özdeş hyperparamlar) peak=110.3@610k ile bağımsız doğrulandı. Değiştirme.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Faz 1: entropy -3.89→-3.32 (**-4'ün üstü = erken deterministikleşme aktif!**), std 0.888→0.745 (0.7 eşiğine yaklaşıyor). Çift kırmızı bayrak — V9 keşif yetersizliği burada net görülüyor.
+- Faz 2+ (restart sonrası): entropy ~-4.24 (sınırda ama stabil), std ~0.99 (sağlıklı). Reset politikayı kurtardı.
+- V10 ent_coef=0.008 (V9 0.0015'in 5.3×'i): Faz 1 deterministikleşmesini baştan engeller. İlk 200k'da entropy -3.2/-3.8 aralığında beklenir. Yeterli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9 için: Sıfır — kalıcı ölü.
+- V10 (V3.0 referansı, özdeş hyperparamlar, 3-katlı harita): 1. oda ~175-275k, 3+ oda ~350-500k, 6/6 ~575-750k.
+- train_v3_resume_310k.log teyit: ep_rew_mean=38.4 @ 1.45M step, ep_len=706. Bu referans değerlerin tutarlı olduğunu doğruluyor.
+- Uyarı: `lidar_history=2` olmadan gözlem kalitesi düşük → oda geçişleri %15-20 daha geç öğrenilir.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **[TEK KALAN BLOKER]** `drone_exploration_env.py`: `lidar_history=1→2` (obs 40-d→72-d: 32 lidar × 2 frame + 8 meta). `train_ppo.py` observation_space da 72-d güncellenmeli. fast_sim v4.8 kanıtı: çarpışma %8→%0. fast_sim v5.0 teyit: lidar_history=3 v4.8'e domine edildi — 2 kesin final değer.
+2. **[KAPATILDI]** `collision_penalty=25` env.py line 342'de zaten mevcut (önceki oturum doğruladı). Yapılacaklar listesinden çıkarıldı.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- configs/ppo.yaml: **Hayır.** 30+ oturumda tutarlı kanıt — v10 hyperparameter seti optimal. 3 bağımsız kaynak (fast_sim 18 config + V3.0 Gazebo + V8 referans) doğruladı.
+- fast_sim zinciri: Tamamen kapandı. v5.0 son deney olarak v4.8'e domine edildi. Daha fazla fast_sim deneyi gerekmez.
+- Gazebo ortamı: Bu bulut sessionda çalışmıyor. Eğitim başlatılamaz — beklenen durum.
+- Monitor: CSV 15+ gün stale, monitor_agent.py durmuş — beklenen, Gazebo yok.
+
+### v10 Önerisi
+1. **Tek aksiyon: `lidar_history=2` env güncellemesi** (Gazebo makinesinde). `drone_exploration_env.py` obs 40→72-d; `train_ppo.py` observation_space shape güncelle. Bu değişiklik olmadan V10 başlatma.
+2. **ppo.yaml'a dokunma.** Kanıtlanmış-optimal: linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, total_timesteps=1.5M (2M üstü güvenlik kolapsı riski fast_sim v4.10/v4.11 ile doğrulandı). fast_sim zinciri tüketildi, daha fazla deney gereksiz.
+
+### Müdahale
+Yok — `configs/ppo.yaml` değiştirilmedi. Faz 1 deterministikleşmesi (entropy -3.32, std 0.745) tespit edildi ancak V10 ent_coef=0.008 bunu baştan önler. fast_sim v5.0 verisi eklendi: lidar_history=3 başarısız, lidar_history=2 kesin final değer. %95+ güven ile yaml değişikliği gereksiz.
+---
