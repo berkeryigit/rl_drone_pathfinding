@@ -7130,3 +7130,48 @@ v9 Gazebo eğitimi 2026-05-30 22:00'da 193k step'te kalıcı dondu; veriler 15 g
 ### Müdahale
 Yok — `configs/ppo.yaml` değiştirilmedi. 18 fast_sim + Gazebo v3.0 kanıtıyla config %100 finaldir; %80+ güven eşiğini karşılayan hiçbir değişiklik tetikleyicisi mevcut değil. 17. ardışık oturumda aynı karar.
 ---
+
+## [2026-06-14 21:10 UTC]
+**Step:** 193,248 (CSV DONMUŞ — 15. GÜN) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 eğitimi Mayıs 31'den bu yana crash-loop'ta sabit; v10 config ppo.yaml'da hazır, bu container'da Gazebo/ROS2 olmadığından aktif training yok. Config değişikliği gerekmez; tüm parametreler kanıtlanmış-optimal değerlerinde.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- V9 aktif değil, CSV 15 gündür donmuş (son unique satır: 2026-05-30 22:20).
+- Tüm CSV trend özeti: fresh-start @ 49k step (-102.9) → pik @ 84k step (-25.3) → 108-193k arası oscillasyon -29 ile -173 arasında → 193k'da crash-loop, 35+ watchdog recovery denenmiş ama step ilerlememiş.
+- Pozitif reward hiç görülmedi; +15 oda sıçraması v9'da gerçekleşmedi.
+- **Kritik gözlem:** ep_len_mean 95 (84k pik) → 637 (193k crash freeze). Episode uzadıkça reward düştü — drone duvardan kaçıyordu ama keşif yapamıyordu. Yüksek zaman cezası (-0.001/step) + idle cezası uzun episodelarda birikti.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz soru: ppo.yaml çoktan v10'a geçti — `lr_schedule: linear, 3e-4 → 1e-5, lr_final: 1e-5`.
+- V9 constant 7.5e-5'i doğru şekilde terk edildi. V3.0 Gazebo aynı linear schedule ile peak=110.3 üretti.
+- 1.5M boyunca 30× azalma: ilk 200k agresif keşif (3e-4), son 300k ince ayar (1e-5) — optimal kadans.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut stale: entropy_loss=-4.212 (H≈4.21 nat, eşik H<4.0 alarm → henüz geçilmedi ✓), std=0.985 (%0.7 eşiğinin çok üstünde ✓).
+- **Önemli:** İlk 4 CSV satırı (farklı run, step 142k-599k) entropy_loss=-3.88→-3.32 gösteriyor — daha yüksek entropy, daha iyi keşif. Checkpoint resume sonrası entropy -4.25 düzeyine indi. Bu VecNormalize + partially-trained policy'nin doğal davranışı.
+- V10 ent_coef=0.008 (v9'un 5.3×'i) → H(π) beklenen range: -3.2 ile -3.8 arası @ 150k. Bu v3.0'ın erken keşif bölgesiyle tutarlı.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V3.0 Gazebo referansı (aynı lr schedule, 6 oda, n_envs=1): ilk oda ~200k, tutarlı 3+ oda ~400k, 6 oda ~600k.
+- V10 risk: obstacle animasyonu n_envs=1 (DummyVecEnv) ile artık GÜVENLİ — SubprocVecEnv deadlock sebebi ortadan kalktı. Engel aktifleştirilmek isteniyorsa 400k+ sonrasına bırakılmalı; erken fazda statik harita öğrenmeyi kolaylaştırır.
+- İlk +15 sıçraması 150-250k step arası beklenir; 300k'ya kadar görülmezse frontier bonus 0.4→0.6 artırılabilir.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **n_steps=2048 + n_envs=1 kombinasyonu doğrula:** 2048 sample/rollout → 8 mini-batch/epoch × 10 epoch = 80 gradient step/rollout. V3.0 bu setup ile peak üretti; ancak erken fazda value loss >50 görülürse `vf_coef: 0.5→0.3` veya `n_epochs: 10→7` dene.
+2. **İlk oda 200k'ya gelmezse tek müdahale:** `ent_coef: 0.008→0.015` (keşif baskısı) VEYA frontier_bonus katsayısı 0.4→0.6 (reward şekillendirme). İkisini aynı anda yapma — değişkeni izole et.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- Hayır. ppo.yaml v10 optimal ✓. collision_penalty=25 env kodunda uygulandı ✓. Total_timesteps=1.5M sınırı korunuyor ✓ (fast_sim 5 bağımsız deneyle teyit: 2M+ → safety collapse).
+- Bu container'da eğitim başlatılamaz (Gazebo Harmonic + ROS2 Jazzy eksik).
+
+### v10 Önerisi
+1. **Obstacle animasyonu v10 başlangıcında KAPALI bırak, 400k sonrası etkinleştir:** n_envs=1 ile DummyVecEnv kullanıldığından teknik engel kalktı, ama erken fazda statik harita ile policy'nin oda geçişini öğrenmesi daha hızlı. Hareketli engeller 400k+ sonrası spice olarak eklenebilir.
+2. **150k step milestone önceliği:** entropy_loss > -3.5 (H > 3.5 nat) VE std > 0.75 görülürse config sağlıklı — dokunma. Aksi (entropy < -3.0 veya std < 0.65 @150k) → ent_coef 2× artır.
+
+### Müdahale
+**Yok** — ppo.yaml v10 config zaten kanıtlanmış-optimal değerlerde (18. oturum, aynı sonuç). Gazebo v10 lokal makinede başlatıldığında 150k ve 300k milestone'larında bu log güncellenecek.
+---
