@@ -52,63 +52,8 @@ def ppo_summary():
     print("[tablo] sonuclar_tablo.tex yazildi")
 
 
-def _avg(csv_path: Path):
-    if not csv_path.exists():
-        return None
-    d = pd.read_csv(csv_path)
-    return dict(
-        ret=d["ep_return"].mean(), succ=d["success"].mean(),
-        cov=d["coverage_pct"].mean(), crash=d["crashed"].mean(),
-    )
-
-
-def comparison():
-    ppo = _avg(SON / "eval_per_episode.csv")
-    sac = _avg(SON / "sac_eval_per_episode.csv")
-    if ppo is None:
-        print("[tablo] PPO eval yok, karsilastirma atlandi")
-        return
-    # egitim adim/episode ortalamalari
-    def steps_eps(runs_root):
-        st, ep = [], []
-        for s in SEEDS:
-            p = runs_root / f"seed_{s}" / "training_log.csv"
-            if p.exists():
-                df = pd.read_csv(p)
-                if len(df):
-                    st.append(df["timestep"].iloc[-1]); ep.append(len(df))
-        return (np.mean(st) if st else 0, np.mean(ep) if ep else 0)
-    ppo_st, ppo_ep = steps_eps(KOD / "runs")
-    sac_st, sac_ep = steps_eps(KOD / "runs_sac")
-
-    def col(v, fmt="{:.1f}", bold=False):
-        s = fmt.format(v)
-        return f"\\textbf{{{s}}}" if bold else s
-
-    sac_ret = col(sac["ret"]) if sac else "--"
-    sac_succ = col(sac["succ"], "{:.2f}") if sac else "--"
-    sac_cov = col(sac["cov"]) if sac else "--"
-    sac_crash = col(sac["crash"], "{:.2f}") if sac else "--"
-    # PPO genelde getiri/basari/kapsama/carpismada onde -> bold PPO ustunluklerini
-    lines = [
-        r"\begin{tabular}{@{}lcc@{}}", r"\toprule",
-        r"Ölçüt & PPO (bu çalışma) & SAC (aynı ortam) \\", r"\midrule",
-        r"Aile & on-policy & off-policy \\",
-        r"Replay buffer & yok & var \\",
-        f"Eğitim adımı (ort.) & {ppo_st/1e6:.1f}\\,M & {sac_st/1e3:.0f}\\,k \\\\",
-        f"Eğitim episode (ort.) & $\\sim${int(ppo_ep)} & $\\sim${int(sac_ep)} \\\\",
-        r"\midrule",
-        f"Ort. eval getirisi & {col(ppo['ret'], bold=True)} & {sac_ret} \\\\",
-        f"Eval başarı oranı (6 oda) & {col(ppo['succ'],'{:.2f}',bold=True)} & {sac_succ} \\\\",
-        f"Ort. kapsama \\% & {col(ppo['cov'], bold=True)} & {sac_cov} \\\\",
-        f"Eval çarpışma oranı & {col(ppo['crash'],'{:.2f}',bold=True)} & {sac_crash} \\\\",
-        r"\bottomrule", r"\end{tabular}",
-    ]
-    (RAPOR / "karsilastirma_tablo.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print("[tablo] karsilastirma_tablo.tex yazildi"
-          f" (SAC verisi {'VAR' if sac else 'YOK -- placeholder'})")
-
 
 if __name__ == "__main__":
     ppo_summary()
-    comparison()
+    # NOT: karsilastirma_tablo.tex, M. A. Albayrak'in (220202082) teslimindeki
+    # yayinlanmis SAC degerleriyle EL ile yazilir; bu script onu uretmez/ezmez.

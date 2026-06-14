@@ -90,29 +90,32 @@ listeler (hocanin "metrikleri degistirip yeniden egit, kiyasla" istegi dogrultus
 - Ek olarak `gamma x learning_rate` icin 3x3 izgara koSuldu (isi haritasi, Grafik 10).
 - Tum koSular `numpy.random.default_rng` ile; ham loglar teslimde.
 
-## E2. SAC kiyasi: ARTIK GERCEK (yeniden egitildi, sentetik degil)
-- Eskiden: PPO-vs-SAC tablosu SAC'in yayin ozet sayilarini referans aliyordu.
-- Simdi: `train_sac.py` ile **SAC ayni ortamda, ayni 5 seed, ayni deterministik eval
-  protokoluyle yeniden egitildi** (ekip SAC teslimindeki HP'lerle: train_freq/grad=32/32,
-  tau=0.02, buffer=600k, batch=512, ent_coef=auto, gamma=0.98, net=[256,256]).
-- Boylece PPO-vs-SAC ogrenme/eval/oda egrileri **ust uste bindirilmis GERCEK ham
-  loglardan** uretildi (Grafik C1-C5 + `kiyas/PPO_vs_SAC_Karsilastirma.pdf`).
-- `evaluate.py`'ye `--algo {ppo,sac}` eklendi; ayni script iki modeli de degerlendirir.
+## E2. PPO vs SAC kiyasi: YAN-YANA (ekip SAC grafikleriyle)
+- Ortam ekip SAC teslimiyle (M. A. Albayrak, 220202082) **bayt-bayt ayni** oldugundan,
+  iki algoritma dogrudan kiyaslanabilir.
+- Yaklasim: **ekip arkadasimizin yayinlanmis SAC grafikleri** (220202082 sunumundan
+  cikarilan PNG'ler) bizim ayni tip PPO grafigimizin **YANINA** konularak gorsel
+  kiyas yapildi (`make_comparison_figs.py` -> `KIYAS_1..6.png`; sol PPO, sag SAC).
+- Ust-uste bindirme yerine yan-yana panel tercih edildi (her algoritma kendi
+  grafiginde net okunur).
+- Kiyas tablosu (`karsilastirma_tablo.tex`) her iki teslimin yayinlanmis sayilarini
+  verir; SAC degerleri 220202082 raporundandir.
+- Kaynak: `kiyas/PPO_vs_SAC_Karsilastirma.pdf` + rapor Bolum 8 + sunum kiyas slaytlari.
 
 ## E3. Grafikler: 5 zorunlu -> 13+ (ekipteki TUM grafiklerin PPO karsiligi)
 - Eklendi: Grafik 1b (episode-bazli ogrenme egrisi), 6 (PPO ic dinamikleri:
   clip_fraction/approx_kl/entropy -- DQN epsilon'unun karsiligi), 7 (oda kesif
   sureci), 8 (carpisma orani), 9 (seed karsilastirmasi), 10 (gamma x lr isi
   haritasi), 13 (explained_variance), 5b (baseline 4-metrik), per-seed 2x2 paneller
-  (her seed icin getiri/eval/kapsama/oda) ve PPO-vs-SAC kiyas grafikleri (C1-C5).
+  (her seed icin getiri/eval/kapsama/oda) ve PPO-vs-SAC yan-yana kiyas figurleri (KIYAS_1-6).
 - Tum grafikler tek motor `viz.py`'den; `progress.csv`'deki PPO-ozel metrikler okunur.
 
 ## E4. Rapor ve sunum zenginlestirildi
-- Rapor: yeni grafikler + 4-cumlelik yorumlar + 5-param HP duyarlilik + gercek SAC
+- Rapor: yeni grafikler + 4-cumlelik yorumlar + 5-param HP duyarlilik + yan-yana SAC
   kiyas bolumu + uzun-ufuk + savunma analizi. Tablolar `make_tables.py` ile **ham
   CSV'lerden** uretilir (`sonuclar_tablo.tex`, `karsilastirma_tablo.tex`).
 - Sunum (`make_pptx.py`): ~26+ slayt; tum grafikler, per-seed paneller, PPO-vs-SAC
-  (gercek veri tablosu + grafikler), savunma ozeti.
+  (yan-yana kiyas figurleri), savunma ozeti.
 
 ## E5. Bonus: uzun-ufuk kararlilik
 - En iyi tohum (123) ayri `runs_long/` altinda daha uzun ufka uzatildi; ana 5-seed
@@ -121,4 +124,4 @@ listeler (hocanin "metrikleri degistirip yeniden egit, kiyasla" istegi dogrultus
 
 ## E6. Kural ihlali kontrolu (tekrar dogrulandi)
 - `import gym` yok; `np.random.seed`/`np.random.choice` yok; `default_rng` var.
-- Yeni eklenen `train_sac.py`, `viz.py`, `make_tables.py` de ayni kurallara uyar.
+- Yeni eklenen `viz.py`, `make_comparison_figs.py`, `make_tables.py` de ayni kurallara uyar.

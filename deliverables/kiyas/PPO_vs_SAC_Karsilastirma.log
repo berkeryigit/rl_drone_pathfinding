@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2025.12.20)  14 JUN 2026 06:07
+This is pdfTeX, Version 3.141592653-2.6-1.40.25 (TeX Live 2023/Debian) (preloaded format=pdflatex 2025.12.20)  14 JUN 2026 08:25
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -211,9 +211,6 @@ Package: booktabs 2020/01/12 v1.61803398 Publication quality tables
 \@lastruleclass=\count279
 \@thisrulewidth=\dimen172
 )
-(/usr/share/texlive/texmf-dist/tex/latex/caption/subcaption.sty
-Package: subcaption 2023/07/28 v1.6b Sub-captions (AR)
-
 (/usr/share/texlive/texmf-dist/tex/latex/caption/caption.sty
 Package: caption 2023/08/05 v3.6o Customizing captions (AR)
 
@@ -231,11 +228,6 @@ Package caption Info: Standard document class detected.
 )
 \c@caption@flags=\count280
 \c@continuedfloat=\count281
-)
-Package caption Info: New subtype `subfigure' on input line 238.
-\c@subfigure=\count282
-Package caption Info: New subtype `subtable' on input line 238.
-\c@subtable=\count283
 )
 (/usr/share/texlive/texmf-dist/tex/latex/hyperref/hyperref.sty
 Package: hyperref 2024-01-20 v7.01h Hypertext links for LaTeX
@@ -281,15 +273,15 @@ Package: gettitlestring 2019/12/15 v1.6 Cleanup title references (HO)
 (/usr/share/texlive/texmf-dist/tex/latex/kvoptions/kvoptions.sty
 Package: kvoptions 2022-06-15 v3.15 Key value format for package options (HO)
 ))
-\c@section@level=\count284
+\c@section@level=\count282
 )
 (/usr/share/texlive/texmf-dist/tex/latex/etoolbox/etoolbox.sty
 Package: etoolbox 2020/10/05 v2.5k e-TeX tools for LaTeX (JAW)
-\etb@tempcnta=\count285
+\etb@tempcnta=\count283
 )
 \@linkdim=\dimen181
-\Hy@linkcounter=\count286
-\Hy@pagecounter=\count287
+\Hy@linkcounter=\count284
+\Hy@pagecounter=\count285
 
 (/usr/share/texlive/texmf-dist/tex/latex/hyperref/pd1enc.def
 File: pd1enc.def 2024-01-20 v7.01h Hyperref: PDFDocEncoding definition (HO)
@@ -299,7 +291,7 @@ Now handling font encoding PD1 ...
 (/usr/share/texlive/texmf-dist/tex/generic/intcalc/intcalc.sty
 Package: intcalc 2019/12/15 v1.3 Expandable calculations with integers (HO)
 )
-\Hy@SavedSpaceFactor=\count288
+\Hy@SavedSpaceFactor=\count286
 
 (/usr/share/texlive/texmf-dist/tex/latex/hyperref/puenc.def
 File: puenc.def 2024-01-20 v7.01h Hyperref: PDF Unicode definition (HO)
@@ -313,7 +305,7 @@ Package hyperref Info: Plain pages OFF on input line 4194.
 Package hyperref Info: Backreferencing OFF on input line 4199.
 Package hyperref Info: Implicit mode ON; LaTeX internals redefined.
 Package hyperref Info: Bookmarks ON on input line 4446.
-\c@Hy@tempcnt=\count289
+\c@Hy@tempcnt=\count287
 
 (/usr/share/texlive/texmf-dist/tex/latex/url/url.sty
 \Urlmuskip=\muskip17
@@ -329,7 +321,7 @@ Package: bitset 2019/12/09 v1.3 Handle bit-vector datatype (HO)
 Package: bigintcalc 2019/12/15 v1.5 Expandable calculations on big integers (HO
 )
 ))
-\Fld@menulength=\count290
+\Fld@menulength=\count288
 \Field@Width=\dimen183
 \Fld@charsize=\dimen184
 Package hyperref Info: Hyper figures OFF on input line 6063.
@@ -344,9 +336,9 @@ Package hyperref Info: PDF/A mode OFF on input line 6093.
 Package: atbegshi-ltx 2021/01/10 v1.0c Emulation of the original atbegshi
 package with kernel methods
 )
-\Hy@abspage=\count291
-\c@Item=\count292
-\c@Hfootnote=\count293
+\Hy@abspage=\count289
+\c@Item=\count290
+\c@Hfootnote=\count291
 )
 Package hyperref Info: Driver (autodetected): hpdftex.
 
@@ -358,8 +350,8 @@ Package: atveryend-ltx 2020/08/19 v1.0a Emulation of the original atveryend pac
 kage
 with kernel methods
 )
-\Fld@listcount=\count294
-\c@bookmark@seq@number=\count295
+\Fld@listcount=\count292
+\c@bookmark@seq@number=\count293
 
 (/usr/share/texlive/texmf-dist/tex/latex/rerunfilecheck/rerunfilecheck.sty
 Package: rerunfilecheck 2022-07-10 v1.10 Rerun checks for auxiliary files (HO)
@@ -378,10 +370,10 @@ Package: enumitem 2019/06/20 v3.9 Customized lists
 \enit@outerparindent=\dimen185
 \enit@toks=\toks26
 \enit@inbox=\box53
-\enit@count@id=\count296
-\enitdp@description=\count297
+\enit@count@id=\count294
+\enitdp@description=\count295
 )
-LaTeX Font Info:    Trying to load font information for T1+ptm on input line 25
+LaTeX Font Info:    Trying to load font information for T1+ptm on input line 22
 .
 
 (/usr/share/texlive/texmf-dist/tex/latex/psnfss/t1ptm.fd
@@ -389,30 +381,30 @@ File: t1ptm.fd 2001/06/04 font definitions for T1/ptm.
 )
 (/usr/share/texlive/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def
 File: l3backend-pdftex.def 2024-01-04 L3 backend support: PDF output (pdfTeX)
-\l__color_backend_stack_int=\count298
+\l__color_backend_stack_int=\count296
 \l__pdf_internal_box=\box54
 )
 (./PPO_vs_SAC_Karsilastirma.aux)
 \openout1 = `PPO_vs_SAC_Karsilastirma.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 25.
-LaTeX Font Info:    ... okay on input line 25.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 22.
+LaTeX Font Info:    ... okay on input line 22.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 22.
+LaTeX Font Info:    ... okay on input line 22.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 22.
+LaTeX Font Info:    ... okay on input line 22.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 22.
+LaTeX Font Info:    ... okay on input line 22.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 22.
+LaTeX Font Info:    ... okay on input line 22.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 22.
+LaTeX Font Info:    ... okay on input line 22.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 22.
+LaTeX Font Info:    ... okay on input line 22.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 22.
+LaTeX Font Info:    ... okay on input line 22.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 22.
+LaTeX Font Info:    ... okay on input line 22.
 
 *geometry* driver: auto-detecting
 *geometry* detected driver: pdftex
@@ -422,15 +414,15 @@ LaTeX Font Info:    ... okay on input line 25.
 * layout: <same size as paper>
 * layoutoffset:(h,v)=(0.0pt,0.0pt)
 * modes: 
-* h-part:(L,W,R)=(59.75095pt, 478.00598pt, 59.75095pt)
-* v-part:(T,H,B)=(59.75095pt, 725.54495pt, 59.75095pt)
+* h-part:(L,W,R)=(56.9055pt, 483.69687pt, 56.9055pt)
+* v-part:(T,H,B)=(56.9055pt, 731.23584pt, 56.9055pt)
 * \paperwidth=597.50787pt
 * \paperheight=845.04684pt
-* \textwidth=478.00598pt
-* \textheight=725.54495pt
-* \oddsidemargin=-12.51904pt
-* \evensidemargin=-12.51904pt
-* \topmargin=-49.51904pt
+* \textwidth=483.69687pt
+* \textheight=731.23584pt
+* \oddsidemargin=-15.36449pt
+* \evensidemargin=-15.36449pt
+* \topmargin=-52.36449pt
 * \headheight=12.0pt
 * \headsep=25.0pt
 * \topskip=11.0pt
@@ -450,16 +442,16 @@ LaTeX Font Info:    ... okay on input line 25.
 
 (/usr/share/texlive/texmf-dist/tex/context/base/mkii/supp-pdf.mkii
 [Loading MPS to PDF converter (version 2006.09.02).]
-\scratchcounter=\count299
+\scratchcounter=\count297
 \scratchdimen=\dimen186
 \scratchbox=\box55
-\nofMPsegments=\count300
-\nofMParguments=\count301
+\nofMPsegments=\count298
+\nofMParguments=\count299
 \everyMPshowfont=\toks27
-\MPscratchCnt=\count302
+\MPscratchCnt=\count300
 \MPscratchDim=\dimen187
-\MPnumerator=\count303
-\makeMPintoPDFobject=\count304
+\MPnumerator=\count301
+\makeMPintoPDFobject=\count302
 \everyMPtoPDFconversion=\toks28
 ) (/usr/share/texlive/texmf-dist/tex/latex/epstopdf-pkg/epstopdf-base.sty
 Package: epstopdf-base 2020-01-24 v2.11 Base part for package epstopdf
@@ -473,76 +465,60 @@ e
 Package caption Info: Begin \AtBeginDocument code.
 Package caption Info: hyperref package is loaded.
 Package caption Info: End \AtBeginDocument code.
-Package hyperref Info: Link coloring OFF on input line 25.
+Package hyperref Info: Link coloring OFF on input line 22.
 
 (./PPO_vs_SAC_Karsilastirma.out) (./PPO_vs_SAC_Karsilastirma.out)
 \@outlinefile=\write3
 \openout3 = `PPO_vs_SAC_Karsilastirma.out'.
 
-LaTeX Font Info:    Trying to load font information for T1+cmtt on input line 3
-1.
-
-(/usr/share/texlive/texmf-dist/tex/latex/base/t1cmtt.fd
-File: t1cmtt.fd 2023/04/13 v2.5m Standard LaTeX font definitions
-)
-LaTeX Font Info:    Trying to load font information for TS1+ptm on input line 4
-1.
+LaTeX Font Info:    Trying to load font information for TS1+ptm on input line 3
+6.
 
 (/usr/share/texlive/texmf-dist/tex/latex/psnfss/ts1ptm.fd
 File: ts1ptm.fd 2001/06/04 font definitions for TS1/ptm.
 )
+LaTeX Font Info:    Trying to load font information for T1+cmtt on input line 3
+6.
+
+(/usr/share/texlive/texmf-dist/tex/latex/base/t1cmtt.fd
+File: t1cmtt.fd 2023/04/13 v2.5m Standard LaTeX font definitions
+)
 LaTeX Font Info:    Trying to load font information for OT1+ztmcm on input line
- 42.
+ 37.
 
 (/usr/share/texlive/texmf-dist/tex/latex/psnfss/ot1ztmcm.fd
 File: ot1ztmcm.fd 2000/01/03 Fontinst v1.801 font definitions for OT1/ztmcm.
 )
 LaTeX Font Info:    Trying to load font information for OML+ztmcm on input line
- 42.
+ 37.
 
 (/usr/share/texlive/texmf-dist/tex/latex/psnfss/omlztmcm.fd
 File: omlztmcm.fd 2000/01/03 Fontinst v1.801 font definitions for OML/ztmcm.
 )
 LaTeX Font Info:    Trying to load font information for OMS+ztmcm on input line
- 42.
+ 37.
 
 (/usr/share/texlive/texmf-dist/tex/latex/psnfss/omsztmcm.fd
 File: omsztmcm.fd 2000/01/03 Fontinst v1.801 font definitions for OMS/ztmcm.
 )
 LaTeX Font Info:    Trying to load font information for OMX+ztmcm on input line
- 42.
+ 37.
 
 (/usr/share/texlive/texmf-dist/tex/latex/psnfss/omxztmcm.fd
 File: omxztmcm.fd 2000/01/03 Fontinst v1.801 font definitions for OMX/ztmcm.
 )
-LaTeX Font Info:    Trying to load font information for OT1+ptm on input line 4
-2.
+LaTeX Font Info:    Trying to load font information for OT1+ptm on input line 3
+7.
 
 (/usr/share/texlive/texmf-dist/tex/latex/psnfss/ot1ptm.fd
 File: ot1ptm.fd 2001/06/04 font definitions for OT1/ptm.
 )
 LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <10.95> not available
-(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 42.
+(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 37.
 LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <8> not available
-(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 42.
+(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 37.
 LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <6> not available
-(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 42.
-
-Overfull \hbox (39.63065pt too wide) in paragraph at lines 41--46
-[]\T1/ptm/b/n/10.95 Ortam bire-bir ayn^^Yd^^Yr: \T1/cmtt/m/n/10.95 fast_2d_dron
-e_env.py \T1/ptm/m/n/10.95 dosyas^^Y iki tes-limde de bayt-bayt özde³tir (MD5 \
-T1/cmtt/m/n/10.95 61ec1d6a...\T1/ptm/m/n/10.95 ).
- []
-
-
-Overfull \hbox (13.61691pt too wide) in paragraph at lines 41--46
-\T1/ptm/m/n/10.95 Du-rum uzay^^Y \T1/cmtt/m/n/10.95 Box$\OT1/ztmcm/m/n/10.95 (7
-5\OML/ztmcm/m/it/10.95 ; \OT1/ztmcm/m/n/10.95 )$\T1/ptm/m/n/10.95 , eylem uzay^
-^Y \T1/cmtt/m/n/10.95 Box$\OT1/ztmcm/m/n/10.95 (\OMS/ztmcm/m/n/10.95 ^^@\OT1/zt
-mcm/m/n/10.95 1\OML/ztmcm/m/it/10.95 ; \OT1/ztmcm/m/n/10.95 1)[]$\T1/ptm/m/n/10
-.95 , ödül fonksiy-onu, gürültü parame-treleri ($\OML/ztmcm/m/it/10.95 ^^[[]; ^
-^[[]; ^^[[]$\T1/ptm/m/n/10.95 ),
- []
+(Font)              Font shape `OT1/ptm/b/n' tried instead on input line 37.
 
 (../rapor/karsilastirma_tablo.tex
 LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <10> not available
@@ -550,82 +526,82 @@ LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <10> not available
 LaTeX Font Info:    Font shape `OT1/ptm/bx/n' in size <7.4> not available
 (Font)              Font shape `OT1/ptm/b/n' tried instead on input line 1.
 )
-<../sunum/grafikler/C1_ogrenme_ppo_vs_sac.png, id=24, 671.6292pt x 397.9668pt>
-File: ../sunum/grafikler/C1_ogrenme_ppo_vs_sac.png Graphic file (type png)
-<use ../sunum/grafikler/C1_ogrenme_ppo_vs_sac.png>
-Package pdftex.def Info: ../sunum/grafikler/C1_ogrenme_ppo_vs_sac.png  used on 
-input line 65.
-(pdftex.def)             Requested size: 234.22556pt x 138.78644pt.
-<../sunum/grafikler/C2_ornek_verimliligi.png, id=26, 671.6292pt x 397.9668pt>
-File: ../sunum/grafikler/C2_ornek_verimliligi.png Graphic file (type png)
-<use ../sunum/grafikler/C2_ornek_verimliligi.png>
-Package pdftex.def Info: ../sunum/grafikler/C2_ornek_verimliligi.png  used on i
-nput line 67.
-(pdftex.def)             Requested size: 234.22556pt x 138.78644pt.
-
-
-LaTeX Warning: `h' float specifier changed to `ht'.
-
-<../sunum/grafikler/C3_eval_ppo_vs_sac.png, id=27, 671.6292pt x 396.0396pt>
-File: ../sunum/grafikler/C3_eval_ppo_vs_sac.png Graphic file (type png)
-<use ../sunum/grafikler/C3_eval_ppo_vs_sac.png>
-Package pdftex.def Info: ../sunum/grafikler/C3_eval_ppo_vs_sac.png  used on inp
-ut line 80.
-(pdftex.def)             Requested size: 234.22556pt x 138.11435pt.
-<../sunum/grafikler/C5_oda_ppo_vs_sac.png, id=28, 659.1024pt x 395.5578pt>
-File: ../sunum/grafikler/C5_oda_ppo_vs_sac.png Graphic file (type png)
-<use ../sunum/grafikler/C5_oda_ppo_vs_sac.png>
-Package pdftex.def Info: ../sunum/grafikler/C5_oda_ppo_vs_sac.png  used on inpu
-t line 82.
-(pdftex.def)             Requested size: 234.22556pt x 140.56583pt.
-
-LaTeX Warning: `h' float specifier changed to `ht'.
-
-<../sunum/grafikler/C4_final_metrik_bar.png, id=29, 1293.633pt x 314.6154pt>
-File: ../sunum/grafikler/C4_final_metrik_bar.png Graphic file (type png)
-<use ../sunum/grafikler/C4_final_metrik_bar.png>
-Package pdftex.def Info: ../sunum/grafikler/C4_final_metrik_bar.png  used on in
-put line 85.
-(pdftex.def)             Requested size: 478.00598pt x 116.25224pt.
-
-LaTeX Warning: `h' float specifier changed to `ht'.
-
-[1
+<../sunum/grafikler/KIYAS_1_ogrenme.png, id=16, 644.31485pt x 344.6723pt>
+File: ../sunum/grafikler/KIYAS_1_ogrenme.png Graphic file (type png)
+<use ../sunum/grafikler/KIYAS_1_ogrenme.png>
+Package pdftex.def Info: ../sunum/grafikler/KIYAS_1_ogrenme.png  used on input 
+line 55.
+(pdftex.def)             Requested size: 459.51054pt x 245.80771pt.
+ [1
 
 {/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map}{/usr/share/texlive/texmf-di
 st/fonts/enc/dvips/base/8r.enc}{/usr/share/texmf/fonts/enc/dvips/cm-super/cm-su
-per-t1.enc}] [2 <../sunum/grafikler/C1_ogrenme_ppo_vs_sac.png> <../sunum/grafik
-ler/C2_ornek_verimliligi.png> <../sunum/grafikler/C3_eval_ppo_vs_sac.png> <../s
-unum/grafikler/C5_oda_ppo_vs_sac.png>] [3 <../sunum/grafikler/C4_final_metrik_b
-ar.png>] (./PPO_vs_SAC_Karsilastirma.aux)
+per-t1.enc}]
+<../sunum/grafikler/KIYAS_3_perseed.png, id=32, 655.4333pt x 343.56046pt>
+File: ../sunum/grafikler/KIYAS_3_perseed.png Graphic file (type png)
+<use ../sunum/grafikler/KIYAS_3_perseed.png>
+Package pdftex.def Info: ../sunum/grafikler/KIYAS_3_perseed.png  used on input 
+line 61.
+(pdftex.def)             Requested size: 469.18654pt x 245.94266pt.
+<../sunum/grafikler/KIYAS_5_baseline.png, id=33, 1421.4953pt x 342.44861pt>
+File: ../sunum/grafikler/KIYAS_5_baseline.png Graphic file (type png)
+<use ../sunum/grafikler/KIYAS_5_baseline.png>
+Package pdftex.def Info: ../sunum/grafikler/KIYAS_5_baseline.png  used on input
+ line 66.
+(pdftex.def)             Requested size: 469.18654pt x 113.02928pt.
+ [2 <../sunum/grafikler/KIYAS_1_ogrenme.png> <../sunum/grafikler/KIYAS_3_persee
+d.png>]
+<../sunum/grafikler/KIYAS_4_hiperparametre.png, id=40, 1170.774pt x 342.44861pt
+>
+File: ../sunum/grafikler/KIYAS_4_hiperparametre.png Graphic file (type png)
+<use ../sunum/grafikler/KIYAS_4_hiperparametre.png>
+Package pdftex.def Info: ../sunum/grafikler/KIYAS_4_hiperparametre.png  used on
+ input line 71.
+(pdftex.def)             Requested size: 459.51054pt x 134.40614pt.
+<../sunum/grafikler/KIYAS_2_loss.png, id=41, 689.90054pt x 343.56046pt>
+File: ../sunum/grafikler/KIYAS_2_loss.png Graphic file (type png)
+<use ../sunum/grafikler/KIYAS_2_loss.png>
+Package pdftex.def Info: ../sunum/grafikler/KIYAS_2_loss.png  used on input lin
+e 75.
+(pdftex.def)             Requested size: 459.51054pt x 228.83702pt.
+<../sunum/grafikler/KIYAS_6_heatmap.png, id=42, 888.36508pt x 343.00453pt>
+File: ../sunum/grafikler/KIYAS_6_heatmap.png Graphic file (type png)
+<use ../sunum/grafikler/KIYAS_6_heatmap.png>
+Package pdftex.def Info: ../sunum/grafikler/KIYAS_6_heatmap.png  used on input 
+line 80.
+(pdftex.def)             Requested size: 469.18654pt x 181.15823pt.
+ [3 <../sunum/grafikler/KIYAS_5_baseline.png> <../sunum/grafikler/KIYAS_4_hiper
+parametre.png> <../sunum/grafikler/KIYAS_2_loss.png>] [4 <../sunum/grafikler/KI
+YAS_6_heatmap.png>]
+(./PPO_vs_SAC_Karsilastirma.aux)
  ***********
 LaTeX2e <2023-11-01> patch level 1
 L3 programming layer <2024-01-22>
  ***********
 Package rerunfilecheck Info: File `PPO_vs_SAC_Karsilastirma.out' has not change
 d.
-(rerunfilecheck)             Checksum: 9243CA8A976FBBBC5931B386E1F7A3C7;838.
+(rerunfilecheck)             Checksum: EA5094F3AE8B8BEE665BBDD3CCFA8B46;573.
  ) 
 Here is how much of TeX's memory you used:
- 12368 strings out of 475077
- 194496 string characters out of 5767862
- 1940975 words of memory out of 5000000
- 34368 multiletter control sequences out of 15000+600000
- 609232 words of font info for 112 fonts, out of 8000000 for 9000
+ 12248 strings out of 475077
+ 192322 string characters out of 5767862
+ 1934975 words of memory out of 5000000
+ 34255 multiletter control sequences out of 15000+600000
+ 603068 words of font info for 108 fonts, out of 8000000 for 9000
  600 hyphenation exceptions out of 8191
- 75i,9n,79p,320b,591s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 75i,8n,79p,381b,515s stack positions out of 10000i,1000n,20000p,200000b,200000s
 </usr/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb></us
 r/share/texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmr10.pfb></usr/share
 /texlive/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texmf
-/fonts/type1/public/cm-super/sftt1000.pfb></usr/share/texmf/fonts/type1/public/
+/fonts/type1/public/cm-super/sftt0900.pfb></usr/share/texmf/fonts/type1/public/
 cm-super/sftt1095.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/symbol/usy
 r.pfb></usr/share/texlive/texmf-dist/fonts/type1/urw/times/utmb8a.pfb></usr/sha
 re/texlive/texmf-dist/fonts/type1/urw/times/utmr8a.pfb></usr/share/texlive/texm
 f-dist/fonts/type1/urw/times/utmri8a.pfb>
-Output written on PPO_vs_SAC_Karsilastirma.pdf (3 pages, 637936 bytes).
+Output written on PPO_vs_SAC_Karsilastirma.pdf (4 pages, 1013006 bytes).
 PDF statistics:
- 107 PDF objects out of 1000 (max. 8388607)
- 73 compressed objects within 1 object stream
- 13 named destinations out of 1000 (max. 500000)
- 66 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 101 PDF objects out of 1000 (max. 8388607)
+ 64 compressed objects within 1 object stream
+ 9 named destinations out of 1000 (max. 500000)
+ 55 words of extra memory for PDF output out of 10000 (max. 10000000)
 

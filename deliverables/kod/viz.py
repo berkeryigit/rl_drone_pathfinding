@@ -1,4 +1,4 @@
-"""Kapsamli gorsellestirme motoru -- PPO teslimi + ekip-esdeger grafikler + PPO/SAC kiyas.
+"""Kapsamli gorsellestirme motoru -- PPO teslimi + ekip-esdeger grafikler.
 
 Tek modul, cok grafik. Her grafik: baslik, birimli eksen etiketi, lejant, >=5 seed
 (ana grafiklerde) ortalama +/- std bandi, hareketli ortalama. y-ekseni ASLA anlik
@@ -11,14 +11,12 @@ Veri kaynaklari (hepsi opsiyonel; yoksa o grafik atlanir):
   runs_hp5/<param>/<value>/seed_<s>/...    hiperparametre sweep'leri
   runs_grid/g<g>_lr<lr>/seed_<s>/...       gamma x lr grid (heatmap)
   runs_long/seed_123/training_log.csv      bonus uzun-ufuk (5M)
-  runs_sac/seed_<s>/...                     SAC (kiyas)
   ../sonuclar/eval_per_episode.csv          per-seed deterministik eval (bar)
   ../sonuclar/baseline_per_episode.csv      random/heuristic baseline
 
 Kullanim:
     python viz.py --all
     python viz.py --section main           # 1..9, per-seed, long
-    python viz.py --section compare        # PPO vs SAC
 """
 from __future__ import annotations
 
@@ -320,7 +318,7 @@ def g5_baseline(eval_csv, baseline_csv, out):
 
 
 def g5b_baseline_4metric(eval_csv, baseline_csv, out):
-    """SAC-tarzi 4 metrik: getiri / oda / kapsama / basari."""
+    """ekip-tarzi 4 metrik: getiri / oda / kapsama / basari."""
     def grp(df, col):
         return {str(k): g[col].to_numpy(float) for k, g in df.groupby("policy")}
     if not (Path(baseline_csv).exists() and Path(eval_csv).exists()):
@@ -473,7 +471,7 @@ def g10_heatmap(grid_root: Path, out):
     for g, lr, ret, room in rows:
         R[gammas.index(g), lrs.index(lr)] = ret
         O[gammas.index(g), lrs.index(lr)] = room
-    score = 10 * O + 0.05 * R   # SAC raporundaki skor metrigi
+    score = 10 * O + 0.05 * R   # kombinasyon skoru
     fig, axes = plt.subplots(1, 3, figsize=(16, 4.8))
     mats = [(R, "Final Getiri", "RdYlGn"), (O, "Keşfedilen Oda", "YlGn"),
             (score, "Kombinasyon Skoru (10·oda+0.05·getiri)", "viridis")]
@@ -496,7 +494,7 @@ def g10_heatmap(grid_root: Path, out):
 
 
 def g11_per_seed(runs_root, eval_csv, out_dir: Path):
-    """Her seed icin 2x2 panel (SAC-tarzi): egitim getiri, eval bar, kapsama, oda."""
+    """Her seed icin 2x2 panel (ekip-tarzi): egitim getiri, eval bar, kapsama, oda."""
     dfs = load_logs(runs_root)
     ev = pd.read_csv(eval_csv) if Path(eval_csv).exists() else None
     for s, d in dfs.items():
@@ -577,109 +575,6 @@ def g13_explained_variance(prog, out):
     _save(fig, out)
 
 
-# =========================================================================== #
-# PPO vs SAC KIYAS
-# =========================================================================== #
-def c1_learning(ppo_dfs, sac_dfs, out):
-    rp = aligned(ppo_dfs, "ep_return")
-    rs = aligned(sac_dfs, "ep_return")
-    if not (rp or rs):
-        return
-    fig, ax = plt.subplots(figsize=(11, 6))
-    for r, color, lab in ((rp, PPO_C, "PPO (on-policy)"), (rs, SAC_C, "SAC (off-policy)")):
-        if r:
-            c, m, sd, n = r
-            ms = smooth(m)
-            ax.fill_between(c, ms - sd, ms + sd, alpha=0.15, color=color)
-            ax.plot(c, ms, color=color, lw=2.4, label=f"{lab} (n={n})")
-    ax.axhline(0, color="gray", ls="--", lw=0.8)
-    ax.set_title("PPO vs SAC -- Öğrenme Eğrisi (aynı ortam, aynı 5 seed)", fontweight="bold")
-    ax.set_xlabel("Kümülatif adım (timestep)")
-    ax.set_ylabel("Episode getirisi (toplam ödül)")
-    ax.legend(title=f"hareketli ort. pencere={SMOOTH}")
-    _save(fig, out)
-
-
-def c2_sample_efficiency(ppo_dfs, sac_dfs, out):
-    """Ornek-verimliligi: getiri vs env-adim, ortak x-aralikta (SAC'in adimina kadar)."""
-    if not sac_dfs:
-        return
-    sac_xmax = min(float(d["timestep"].max()) for d in sac_dfs.values())
-    rp = aligned(ppo_dfs, "ep_return", xmax=sac_xmax)
-    rs = aligned(sac_dfs, "ep_return", xmax=sac_xmax)
-    fig, ax = plt.subplots(figsize=(11, 6))
-    for r, color, lab in ((rp, PPO_C, "PPO"), (rs, SAC_C, "SAC")):
-        if r:
-            c, m, sd, n = r
-            ms = smooth(m)
-            ax.fill_between(c, ms - sd, ms + sd, alpha=0.15, color=color)
-            ax.plot(c, ms, color=color, lw=2.4, label=lab)
-    ax.axhline(0, color="gray", ls="--", lw=0.8)
-    ax.set_title(f"PPO vs SAC -- Örnek Verimliliği (ilk {sac_xmax/1e3:.0f}k adım)", fontweight="bold")
-    ax.set_xlabel("Kümülatif env adımı (örnek verimliliği)")
-    ax.set_ylabel("Episode getirisi (toplam ödül)")
-    ax.legend()
-    _save(fig, out)
-
-
-def c3_eval(ppo_root, sac_root, out):
-    bp = _eval_band(_eval_curves(ppo_root))
-    bs = _eval_band(_eval_curves(sac_root))
-    if not (bp or bs):
-        return
-    fig, ax = plt.subplots(figsize=(11, 6))
-    for b, color, lab in ((bp, PPO_C, "PPO"), (bs, SAC_C, "SAC")):
-        if b:
-            g, m, sd, n = b
-            ax.fill_between(g, m - sd, m + sd, alpha=0.15, color=color)
-            ax.plot(g, m, color=color, lw=2.4, label=f"{lab} (n={n})")
-    ax.axhline(0, color="gray", ls="--", lw=0.8)
-    ax.set_title("PPO vs SAC -- Deterministik Eval Eğrisi", fontweight="bold")
-    ax.set_xlabel("Kümülatif adım (timestep)")
-    ax.set_ylabel("Episode getirisi (toplam ödül)")
-    ax.legend()
-    _save(fig, out)
-
-
-def c4_final_bars(ppo_eval_csv, sac_eval_csv, out):
-    """PPO vs SAC final metrik karsilastirmasi (gruplu bar)."""
-    if not (Path(ppo_eval_csv).exists() and Path(sac_eval_csv).exists()):
-        return
-    p = pd.read_csv(ppo_eval_csv); s = pd.read_csv(sac_eval_csv)
-    metrics = [("ep_return", "Getiri"), ("visited_rooms", "Oda (0-6)"),
-               ("coverage_pct", "Kapsama %"), ("success", "Başarı %"), ("crashed", "Çarpışma %")]
-    fig, axes = plt.subplots(1, 5, figsize=(18, 4.4))
-    for ax, (col, lab) in zip(axes, metrics):
-        pv = p[col].to_numpy(float); sv = s[col].to_numpy(float)
-        if col in ("success", "crashed"):
-            pv = pv * 100; sv = sv * 100
-        means = [pv.mean(), sv.mean()]; errs = [pv.std(), sv.std()]
-        ax.bar(["PPO", "SAC"], means, yerr=errs, capsize=5, color=[PPO_C, SAC_C], edgecolor="white")
-        for i, v in enumerate(means):
-            ax.text(i, v + (max(errs) * 0.06 if max(errs) else 0.5), f"{v:.1f}", ha="center", fontsize=9)
-        ax.set_title(lab, fontsize=11, fontweight="bold"); ax.grid(alpha=0.25, axis="y")
-    fig.suptitle("PPO vs SAC -- Final Deterministik Eval Metrikleri (aynı ortam/protokol)", fontweight="bold")
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
-    _save(fig, out)
-
-
-def c5_rooms(ppo_dfs, sac_dfs, out):
-    rp = aligned(ppo_dfs, "visited_rooms")
-    rs = aligned(sac_dfs, "visited_rooms")
-    if not (rp or rs):
-        return
-    fig, ax = plt.subplots(figsize=(11, 6))
-    for r, color, lab in ((rp, PPO_C, "PPO"), (rs, SAC_C, "SAC")):
-        if r:
-            c, m, sd, n = r
-            ax.fill_between(c, smooth(m) - sd, smooth(m) + sd, alpha=0.13, color=color)
-            ax.plot(c, smooth(m), color=color, lw=2.4, label=lab)
-    ax.axhline(N_ROOMS, color="#c62828", ls="--", lw=1.2, label=f"hedef {N_ROOMS} oda")
-    ax.set_title("PPO vs SAC -- Oda Keşif Süreci", fontweight="bold")
-    ax.set_xlabel("Kümülatif adım (timestep)"); ax.set_ylabel("Keşfedilen oda (0-6)")
-    ax.set_ylim(0, N_ROOMS + 0.4); ax.legend()
-    _save(fig, out)
-
 
 # =========================================================================== #
 def main(argv=None):
@@ -688,16 +583,14 @@ def main(argv=None):
     ap.add_argument("--hp", type=Path, default=Path("runs_hp5"))
     ap.add_argument("--grid", type=Path, default=Path("runs_grid"))
     ap.add_argument("--long", type=Path, default=Path("runs_long"))
-    ap.add_argument("--sac", type=Path, default=Path("runs_sac"))
     ap.add_argument("--eval-csv", type=Path, default=Path("../sonuclar/eval_per_episode.csv"))
-    ap.add_argument("--sac-eval-csv", type=Path, default=Path("../sonuclar/sac_eval_per_episode.csv"))
     ap.add_argument("--baseline-csv", type=Path, default=Path("../sonuclar/baseline_per_episode.csv"))
     ap.add_argument("--out", type=Path, default=Path("figs"))
-    ap.add_argument("--section", choices=["main", "compare", "all"], default="all")
+    ap.add_argument("--section", choices=["main"], default="main")
     args = ap.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
 
-    if args.section in ("main", "all"):
+    if True:
         dfs = load_logs(args.runs)
         prog = load_progress(args.runs)
         print(f"[viz] ana PPO seed logu: {sorted(dfs)} | progress: {sorted(prog)}")
@@ -717,15 +610,6 @@ def main(argv=None):
         g12_long_horizon(args.long, args.out / "12_uzun_ufuk_kararlilik.png")
         g13_explained_variance(prog, args.out / "13_explained_variance.png")
 
-    if args.section in ("compare", "all"):
-        ppo = load_logs(args.runs)
-        sac = load_logs(args.sac)
-        print(f"[viz] kiyas: PPO seed {sorted(ppo)} | SAC seed {sorted(sac)}")
-        c1_learning(ppo, sac, args.out / "C1_ogrenme_ppo_vs_sac.png")
-        c2_sample_efficiency(ppo, sac, args.out / "C2_ornek_verimliligi.png")
-        c3_eval(args.runs, args.sac, args.out / "C3_eval_ppo_vs_sac.png")
-        c4_final_bars(args.eval_csv, args.sac_eval_csv, args.out / "C4_final_metrik_bar.png")
-        c5_rooms(ppo, sac, args.out / "C5_oda_ppo_vs_sac.png")
 
 
 if __name__ == "__main__":

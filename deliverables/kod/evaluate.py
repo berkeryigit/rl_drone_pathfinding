@@ -22,9 +22,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from stable_baselines3 import PPO, SAC
-
-_ALGOS = {"ppo": PPO, "sac": SAC}
+from stable_baselines3 import PPO
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from env.fast_2d_drone_env import (  # noqa: E402
@@ -83,11 +81,9 @@ def main(argv=None) -> None:
     parser.add_argument("--runs-root", type=Path, default=Path("runs"))
     parser.add_argument("--seeds-file", type=Path, default=Path(__file__).resolve().parent / "seeds.txt")
     parser.add_argument("--episodes", type=int, default=None)
-    parser.add_argument("--algo", choices=["ppo", "sac"], default="ppo",
-                        help="model sinifi (PPO veya SAC) -- kiyas icin")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
-    model_cls = _ALGOS[args.algo]
+    model_cls = PPO
 
     cfg = load_config(args.config)
     episodes = int(args.episodes if args.episodes is not None else cfg["eval"]["episodes"])

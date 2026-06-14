@@ -1,15 +1,18 @@
 \begin{tabular}{@{}lcc@{}}
 \toprule
-Ölçüt & PPO (bu çalışma) & SAC (aynı ortam) \\
+Ölçüt & PPO (bu çalışma) & SAC (M. A. Albayrak, 220202082) \\
 \midrule
 Aile & on-policy & off-policy \\
 Replay buffer & yok & var \\
-Eğitim adımı (ort.) & 1.5\,M & 200\,k \\
-Eğitim episode (ort.) & $\sim$6081 & $\sim$469 \\
 \midrule
-Ort. eval getirisi & \textbf{458.5} & 337.0 \\
-Eval başarı oranı (6 oda) & \textbf{0.96} & 0.34 \\
-Ort. kapsama \% & \textbf{96.7} & 92.8 \\
-Eval çarpışma oranı & \textbf{0.04} & 0.15 \\
+Ort. getiri (5 tohum) & \textbf{458.5} & 314.6 \\
+Ort. oda (/6) & \textbf{5.80} & 4.83 \\
+Tam-keşif başarı oranı & \textbf{0.96} & 0.34 \\
+En iyi tohum getirisi & \textbf{474.6} & 393.7 (tohum 123) \\
 \bottomrule
 \end{tabular}
+
+\vspace{0.3em}
+{\footnotesize PPO: deterministik eval, 5 tohum ortalaması. SAC: M. A. Albayrak'ın
+\texttt{220202082} teslimindeki yayınlanmış değerler (son 50 episode ort.). Ortam,
+durum/eylem uzayı ve protokol birebir aynıdır.}

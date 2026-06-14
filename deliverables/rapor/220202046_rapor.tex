@@ -52,10 +52,10 @@ karşılaştırılmıştır. Rehberin RL'e özgü istediği gibi, \textbf{hiperp
 (klips oranı \reff{clip\_range}, entropi katsayısı \reff{ent\_coef}, indirim faktörü
 $\gamma$, öğrenme hızı, değer-kaybı katsayısı \reff{vf\_coef}) sistematik olarak
 değiştirilerek yeniden eğitimler yapılmış} ve keşif--sömürü dengesine etkileri
-grafiklerle raporlanmıştır. Son olarak, aynı ortam, aynı beş tohum ve aynı protokol
-altında bir \textbf{SAC} ajanı da eğitilerek PPO ile birebir adil karşılaştırma
-yapılmış; on-policy ve off-policy ailelerinin örnek-verimliliği farkı gerçek
-eğrilerle gösterilmiştir. Sonuçlar, PPO ajanının her iki taban politikasını da
+grafiklerle raporlanmıştır. Son olarak, ortam birebir aynı (\reff{fast\_2d\_drone\_env.py} MD5 özdeş)
+olduğundan, ekip arkadaşımızın (M. A. Albayrak, 220202082) \emph{yayınlanmış} SAC
+grafikleri bizim aynı tip PPO grafiğimizin yanına konularak \textbf{yan-yana} kıyas
+yapılmış; on-policy ve off-policy ailelerinin farkı görsel olarak gösterilmiştir. Sonuçlar, PPO ajanının her iki taban politikasını da
 belirgin biçimde geçtiğini ve ortalama oda kapsamasını yüksek seviyeye taşıdığını
 göstermektedir.
 
@@ -333,42 +333,60 @@ tohumun iç tutarlılığı, ortalama metriklerin sağlam temele dayandığını
 
 \section{PPO ve SAC Karşılaştırması}
 \label{sec:kiyas}
-Ortam, seed listesi ve değerlendirme protokolü ekipteki SAC teslimiyle birebir aynı
-tutulduğundan, iki algoritma doğrudan karşılaştırılabilir. Adil ve sentetik-olmayan
-bir karşılaştırma için bu çalışmada \textbf{SAC ajanı da aynı beş tohumla, aynı ortamda
-ve aynı deterministik eval protokolüyle yeniden eğitilmiştir} (\reff{train\_sac.py};
-ekip SAC teslimindeki hiperparametrelerle: \reff{train\_freq}/\reff{gradient\_steps}
-$=32/32$, \reff{tau}$=0{,}02$, \reff{buffer\_size}$=600$k, \reff{ent\_coef}=auto). Böylece
-aşağıdaki eğriler gerçek ham loglardan üretilmiştir.
+Ortam, durum/eylem uzayı, seed listesi ve değerlendirme protokolü ekipteki SAC teslimiyle
+(\textbf{M. A. Albayrak, 220202082}) birebir aynı tutulduğundan (\reff{fast\_2d\_drone\_env.py}
+MD5 özdeş), iki algoritma doğrudan karşılaştırılabilir. Ekip arkadaşımızın
+\emph{yayınlanmış} SAC grafikleri (220202082 teslimi) bizim aynı tip PPO grafiğimizin
+\textbf{yanına} konularak görsel olarak kıyaslanmıştır. Aşağıdaki her figürde \emph{sol} panel PPO (bu
+çalışma), \emph{sağ} panel SAC'tır. Tablo~\ref{tab:karsilastirma} her iki teslimin
+yayınlanmış sayılarını verir.
 
 \begin{table}[h]
 \centering\small
-\caption{PPO ve SAC ortalama sonuçları (5 tohum, deterministik eval; aynı ortam ve protokol)}
+\caption{PPO ve SAC ortalama sonuçları (aynı ortam ve protokol; her sütun ilgili teslimden)}
 \label{tab:karsilastirma}
 \input{karsilastirma_tablo.tex}
 \end{table}
 
-\begin{figure}[h]
-\centering
-\begin{subfigure}{0.49\textwidth}\centering
-  \IfFileExists{../sunum/grafikler/C1_ogrenme_ppo_vs_sac.png}{\includegraphics[width=\textwidth]{../sunum/grafikler/C1_ogrenme_ppo_vs_sac.png}}{}
-\end{subfigure}\hfill
-\begin{subfigure}{0.49\textwidth}\centering
-  \IfFileExists{../sunum/grafikler/C2_ornek_verimliligi.png}{\includegraphics[width=\textwidth]{../sunum/grafikler/C2_ornek_verimliligi.png}}{}
-\end{subfigure}
-\caption{PPO vs SAC -- öğrenme eğrisi (sol) ve örnek-verimliliği penceresi (sağ).}
-\end{figure}
+\newcommand{\kfig}[2]{\IfFileExists{../sunum/grafikler/#1}{%
+  \begin{center}\includegraphics[width=#2\textwidth]{../sunum/grafikler/#1}\end{center}}{}}
 
-\yorum{Aynı ortam ve tohumlarda SAC, ilk birkaç yüz bin adımda PPO'dan daha hızlı
-yükselir (off-policy örnek-verimliliği); PPO ise daha çok adım karşılığında daha yüksek
-ve daha kararlı bir nihai platoya ulaşır.}{Tablo~\ref{tab:karsilastirma}'da PPO, dört
-kalite ölçütünde (getiri, başarı, kapsama, çarpışma) öndedir; SAC ise verilen kısa
-adım bütçesinde daha erken makul performansa erişir.}{Fark doğrudan algoritma
-ailesindendir: SAC replay buffer'daki her deneyimi defalarca kullanır (adım başına
-verimli), PPO her rollout'u bir kez kullanıp atar ama clipped surrogate sayesinde
-kararlı ve yüksek-tavanlı yakınsar.}{Dersin temel ayrımı somutlaşır: \emph{off-policy
-(SAC) az adımda hızlı, on-policy (PPO) çok adımla yüksek nihai başarı.} Karşılaştırmanın
-ortam tarafı tamamen adildir.}
+\kfig{KIYAS_1_ogrenme.png}{0.96}
+\textbf{Öğrenme eğrisi.} \emph{Gözlem:} Her iki ajan da platoya oturur; PPO platosu
+($\sim$480) SAC'ın seed-123 platosunun ($\sim$390) üzerindedir ve PPO bandı daha dardır
+(daha kararlı). \emph{Sonuç:} On-policy PPO bu ortamda daha yüksek/kararlı nihai getiriye
+ulaşır; SAC off-policy olduğu için daha az adımda yakınsar (örnek-verimli).
+
+\kfig{KIYAS_4_hiperparametre.png}{0.96}
+\textbf{Hiperparametre duyarlılığı.} \emph{Gözlem:} İki algoritmada da orta değerler
+(PPO: clip 0.2 / $\gamma$ 0.98 / lr $3\!\times\!10^{-4}$; SAC: ent\_coef ve lr'de benzer
+orta nokta) en iyi sonucu verir. \emph{Sonuç:} Keşif--sömürü dengesi her iki ailede de
+benzer biçimde orta hiperparametre bölgesinde optimaldir; sonuç ince ayara aşırı duyarlı
+değildir.
+
+\kfig{KIYAS_5_baseline.png}{0.98}
+\textbf{Baseline (görev metrikleri).} \emph{Gözlem:} Her iki ajan da rastgele ve sezgisel
+taban politikaları geçer; ancak tam-keşif başarısında PPO ($\sim$\%96) SAC'ın ($\sim$\%60
+en iyi, \%34 ortalama) belirgin önündedir. \emph{Sonuç:} PPO bu görevde altı odanın
+tamamını gezmeyi daha güvenilir öğrenir.
+
+\kfig{KIYAS_3_perseed.png}{0.98}
+\textbf{Tohum 123 detay paneli.} \emph{Gözlem:} Dört panelde de (getiri, eval, kapsama,
+oda) PPO eğrileri daha yüksek ve daha az dalgalıdır; ikisi de coverage'ı \%90+ ve oda
+sayısını 5--6'ya taşır. \emph{Sonuç:} İki algoritma da görevi çözer; PPO daha yüksek
+tavanla, SAC daha az adımda.
+
+\kfig{KIYAS_2_loss.png}{0.96}
+\textbf{Loss eğrileri.} \emph{Gözlem:} PPO'da actor (policy gradient) loss küçük/yatay,
+critic loss tepe-sonra-düşüş; SAC'ta actor/critic loss daha geniş salınır (entropi
+düzenlemesi + replay). \emph{Sonuç:} PPO'nun klips mekanizması güncellemeleri daha sıkı
+sınırlar; her iki kayıp da kararlı yakınsama gösterir.
+
+\kfig{KIYAS_6_heatmap.png}{0.98}
+\textbf{$\gamma\times$lr araması.} \emph{Gözlem:} Her iki algoritmada da en iyi bölge
+orta-yüksek $\gamma$ ve düşük-orta lr köşesidir. \emph{Sonuç:} Gecikmeli oda ödülünü
+taşıyan yüksek $\gamma$ + kararlı düşük lr, iki ailede de en iyi keşif--sömürü dengesini
+verir; bu da ortamın paylaşılan yapısını yansıtır.
 
 \section{Uzun-Ufuk Kararlılık (Bonus)}
 Eğitim bütçesinin yakınsama için yeterli olduğunu doğrulamak amacıyla en iyi tohum
@@ -419,8 +437,9 @@ ortamda hem rastgele hem sezgisel taban politikalarını belirgin biçimde geçm
 Hiperparametreler (klips, entropi, $\gamma$, öğrenme hızı, değer-kaybı katsayısı)
 sistematik olarak değiştirilip yeniden eğitilerek keşif--sömürü dengesine etkileri
 gösterilmiş; seçilen taban değerlerin gürbüz bir orta nokta olduğu doğrulanmıştır.
-Aynı ortamda eğitilen SAC ile karşılaştırma, on-policy/off-policy ayrımını gerçek
-eğrilerle somutlaştırmıştır: SAC az adımda hızlı, PPO çok adımla yüksek nihai başarı.
+Ekip arkadaşımızın yayınlanmış SAC grafikleriyle yan-yana karşılaştırma, on-policy/off-policy
+ayrımını görsel olarak somutlaştırmıştır: SAC az adımda hızlı (örnek-verimli), PPO bu
+ortamda daha yüksek nihai başarı.
 Tüm grafikler \reff{sonuclar/loglar/} altındaki ham loglardan yeniden üretilebilir.
 
 \end{document}

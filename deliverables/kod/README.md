@@ -37,28 +37,27 @@ bash sweep.sh                                     # Grafik 4 icin HP sweep
 |---|---|
 | `env/fast_2d_drone_env.py` | 2D Gymnasium ortami (lidar, hareketli engel, ruzgar — stokastik) |
 | `train.py` | Tek-seed **PPO** egitimi (config.yaml + CLI override) |
-| `evaluate.py` | Deterministik (greedy) eval -> per-episode CSV (`--algo {ppo,sac}`) |
+| `evaluate.py` | Deterministik (greedy) eval -> per-episode CSV |
 | `baseline.py` | Random + heuristik baseline (Grafik 5) |
 | `plot_results.py` | 5 zorunlu grafik + sonuclar.csv (minimal) |
-| `viz.py` | **Genis grafik motoru** (13+ grafik: oda/carpisma/seed/ic-dinamik/heatmap/per-seed + PPO-vs-SAC) |
-| `train_sac.py` | **SAC egitimi** (ayni ortam/seed/protokol; PPO-vs-SAC kiyasi icin) |
-| `make_tables.py` | Rapor LaTeX tablolarini ham CSV'lerden uretir |
+| `viz.py` | **Genis grafik motoru** (oda/carpisma/seed/ic-dinamik/heatmap/per-seed/uzun-ufuk) |
+| `make_comparison_figs.py` | PPO (sol) vs SAC (sag) **yan-yana** kiyas figurleri |
+| `make_tables.py` | Rapor LaTeX ozet tablosunu ham CSV'den uretir |
 | `config.yaml` | Tek kaynak konfigurasyon (PPO hiperparametreleri) |
 | `seeds.txt` | >=5 seed |
 | `run_all.sh` | Ana pipeline (egitim->eval->baseline->grafik->tablo) |
 | `sweep.sh` | HP taramasi: 5 param x >=3 deger x 5 seed + gamma x lr izgara |
-| `plan.sh` | Deadline-farkinda paralel orkestrasyon (SAC + sweep + bonus) |
+| `plan.sh` | Deadline-farkinda paralel orkestrasyon (sweep + bonus) |
 
 ## Algoritma kiyasi (PPO vs SAC) ve genis grafikler
-Bu paket, ekipteki SAC teslimiyle adil kiyas icin SAC'i **ayni ortamda** yeniden egitir
-(`train_sac.py`, ekip SAC HP'leri). `viz.py --all` hem 5 zorunlu grafigi hem de ekip
-sunumlarindaki tum grafiklerin PPO karsiligini ve PPO-vs-SAC kiyas egrilerini uretir.
-Kiyas PDF kaynagi: `../kiyas/PPO_vs_SAC_Karsilastirma.tex`.
+`viz.py --section all` hem 5 zorunlu grafigi hem de ekip sunumlarindaki tum grafiklerin
+PPO karsiligini uretir. Kiyas, ekip arkadasimizin (M. A. Albayrak, 220202082) yayinlanmis
+SAC grafiklerinin bizim ayni tip PPO grafigimizin **yanina** konulmasiyla yapilir
+(`make_comparison_figs.py` -> `KIYAS_*.png`). Kiyas PDF: `../kiyas/PPO_vs_SAC_Karsilastirma.tex`.
 ```bash
-bash sweep.sh                                                   # HP taramasi
-for s in 7 13 42 123 2025; do python3 train_sac.py --seed $s --timesteps 250000; done
-python3 evaluate.py --algo sac --runs-root runs_sac --out ../sonuclar/sac_eval_per_episode.csv
-python3 viz.py --all --out ../sunum/grafikler && python3 make_tables.py
+bash sweep.sh                                       # HP taramasi
+python3 viz.py --section all --out ../sunum/grafikler
+python3 make_comparison_figs.py && python3 make_tables.py
 ```
 
 ## Odul formulu (rapor ile birebir ayni)
