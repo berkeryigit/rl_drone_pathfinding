@@ -37,12 +37,29 @@ bash sweep.sh                                     # Grafik 4 icin HP sweep
 |---|---|
 | `env/fast_2d_drone_env.py` | 2D Gymnasium ortami (lidar, hareketli engel, ruzgar — stokastik) |
 | `train.py` | Tek-seed **PPO** egitimi (config.yaml + CLI override) |
-| `evaluate.py` | Deterministik (greedy) eval -> per-episode CSV |
+| `evaluate.py` | Deterministik (greedy) eval -> per-episode CSV (`--algo {ppo,sac}`) |
 | `baseline.py` | Random + heuristik baseline (Grafik 5) |
-| `plot_results.py` | 5 zorunlu grafik + sonuclar.csv |
+| `plot_results.py` | 5 zorunlu grafik + sonuclar.csv (minimal) |
+| `viz.py` | **Genis grafik motoru** (13+ grafik: oda/carpisma/seed/ic-dinamik/heatmap/per-seed + PPO-vs-SAC) |
+| `train_sac.py` | **SAC egitimi** (ayni ortam/seed/protokol; PPO-vs-SAC kiyasi icin) |
+| `make_tables.py` | Rapor LaTeX tablolarini ham CSV'lerden uretir |
 | `config.yaml` | Tek kaynak konfigurasyon (PPO hiperparametreleri) |
 | `seeds.txt` | >=5 seed |
-| `run_all.sh` / `sweep.sh` | Pipeline / HP sweep |
+| `run_all.sh` | Ana pipeline (egitim->eval->baseline->grafik->tablo) |
+| `sweep.sh` | HP taramasi: 5 param x >=3 deger x 5 seed + gamma x lr izgara |
+| `plan.sh` | Deadline-farkinda paralel orkestrasyon (SAC + sweep + bonus) |
+
+## Algoritma kiyasi (PPO vs SAC) ve genis grafikler
+Bu paket, ekipteki SAC teslimiyle adil kiyas icin SAC'i **ayni ortamda** yeniden egitir
+(`train_sac.py`, ekip SAC HP'leri). `viz.py --all` hem 5 zorunlu grafigi hem de ekip
+sunumlarindaki tum grafiklerin PPO karsiligini ve PPO-vs-SAC kiyas egrilerini uretir.
+Kiyas PDF kaynagi: `../kiyas/PPO_vs_SAC_Karsilastirma.tex`.
+```bash
+bash sweep.sh                                                   # HP taramasi
+for s in 7 13 42 123 2025; do python3 train_sac.py --seed $s --timesteps 250000; done
+python3 evaluate.py --algo sac --runs-root runs_sac --out ../sonuclar/sac_eval_per_episode.csv
+python3 viz.py --all --out ../sunum/grafikler && python3 make_tables.py
+```
 
 ## Odul formulu (rapor ile birebir ayni)
 `env/fast_2d_drone_env.py::step()` icinde, adim basina:

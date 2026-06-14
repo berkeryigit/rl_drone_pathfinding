@@ -39,11 +39,16 @@ echo "=== 3) BASELINE (random + heuristic) ==="
 python3 baseline.py --seeds-file "$SEEDS_FILE" --out ../sonuclar/baseline_per_episode.csv
 
 echo "=== 4) GRAFIKLER + sonuclar.csv ==="
+# 5 zorunlu grafik + ozet (minimal, rubrik):
 python3 plot_results.py --runs-root "$RUNS_ROOT" --seeds-file "$SEEDS_FILE" \
     --eval-csv ../sonuclar/eval_per_episode.csv \
     --baseline-csv ../sonuclar/baseline_per_episode.csv \
-    --hp-root runs_hp \
+    --hp-root runs_hp5 \
     --out ../sunum/grafikler --summary-out ../sonuclar/sonuclar.csv
+# Genis grafik seti (oda/carpisma/seed/ic-dinamik/heatmap/per-seed/PPO-vs-SAC):
+python3 viz.py --all --out ../sunum/grafikler || true
+# Rapor LaTeX tablolari (ham CSV'lerden):
+python3 make_tables.py || true
 
 echo "=== ham loglari sonuclar/loglar/ altina kopyala ==="
 mkdir -p ../sonuclar/loglar
@@ -57,4 +62,14 @@ for s in $SEEDS; do
     fi
 done
 
-echo "=== BITTI. Grafikler: ../sunum/grafikler/  Loglar: ../sonuclar/loglar/ ==="
+echo "=== BITTI (ana PPO pipeline). Grafikler: ../sunum/grafikler/  Loglar: ../sonuclar/loglar/ ==="
+echo ""
+echo "EK ADIMLAR (hocanin RL-ozgu istekleri + algoritma kiyasi):"
+echo "  1) Hiperparametre taramasi (5 param x >=3 deger x 5 seed):"
+echo "       bash sweep.sh                       # -> runs_hp5/ , runs_grid/"
+echo "  2) SAC'i ayni ortam/seed/protokolle egit (kiyas icin):"
+echo "       for s in 7 13 42 123 2025; do python3 train_sac.py --seed \$s --timesteps 250000; done"
+echo "       python3 evaluate.py --algo sac --runs-root runs_sac --out ../sonuclar/sac_eval_per_episode.csv"
+echo "  3) Tum grafikleri + tablolari yeniden uret:"
+echo "       python3 viz.py --all --out ../sunum/grafikler && python3 make_tables.py"
+echo "  4) Deadline-farkinda paralel orkestrasyon: bash plan.sh"
