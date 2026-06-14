@@ -549,7 +549,8 @@ def g12_long_horizon(long_root: Path, out):
             label="seed 123 (ham + hareketli ort.)")
     ax.axvline(1.5e6, color="#c62828", ls="--", lw=1.2, label="ana teslim sınırı (1.5M)")
     ax.axhline(0, color="gray", ls="--", lw=0.8)
-    ax.set_title("12) Uzun-Ufuk Kararlılık (seed 123, 5M adıma kadar)", fontweight="bold")
+    ax.set_title(f"12) Uzun-Ufuk Kararlılık (seed 123, ~{x.max()/1e6:.1f}M adıma kadar)",
+                 fontweight="bold")
     ax.set_xlabel("Kümülatif adım (timestep)")
     ax.set_ylabel("Episode getirisi (toplam ödül)")
     ax.legend()
