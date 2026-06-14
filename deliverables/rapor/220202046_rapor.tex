@@ -278,35 +278,36 @@ klips sınırına dayanır (artan \reff{clip\_fraction}).}{Eğrilerin patlamadan
 seyretmesi, klips'in güncellemeleri güvenli aralıkta tuttuğunu ve keşif--sömürü
 geçişinin kontrollü olduğunu gösterir.}
 
-\subsection*{Grafik 7 -- Oda Keşif Süreci}
-\gfig{7_oda_kesif_sureci.png}{0.62}
-\yorum{Episode başına keşfedilen ortalama oda sayısı eğitim ilerledikçe 1'den yükselip
-hedef olan 6 odaya güçlü biçimde yaklaşır.}{Başlangıçta yalnızca doğulan oda
-keşfedilirken, sonlarda ortalama oda sayısı 5--6 bandına çıkar.}{Çarpışmadan kaçınmayı
-öğrenen ajan hayatta kalma süresini uzatır ve kapıları bularak haritanın derin
-odalarına erişir; bu, ödüldeki +20 (yeni oda) ve +60 (tüm odalar) terimlerinin
-doğrudan sonucudur.}{Model yalnızca havada kalmayı değil, görevin asıl amacı olan
-alan tarama/haritalama hedefini de etkin biçimde yerine getirmiştir.}
+\subsection*{Grafik 7 ve 8 -- Oda Keşfi ve Çarpışma Oranı}
+\begin{figure}[h]\centering
+\IfFileExists{../sunum/grafikler/7_oda_kesif_sureci.png}{\includegraphics[width=0.49\textwidth]{../sunum/grafikler/7_oda_kesif_sureci.png}}{}\hfill
+\IfFileExists{../sunum/grafikler/8_carpisma_orani.png}{\includegraphics[width=0.49\textwidth]{../sunum/grafikler/8_carpisma_orani.png}}{}
+\end{figure}
+\textbf{Grafik 7 (Oda Keşfi).} \emph{Gözlem:} Episode başına keşfedilen ortalama oda
+1'den yükselip hedef 6 odaya güçlü biçimde yaklaşır. \emph{Açıklama:} Çarpışmadan
+kaçınmayı öğrenen ajan hayatta kalır ve kapıları bularak derin odalara erişir (ödüldeki
++20 ve +60 terimleri). \emph{Sonuç:} Model havada kalmayı değil, asıl amaç olan alan
+taramayı da etkin yapar. \\
+\textbf{Grafik 8 (Çarpışma Oranı).} \emph{Gözlem:} Çarpışma oranı başta \%100'e
+yakınken zamanla kararlı ve ciddi düşer. \emph{Açıklama:} Lidar mesafesi ile $-40$
+çarpışma cezası arasındaki ilişki ağ tarafından kurulur; kaçış davranışı değere
+yansır. \emph{Sonuç:} Ajan engel algılama ve çarpışmadan sakınmayı kalıcı edinir.
 
-\subsection*{Grafik 8 -- Çarpışma Oranı}
-\gfig{8_carpisma_orani.png}{0.62}
-\yorum{Tahmini çarpışma oranı eğitimin başında \%100'e yakınken zamanla kararlı ve
-ciddi bir düşüş sergiler.}{İlk bölümlerde ajan sık erken sonlanırken, eğitim sonunda
-çarpışma oranı düşük bir bantta sabitlenir (per-seed eğriler aynı yönde).}{Lidar
-mesafe verileri ile $-40$ çarpışma cezası arasındaki ilişki ağ tarafından doğru
-kurulmuş; tehlikeden kaçış davranışı değer fonksiyonuna yansımıştır.}{Ajan, lidar
-gözlemini kullanarak engelleri algılama ve çarpışmadan aktif sakınma becerisini kalıcı
-olarak edinmiştir.}
-
-\subsection*{Grafik 9 -- Seed Karşılaştırması}
-\gfig{9_seed_karsilastirma.png}{0.62}
-\yorum{Beş farklı tohumun her biri kendine özgü bir öğrenme yörüngesi izler; bazıları
-daha hızlı, bazıları daha yavaş yükselir.}{Başlangıç hızları farklı olsa da, beş
-tohum da gün sonunda birbirine yakın ve yüksek bir performans platosuna ulaşır.}{Fark,
-başlangıç pozisyonlarının rastgeleliğinden ve ağırlık ilklendirmesinin gradyan inişini
-etkilemesinden gelir; $\geq5$ tohum raporlamasının gerekçesi tam olarak bu varyanstır.}{Tüm
-varyasyonlara rağmen yakınsamanın korunması, algoritmanın gürbüzlüğünü (robustness)
-kanıtlar.}
+\subsection*{Grafik 9 ve 13 -- Seed Karşılaştırması ve Değer Fonksiyonu Kalitesi}
+\begin{figure}[h]\centering
+\IfFileExists{../sunum/grafikler/9_seed_karsilastirma.png}{\includegraphics[width=0.49\textwidth]{../sunum/grafikler/9_seed_karsilastirma.png}}{}\hfill
+\IfFileExists{../sunum/grafikler/13_explained_variance.png}{\includegraphics[width=0.49\textwidth]{../sunum/grafikler/13_explained_variance.png}}{}
+\end{figure}
+\textbf{Grafik 9 (Seed Karşılaştırması).} \emph{Gözlem:} Beş tohumun her biri kendine
+özgü yörünge izler; başlangıç hızları farklı olsa da hepsi yakın ve yüksek platoya
+ulaşır. \emph{Açıklama:} Fark, başlangıç rastgeleliği ve ağırlık ilklendirmesinden
+gelir; $\geq5$ tohum raporlamasının gerekçesi bu varyanstır. \emph{Sonuç:} Yakınsamanın
+korunması algoritmanın gürbüzlüğünü (robustness) kanıtlar. \\
+\textbf{Grafik 13 (Değer Fonksiyonu Kalitesi).} \emph{Gözlem:} Açıklanan varyans
+eğitim boyunca yükselip 1'e (ideal) yaklaşır. \emph{Açıklama:} Kritik durum değerlerini
+giderek isabetli tahmin eder; GAE avantajları güvenilirleşir. \emph{Sonuç:} Yüksek
+açıklanan varyans, politika gradyanının düşük-varyanslı ve sağlıklı güncellendiğinin
+niceliksel kanıtıdır.
 
 \subsection*{Grafik 10 -- $\gamma\times$ Öğrenme Hızı Izgarası (Isı Haritası)}
 \gfig{10_gamma_lr_heatmap.png}{1.0}
@@ -322,23 +323,13 @@ görsel olarak doğrular.}
 \subsection*{Grafik 11 -- Tohum Bazında Detaylı Paneller}
 Her tohum için eğitim getirisi, final deterministik eval, keşif oranı (coverage) ve
 ziyaret edilen oda sayısı dört-panelli olarak \reff{sunum/grafikler/per\_seed\_*.png}
-altında verilmiştir (örnek: en iyi tohum 123).
-\gfig{per_seed_123.png}{0.8}
-\yorum{En iyi tohum (123) eğitim getirisinde $\sim$480 platosuna oturur; final eval
-barları yüksek ve dar; coverage \%100'e, oda sayısı 6'ya yaklaşır.}{Dört panel birbirini
-doğrular: yüksek getiri, yüksek kapsama ve tam oda keşfiyle birlikte gelir.}{Bu, ödül
-tasarımının amaçlandığı gibi çalıştığını gösterir; getiriyi artıran şey gerçekten oda
-ve alan kapsamasıdır.}{Tek bir tohumun iç tutarlılığı, ortalama metriklerin sağlam bir
-temele dayandığını destekler.}
-
-\subsection*{Grafik 13 -- Değer Fonksiyonu Kalitesi}
-\gfig{13_explained_variance.png}{0.6}
-\yorum{Açıklanan varyans (\reff{explained\_variance}) eğitim boyunca yükselip 1'e
-(ideal) yaklaşır.}{Beş tohumda da kritik, getirinin varyansının büyük kısmını
-açıklayacak hale gelir.}{Bu, kritiğin (value head) durum değerlerini giderek daha
-isabetli tahmin ettiğini, dolayısıyla GAE avantaj tahminlerinin de güvenilirleştiğini
-gösterir.}{Yüksek açıklanan varyans, politika gradyanının düşük-varyanslı ve sağlıklı
-güncellendiğinin niceliksel kanıtıdır.}
+altında verilmiştir (örnek: en iyi tohum 123, aşağıda).
+\gfig{per_seed_123.png}{0.66}
+\textbf{Yorum.} \emph{Gözlem:} En iyi tohum (123) eğitim getirisinde $\sim$480
+platosuna oturur; final eval barları yüksek ve dar; coverage \%100'e, oda sayısı 6'ya
+yaklaşır. \emph{Açıklama:} Dört panel birbirini doğrular; getiriyi artıran şey gerçekten
+oda ve alan kapsamasıdır (ödül tasarımı amaçlandığı gibi çalışır). \emph{Sonuç:} Tek
+tohumun iç tutarlılığı, ortalama metriklerin sağlam temele dayandığını destekler.
 
 \section{PPO ve SAC Karşılaştırması}
 \label{sec:kiyas}

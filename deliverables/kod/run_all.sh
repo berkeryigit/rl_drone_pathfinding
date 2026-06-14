@@ -46,7 +46,7 @@ python3 plot_results.py --runs-root "$RUNS_ROOT" --seeds-file "$SEEDS_FILE" \
     --hp-root runs_hp5 \
     --out ../sunum/grafikler --summary-out ../sonuclar/sonuclar.csv
 # Genis grafik seti (oda/carpisma/seed/ic-dinamik/heatmap/per-seed/PPO-vs-SAC):
-python3 viz.py --all --out ../sunum/grafikler || true
+python3 viz.py --section all --out ../sunum/grafikler || true
 # Rapor LaTeX tablolari (ham CSV'lerden):
 python3 make_tables.py || true
 

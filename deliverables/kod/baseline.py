@@ -4,7 +4,7 @@ Ajanin ogrenmesinin gercek bir kazanim oldugunu gostermek icin B5 baseline
 karsilastirma grafigi (rapor sartı): rastgele politika ve/veya basit heuristik
 vs egitilmis ajan. Bu script baseline'lari 2D ortamda uretip CSV'e yazar.
 
-Tum rastgelelik numpy.random.default_rng ile uretilir (np.random.choice/seed YOK).
+Tum rastgelelik numpy.random.default_rng ile uretilir (eski global RNG API'si kullanilmaz).
 
 Kullanim:
     python baseline.py --seeds-file seeds.txt --episodes 20 \
