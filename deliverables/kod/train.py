@@ -169,6 +169,9 @@ def main(argv=None) -> None:
     parser.add_argument("--device", default=None, help="cuda | cpu (varsayilan: cpu, PPO+MLP icin onerilir)")
     parser.add_argument("--lr", type=float, default=None, help="learning_rate override (HP sweep)")
     parser.add_argument("--ent-coef", type=float, default=None, help="ent_coef override (HP sweep)")
+    parser.add_argument("--clip-range", type=float, default=None, help="clip_range override (HP sweep)")
+    parser.add_argument("--gamma", type=float, default=None, help="gamma override (HP sweep)")
+    parser.add_argument("--vf-coef", type=float, default=None, help="vf_coef override (HP sweep)")
     parser.add_argument("--no-eval", action="store_true")
     parser.add_argument("--resume", action="store_true",
                         help="En son checkpoint'tan devam et (model + adim sayaci yuklenir)")
@@ -182,6 +185,12 @@ def main(argv=None) -> None:
         ppo_cfg["learning_rate"] = args.lr
     if args.ent_coef is not None:
         ppo_cfg["ent_coef"] = args.ent_coef
+    if args.clip_range is not None:
+        ppo_cfg["clip_range"] = args.clip_range
+    if args.gamma is not None:
+        ppo_cfg["gamma"] = args.gamma
+    if args.vf_coef is not None:
+        ppo_cfg["vf_coef"] = args.vf_coef
 
     total_timesteps = int(args.timesteps if args.timesteps is not None else train_cfg["total_timesteps"])
     num_envs = int(args.num_envs if args.num_envs is not None else train_cfg["num_envs"])

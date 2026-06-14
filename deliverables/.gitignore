@@ -3,6 +3,13 @@ kod/runs/
 kod/runs_hp/**/checkpoints/
 kod/runs_hp/**/tb/
 kod/runs_hp/**/*.zip
+# Yeni deney dizinleri (model agirliklari haric ham log'lar teslimde ayrica saklanir)
+kod/runs_hp5/
+kod/runs_grid/
+kod/runs_long/
+kod/runs_sac/
+kod/logs_exp/
+kod/figs/
 # Cache / ara dosyalar
 **/__pycache__/
 *.pyc
