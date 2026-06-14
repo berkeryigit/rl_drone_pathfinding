@@ -6615,3 +6615,55 @@ V9 Gazebo 2026-05-30 22:20'den bu yana hard freeze (193k adımda kalıcı ölü)
 ### Müdahale
 Yok — `configs/ppo.yaml` değiştirilmedi. CSV 15+ gün stale, aktif Gazebo eğitimi bu sessionda yok; yaml değişikliği %100 güvenle gereksiz ve zararlıdır. Önceki 4 oturumla tam tutarlı.
 ---
+
+## [2026-06-14 10:03 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 15 GÜN STALE, 2026-05-31 03:01) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 Gazebo 2026-05-30 22:20'den itibaren hard freeze (step=193k'da kalıcı ölü); CSV 15+ gün stale. ppo.yaml 2026-06-02'den beri V10-optimal config içeriyor. Bu **6. ardışık oturum** (05:03, 06:30, 07:04, 08:03, 09:03, 10:03 UTC); tüm öncekilerle tutarlı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- V9 hard freeze: step=193,248'den itibaren 16 özdeş CSV satırı (2026-05-30 22:20→03:01). Plato yok, kırılım yok — eğitim kalıcı çökmüş.
+- Faz özeti (46 CSV satırı, tüm V9 geçmişi):
+  - **Faz 1** (step 142k–599k*, monitor bug — aynı 80k ckpt): ep_rew_mean -290→-270 (stagnant), ep_len=1000 (timeout, sıfır oda geçişi), entropy -3.89→-3.32 (**KIRMIZI**, deterministikleşme), std 0.888→0.746 (**SARI**).
+  - **Faz 2** (80k ckpt, ~22 crash_recovery): ep_rew_mean -25→-109 (en iyi -25.3). Entropy/std sağlıklı (-4.21/-4.27 / 0.987-1.003) ama crash döngüsü öğrenmeyi engelledi.
+  - **Faz 3** (140k→180k ckpt): en iyi -37.4@145k, son kayıt -173.85@193k.
+  - **+15 oda sıçraması V9 boyunca hiç gözlemlenmedi. ep_rew_mean pozitife hiç dönmedi.**
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz (ppo.yaml zaten V10: linear 3e-4→1e-5, 1.5M boyunca).
+- Geriye dönük: sabit lr=7.5e-5 + ent_coef=0.0015 → entropy -3.32 (>-4.0 eşiği) + std 0.746 → erken deterministikleşme → oda keşfi bloke. V10 linear decay + ent_coef=0.008 (5.3×) bu sorunu köklü çözer.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Canlı veri yok; stale CSV üzerinde analiz.
+- V9 Faz 1: entropy -3.32 → **KIRMIZI**; std 0.746 → **SARI**. V9 Faz 2 (crash sonrası): entropy -4.21→-4.27 → **YEŞİL**, std 0.987→1.003 → **YEŞİL**; ancak crash döngüsü öğrenmeyi önledi.
+- V10 beklentisi: ent_coef=0.008 ile entropy <-4.0 uzun süre korunacak (V3.0 Gazebo, peak=110.3@610k, doğruladı).
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9 için: **Sıfır** — kalıcı ölü, bu bulut sessionda Gazebo yok.
+- V10 (V3.0 Gazebo referansı, özdeş hyperparamlar, n_envs=1):
+  - 1. oda: ~175–275k step
+  - 3+ oda: ~350–500k step
+  - 6/6 oda: ~575–750k step
+  - `lidar_history=1` kalırsa %15–20 gecikme beklenir.
+
+**e) V10 için en kritik 1-2 öneri:**
+1. **[TEK KALAN BLOKER — Gazebo makinesinde]** `drone_exploration_env.py`: `lidar_history=1→2`, obs_space 41-d→72-d (32 lidar × 2 frame + 8 meta). `train_ppo.py` obs_dim=72 yansıtmalı. Fast_sim v4.8: çarpışma %8→%0; v5.0 lidar_history=3 domine edemedi → 2 kesin optimal. V10 bu değişiklik olmadan başlatılmamalı.
+2. **ppo.yaml'a dokunma.** 6 ardışık oturum aynı karara vardı: mevcut V10 config (linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, batch=256, n_epochs=10, clip=0.2, gae_lambda=0.95, total=1.5M, n_envs=1) finaldir, değişiklik zararlı olur.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml`: **Hayır.** Final ve optimal.
+- V9 Gazebo: Bu bulut sessionda mevcut değil.
+- CSV: 15+ gün stale — beklenen.
+- Fast_sim zinciri: Tamamlandı (v5.0).
+- Interventions.jsonl: 37 crash_recovery + 3 özel kayıt — zincir kapandı.
+
+### v10 Önerisi
+1. **Gazebo makinesinde tek aksiyon:** `drone_exploration_env.py` → `lidar_history=1→2`, obs 41-d→72-d. `train_ppo.py` obs_dim=72.
+2. **ppo.yaml değiştirme.** 6 ardışık oturum (05:03→10:03 UTC) birleşik karar: config finaldir.
+
+### Müdahale
+Yok — `configs/ppo.yaml` değiştirilmedi. CSV 15+ gün stale, aktif Gazebo eğitimi bu sessionda yok; yaml değişikliği %100 güvenle gereksiz ve zararlıdır. Önceki 5 oturumla tam tutarlı.
+---
