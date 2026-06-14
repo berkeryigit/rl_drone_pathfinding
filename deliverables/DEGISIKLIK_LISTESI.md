@@ -72,3 +72,53 @@ Bu belge, onceki gonderime gore yapilan **her** degisikligi madde madde listeler
 `rapor/  sunum/{sunum, grafikler}  kod/{env, train.py, evaluate.py, baseline.py,
 plot_results.py, config.yaml, requirements.txt, seeds.txt, run_all.sh, sweep.sh,
 README.md}  sonuclar/{loglar, sonuclar.csv}` ve bu `DEGISIKLIK_LISTESI.md`.
+
+---
+
+# EK — 2. Surum Gelistirmeleri (rapor/sunum zenginlestirme + RL-ozgu yeniden egitimler)
+
+Bu bolum, ilk standart teslimden sonra yapilan **ek** gelistirmeleri madde madde
+listeler (hocanin "metrikleri degistirip yeniden egit, kiyasla" istegi dogrultusunda).
+
+## E1. Hiperparametre taramasi genisletildi (2 param -> 5 param, 3 seed -> 5 seed)
+- Eskiden: `learning_rate` ve `ent_coef`, 3 deger x 3 seed (200k).
+- Simdi: **bes** hiperparametre, her biri >=3 deger x **5 seed** (120k, kisa butce
+  hiperparametre etkisini izole etmek icin):
+  `clip_range {0.1,0.2,0.3}`, `ent_coef {0,0.005,0.01,0.05}`, `gamma {0.95,0.98,0.99}`,
+  `learning_rate {1e-4,3e-4,1e-3}`, `vf_coef {0.25,0.5,1.0}`.
+- `train.py`'ye `--clip-range`, `--gamma`, `--vf-coef` CLI override'lari eklendi.
+- Ek olarak `gamma x learning_rate` icin 3x3 izgara koSuldu (isi haritasi, Grafik 10).
+- Tum koSular `numpy.random.default_rng` ile; ham loglar teslimde.
+
+## E2. SAC kiyasi: ARTIK GERCEK (yeniden egitildi, sentetik degil)
+- Eskiden: PPO-vs-SAC tablosu SAC'in yayin ozet sayilarini referans aliyordu.
+- Simdi: `train_sac.py` ile **SAC ayni ortamda, ayni 5 seed, ayni deterministik eval
+  protokoluyle yeniden egitildi** (ekip SAC teslimindeki HP'lerle: train_freq/grad=32/32,
+  tau=0.02, buffer=600k, batch=512, ent_coef=auto, gamma=0.98, net=[256,256]).
+- Boylece PPO-vs-SAC ogrenme/eval/oda egrileri **ust uste bindirilmis GERCEK ham
+  loglardan** uretildi (Grafik C1-C5 + `kiyas/PPO_vs_SAC_Karsilastirma.pdf`).
+- `evaluate.py`'ye `--algo {ppo,sac}` eklendi; ayni script iki modeli de degerlendirir.
+
+## E3. Grafikler: 5 zorunlu -> 13+ (ekipteki TUM grafiklerin PPO karsiligi)
+- Eklendi: Grafik 1b (episode-bazli ogrenme egrisi), 6 (PPO ic dinamikleri:
+  clip_fraction/approx_kl/entropy -- DQN epsilon'unun karsiligi), 7 (oda kesif
+  sureci), 8 (carpisma orani), 9 (seed karsilastirmasi), 10 (gamma x lr isi
+  haritasi), 13 (explained_variance), 5b (baseline 4-metrik), per-seed 2x2 paneller
+  (her seed icin getiri/eval/kapsama/oda) ve PPO-vs-SAC kiyas grafikleri (C1-C5).
+- Tum grafikler tek motor `viz.py`'den; `progress.csv`'deki PPO-ozel metrikler okunur.
+
+## E4. Rapor ve sunum zenginlestirildi
+- Rapor: yeni grafikler + 4-cumlelik yorumlar + 5-param HP duyarlilik + gercek SAC
+  kiyas bolumu + uzun-ufuk + savunma analizi. Tablolar `make_tables.py` ile **ham
+  CSV'lerden** uretilir (`sonuclar_tablo.tex`, `karsilastirma_tablo.tex`).
+- Sunum (`make_pptx.py`): ~26+ slayt; tum grafikler, per-seed paneller, PPO-vs-SAC
+  (gercek veri tablosu + grafikler), savunma ozeti.
+
+## E5. Bonus: uzun-ufuk kararlilik
+- En iyi tohum (123) ayri `runs_long/` altinda daha uzun ufka uzatildi; ana 5-seed
+  teslim 1.5M'de (validated, surekli loglar) korundu. Grafik 12: 1.5M sonrasi plato
+  bozulmuyor -> butce yeterliligi dogrulanir.
+
+## E6. Kural ihlali kontrolu (tekrar dogrulandi)
+- `import gym` yok; `np.random.seed`/`np.random.choice` yok; `default_rng` var.
+- Yeni eklenen `train_sac.py`, `viz.py`, `make_tables.py` de ayni kurallara uyar.
