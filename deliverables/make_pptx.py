@@ -1,9 +1,9 @@
-"""Sunum (220202046_sunum.pptx) ureticisi -- zenginlestirilmis (~22 slayt).
+"""Sunum (220202046_sunum.pptx) üreticisi -- zenginleştirilmiş (~26 slayt).
 
-Ekip sunumlarindaki tum grafiklerin PPO karsiligi + PPO-ozel ic dinamikler +
-per-seed paneller + PPO-vs-SAC kiyas grafikleri. Her grafik slaytinda 4-cumlelik
-yorum (Gozlem -> Karsilastirma -> Aciklama -> Sonuc). Kiyas tablosu GERCEK eval
-CSV'lerinden okunur (sentetik degil).
+Ekip sunumlarındaki tüm grafiklerin PPO karşılığı + PPO-özel iç dinamikler +
+per-seed paneller + PPO-vs-SAC kıyas grafikleri. Her grafik slaytında 4-cümlelik
+yorum (Gözlem -> Karşılaştırma -> Açıklama -> Sonuç). Kıyas tablosu GERÇEK eval
+CSV'lerinden okunur (sentetik değil).
 
     python make_pptx.py
 """
@@ -24,104 +24,104 @@ GRAY = RGBColor(0x37, 0x37, 0x37)
 WHITE = RGBColor(0xff, 0xff, 0xff)
 LIGHT = RGBColor(0xf2, 0xf4, 0xfb)
 
-# --- Grafik basliklari + 4-cumlelik yorumlar ---
+# --- Grafik başlıkları + 4-cümlelik yorumlar ---
 GRAPHS = [
-    ("1_ogrenme_egrisi.png", "Grafik 1 - Ogrenme Egrisi (PPO egitim)",
-     "Gozlem: Getiri ~290'dan ~0.5M'de ~470'e cikip 0.6M sonrasi ~480'de plato; std bandi daralir.\n"
-     "Karsilastirma: 5 tohum ayni seyirde; sonda fark cok kucuk (tohuma kararli).\n"
-     "Aciklama: Clipped surrogate sinirli adimlarla guncelledigi icin getiri sicramasiz artar; plato 6 odayi gezme tavanidir.\n"
-     "Sonuc: 1.5M adim yakinsamaya fazlasiyla yeter (bkz. uzun-ufuk grafigi)."),
-    ("1b_ogrenme_egrisi_episode.png", "Grafik 1b - Ogrenme Egrisi (x = Episode sayisi)",
-     "Gozlem: Episode ekseninde de getiri ilk birkac bin bolumde yukselip platoya oturur.\n"
-     "Karsilastirma: Adim-ekseni egrisiyle ayni hikaye; sadece x birimi farkli (hoca: episode-bazli egri).\n"
-     "Aciklama: Bolum uzunlugu ogrendikce uzar (carpisma azalir), bu yuzden episode ve adim eksenleri hafif farkli olceklenir.\n"
-     "Sonuc: Yakinsama hem adim hem episode bazinda dogrulanir."),
-    ("2_eval_egrisi.png", "Grafik 2 - Test (Eval) Egrisi",
-     "Gozlem: Deterministik eval ~200'den ~0.4M'de ~470'e cikip egitim platosuna oturur.\n"
-     "Karsilastirma: Greedy eval ile stokastik egitim ayni seviyede; fark ihmal edilebilir.\n"
-     "Aciklama: Yuksek getiri rastgele kesiften degil ogrenilen politikadan gelir; greedy'de de basari korunur.\n"
-     "Sonuc: Politika genellesmistir; ayri deterministik koSu ile dogrulandi (rehber B2)."),
-    ("3_loss_egrisi.png", "Grafik 3 - Loss Egrisi (policy gradient & value)",
-     "Gozlem: Critic (value) loss ~0.3M'de ~140 tepe yapip ~30'a duser; actor loss kucuk ve yatay.\n"
-     "Karsilastirma: Critic tepesi getirinin en hizli yukseldigi doneme denk gelir.\n"
-     "Aciklama: Buyuk odullar kesfedilince deger hedefleri buyur (critic zorlanir); politika oturunca duser. Actor kucuk cunku klips guncellemeyi sinirlar.\n"
-     "Sonuc: Critic loss dususu saglikli yakinsama, actor loss yataylik kararliligi gosterir."),
-    ("4_hiperparametre_duyarlilik.png", "Grafik 4 - Hiperparametre Duyarliligi (5 parametre)",
-     "Gozlem: clip_range, ent_coef, gamma, learning_rate, vf_coef 5 tohumla tarandi; egriler hata bandi icinde yatay.\n"
-     "Karsilastirma: Orta clip (0.2), 0.98-0.99 gamma ve dusuk-orta lr en dengeli; uclar varyansi artirir.\n"
-     "Aciklama: Yuksek ent_coef/gamma kesfi (exploration), dusuk lr/orta clip somuruyu (exploitation) ve kararliligi guclendirir.\n"
-     "Sonuc: Secilen taban degerler guvenli orta nokta; sonuc bu aralikta gurbuz."),
-    ("5_baseline_karsilastirma.png", "Grafik 5 - Baseline Karsilastirma (getiri)",
-     "Gozlem: Eval getirisi PPO ~459, heuristic ~402, random ~49.\n"
-     "Karsilastirma: Getiride az fark olsa da kapsama ve carpisma farki cok buyuk; random her olcutte geride.\n"
-     "Aciklama: Heuristic kapilari planlayamaz ve sik carpar; PPO lidar+deger ile daha cok oda gezip neredeyse hic carpmaz.\n"
-     "Sonuc: Ogrenme gercek kazanim; problem basit kural/rastgelelikle cozulemez (rehber B5)."),
-    ("5b_baseline_4metrik.png", "Grafik 5b - Baseline 4 Metrik (gorev metrikleri)",
-     "Gozlem: Getiri, oda, kapsama ve basari metriklerinin dordunde de PPO onde.\n"
-     "Karsilastirma: Ozellikle tam-kesif basarisinda PPO acik ara onde; random %0 basari.\n"
-     "Aciklama: Gorev metrikleri (oda/kapsama) sadece getiriye degil sistematik kesfe bakar; PPO bunu ogrenir.\n"
-     "Sonuc: PPO yalnizca puan degil, gercek gorev hedefini de baskalarindan iyi yapar."),
-    ("6_ppo_ic_dinamikler.png", "Grafik 6 - PPO Ic Dinamikleri (clip / KL / entropi)",
-     "Gozlem: clip_fraction ~0.04'ten ~0.16'ya cikar, approx_kl buyur, entropi azalir.\n"
-     "Karsilastirma: DQN'deki epsilon cizelgesinin PPO karsiligi; kesiften somuruye gecis OGRENILEREK olur.\n"
-     "Aciklama: Basta yuksek entropi genis kesif saglar; politika iyilestikce avantajli eylemlere olasilik yigilir, entropi duser.\n"
-     "Sonuc: Egrilerin patlamadan seyretmesi klips'in guncellemeleri guvenli tuttugunu gosterir."),
-    ("7_oda_kesif_sureci.png", "Grafik 7 - Oda Kesif Sureci",
-     "Gozlem: Episode basina kesfedilen oda 1'den yukselip hedef 6'ya yaklasir.\n"
-     "Karsilastirma: Basta sadece dogulan oda; sonda ortalama 5-6 banda cikar.\n"
-     "Aciklama: Carpismadan kacinmayi ogrenen ajan hayatta kalir ve kapilari bulup derin odalara erisir (+20/+60 odul).\n"
-     "Sonuc: Model havada kalmayi degil, asil amac olan alan taramayi da yapar."),
-    ("8_carpisma_orani.png", "Grafik 8 - Carpisma Orani",
-     "Gozlem: Carpisma orani basta ~%100'e yakinken zamanla ciddi ve kararli duser.\n"
-     "Karsilastirma: Per-seed egriler ayni yonde; sonda dusuk bantta sabitlenir.\n"
-     "Aciklama: Lidar mesafesi ile -40 carpisma cezasi iliskisi ag tarafindan kurulur; kacis davranisi degere yansir.\n"
-     "Sonuc: Ajan engel algilama ve carpismadan sakinmayi kalici olarak edinir."),
-    ("9_seed_karsilastirma.png", "Grafik 9 - Seed Karsilastirmasi",
-     "Gozlem: 5 tohumun her biri kendine ozgu yorunge izler; bazilari hizli, bazilari yavas yukselir.\n"
-     "Karsilastirma: Baslangic hizlari farkli olsa da hepsi yakin ve yuksek platoya ulasir.\n"
-     "Aciklama: Fark, baslangic pozisyonu rastgeleligi ve agirlik ilklendirmesinden gelir; >=5 tohum bu varyans icin gerekli.\n"
-     "Sonuc: Yakinsamanin korunmasi algoritmanin gurbuzlugunu (robustness) kanitlar."),
-    ("10_gamma_lr_heatmap.png", "Grafik 10 - gamma x lr Isi Haritasi",
-     "Gozlem: 3x3 izgarada getiri/oda/skor isi haritasi; en iyi bolge orta-yuksek gamma + dusuk-orta lr kosesi.\n"
-     "Karsilastirma: Yuksek lr + dusuk gamma kosesi en zayif.\n"
-     "Aciklama: Yuksek gamma gecikmeli oda odulunu tasir; dusuk lr guncellemeyi kararli tutar; ikisi birlikte en iyi.\n"
-     "Sonuc: Secilen (gamma=0.98, lr=3e-4) bu en iyi bolgenin icinde; izgara secimi dogrular."),
-    ("13_explained_variance.png", "Grafik 13 - Deger Fonksiyonu Kalitesi (explained_variance)",
-     "Gozlem: Aciklanan varyans egitim boyunca yukselip 1'e (ideal) yaklasir.\n"
-     "Karsilastirma: 5 tohumda da kritik getirinin varyansini buyuk olcude aciklar hale gelir.\n"
-     "Aciklama: Kritik durum degerlerini giderek isabetli tahmin eder; GAE avantajlari guvenilirlesir.\n"
-     "Sonuc: Yuksek aciklanan varyans, politika gradyaninin dusuk-varyansli ve saglikli oldugunun kanitidir."),
+    ("1_ogrenme_egrisi.png", "Grafik 1 — Öğrenme Eğrisi (PPO eğitim)",
+     "Gözlem: Getiri ~290'dan ~0.5M'de ~470'e çıkıp 0.6M sonrası ~480'de plato; std bandı daralır.\n"
+     "Karşılaştırma: 5 tohum aynı seyirde; sonda fark çok küçük (tohuma kararlı).\n"
+     "Açıklama: Clipped surrogate sınırlı adımlarla güncellediği için getiri sıçramasız artar; plato 6 odayı gezme tavanıdır.\n"
+     "Sonuç: 1.5M adım yakınsamaya fazlasıyla yeter (bkz. uzun-ufuk grafiği)."),
+    ("1b_ogrenme_egrisi_episode.png", "Grafik 1b — Öğrenme Eğrisi (x = Episode sayısı)",
+     "Gözlem: Episode ekseninde de getiri ilk birkaç bin bölümde yükselip platoya oturur.\n"
+     "Karşılaştırma: Adım-ekseni eğrisiyle aynı hikâye; sadece x birimi farklı (hoca: episode-bazlı eğri).\n"
+     "Açıklama: Bölüm uzunluğu öğrendikçe uzar (çarpışma azalır), bu yüzden episode ve adım eksenleri hafif farklı ölçeklenir.\n"
+     "Sonuç: Yakınsama hem adım hem episode bazında doğrulanır."),
+    ("2_eval_egrisi.png", "Grafik 2 — Test (Eval) Eğrisi",
+     "Gözlem: Deterministik eval ~200'den ~0.4M'de ~470'e çıkıp eğitim platosuna oturur.\n"
+     "Karşılaştırma: Greedy eval ile stokastik eğitim aynı seviyede; fark ihmal edilebilir.\n"
+     "Açıklama: Yüksek getiri rastgele keşiften değil öğrenilen politikadan gelir; greedy'de de başarı korunur.\n"
+     "Sonuç: Politika genelleşmiştir; ayrı deterministik koşu ile doğrulandı (rehber B2)."),
+    ("3_loss_egrisi.png", "Grafik 3 — Loss Eğrisi (policy gradient & value)",
+     "Gözlem: Critic (value) loss ~0.3M'de ~140 tepe yapıp ~30'a düşer; actor loss küçük ve yatay.\n"
+     "Karşılaştırma: Critic tepesi getirinin en hızlı yükseldiği döneme denk gelir.\n"
+     "Açıklama: Büyük ödüller keşfedilince değer hedefleri büyür (critic zorlanır); politika oturunca düşer. Actor küçük çünkü klips güncellemeyi sınırlar.\n"
+     "Sonuç: Critic loss düşüşü sağlıklı yakınsama, actor loss yataylık kararlılığı gösterir."),
+    ("4_hiperparametre_duyarlilik.png", "Grafik 4 — Hiperparametre Duyarlılığı (5 parametre)",
+     "Gözlem: clip_range, ent_coef, gamma, learning_rate, vf_coef 5 tohumla tarandı; eğriler hata bandı içinde yatay.\n"
+     "Karşılaştırma: Orta clip (0.2), 0.98–0.99 gamma ve düşük-orta lr en dengeli; uçlar varyansı artırır.\n"
+     "Açıklama: Yüksek ent_coef/gamma keşfi (exploration), düşük lr/orta clip sömürüyü (exploitation) ve kararlılığı güçlendirir.\n"
+     "Sonuç: Seçilen taban değerler güvenli orta nokta; sonuç bu aralıkta gürbüz."),
+    ("5_baseline_karsilastirma.png", "Grafik 5 — Baseline Karşılaştırma (getiri)",
+     "Gözlem: Eval getirisi PPO ~459, heuristic ~402, random ~49.\n"
+     "Karşılaştırma: Getiride az fark olsa da kapsama ve çarpışma farkı çok büyük; random her ölçütte geride.\n"
+     "Açıklama: Heuristic kapıları planlayamaz ve sık çarpar; PPO lidar+değer ile daha çok oda gezip neredeyse hiç çarpmaz.\n"
+     "Sonuç: Öğrenme gerçek kazanım; problem basit kural/rastgelelikle çözülemez (rehber B5)."),
+    ("5b_baseline_4metrik.png", "Grafik 5b — Baseline 4 Metrik (görev metrikleri)",
+     "Gözlem: Getiri, oda, kapsama ve başarı metriklerinin dördünde de PPO önde.\n"
+     "Karşılaştırma: Özellikle tam-keşif başarısında PPO açık ara önde; random %0 başarı.\n"
+     "Açıklama: Görev metrikleri (oda/kapsama) sadece getiriye değil sistematik keşfe bakar; PPO bunu öğrenir.\n"
+     "Sonuç: PPO yalnızca puan değil, gerçek görev hedefini de baskalarından iyi yapar."),
+    ("6_ppo_ic_dinamikler.png", "Grafik 6 — PPO İç Dinamikleri (clip / KL / entropi)",
+     "Gözlem: clip_fraction ~0.04'ten ~0.16'ya çıkar, approx_kl büyür, entropi azalır.\n"
+     "Karşılaştırma: DQN'deki epsilon çizelgesinin PPO karşılığı; keşiften sömürüye geçiş ÖĞRENİLEREK olur.\n"
+     "Açıklama: Başta yüksek entropi geniş keşif sağlar; politika iyileştikçe avantajlı eylemlere olasılık yığılır, entropi düşer.\n"
+     "Sonuç: Eğrilerin patlamadan seyretmesi klips'in güncellemeleri güvenli tuttuğunu gösterir."),
+    ("7_oda_kesif_sureci.png", "Grafik 7 — Oda Keşif Süreci",
+     "Gözlem: Episode başına keşfedilen oda 1'den yükselip hedef 6'ya yaklaşır.\n"
+     "Karşılaştırma: Başta sadece doğulan oda; sonda ortalama 5–6 banda çıkar.\n"
+     "Açıklama: Çarpışmadan kaçınmayı öğrenen ajan hayatta kalır ve kapıları bulup derin odalara erişir (+20/+60 ödül).\n"
+     "Sonuç: Model havada kalmayı değil, asıl amaç olan alan taramayı da yapar."),
+    ("8_carpisma_orani.png", "Grafik 8 — Çarpışma Oranı",
+     "Gözlem: Çarpışma oranı başta ~%100'e yakınken zamanla ciddi ve kararlı düşer.\n"
+     "Karşılaştırma: Per-seed eğriler aynı yönde; sonda düşük bantta sabitlenir.\n"
+     "Açıklama: Lidar mesafesi ile -40 çarpışma cezası ilişkisi ağ tarafından kurulur; kaçış davranışı değere yansır.\n"
+     "Sonuç: Ajan engel algılama ve çarpışmadan sakınmayı kalıcı olarak edinir."),
+    ("9_seed_karsilastirma.png", "Grafik 9 — Seed Karşılaştırması",
+     "Gözlem: 5 tohumun her biri kendine özgü yörünge izler; bazıları hızlı, bazıları yavaş yükselir.\n"
+     "Karşılaştırma: Başlangıç hızları farklı olsa da hepsi yakın ve yüksek platoya ulaşır.\n"
+     "Açıklama: Fark, başlangıç pozisyonu rastgeleliği ve ağırlık ilklendirmesinden gelir; >=5 tohum bu varyans için gerekli.\n"
+     "Sonuç: Yakınsamanın korunması algoritmanın gürbüzlüğünü (robustness) kanıtlar."),
+    ("10_gamma_lr_heatmap.png", "Grafik 10 — gamma × lr Isı Haritası",
+     "Gözlem: 3×3 ızgarada getiri/oda/skor ısı haritası; en iyi bölge orta-yüksek gamma + düşük-orta lr köşesi.\n"
+     "Karşılaştırma: Yüksek lr + düşük gamma köşesi en zayıf.\n"
+     "Açıklama: Yüksek gamma gecikmeli oda ödülünü taşır; düşük lr güncellemeyi kararlı tutar; ikisi birlikte en iyi.\n"
+     "Sonuç: Seçilen (gamma=0.98, lr=3e-4) bu en iyi bölgenin içinde; ızgara seçimi doğrular."),
+    ("13_explained_variance.png", "Grafik 13 — Değer Fonksiyonu Kalitesi (explained_variance)",
+     "Gözlem: Açıklanan varyans eğitim boyunca yükselip 1'e (ideal) yaklaşır.\n"
+     "Karşılaştırma: 5 tohumda da kritik getirinin varyansını büyük ölçüde açıklar hale gelir.\n"
+     "Açıklama: Kritik durum değerlerini giderek isabetli tahmin eder; GAE avantajları güvenilirleşir.\n"
+     "Sonuç: Yüksek açıklanan varyans, politika gradyanının düşük-varyanslı ve sağlıklı olduğunun kanıtıdır."),
 ]
 
-PER_SEED = [(f"per_seed_{s}.png", f"Tohum {s} - Detayli Panel (getiri / eval / kapsama / oda)")
+PER_SEED = [(f"per_seed_{s}.png", f"Tohum {s} — Detaylı Panel (getiri / eval / kapsama / oda)")
             for s in (123, 42, 7, 13, 2025)]
 
 COMPARE = [
-    ("C1_ogrenme_ppo_vs_sac.png", "PPO vs SAC - Ogrenme Egrisi",
-     "Gozlem: SAC ilk birkac yuz bin adimda PPO'dan hizli yukselir; PPO daha cok adimla daha yuksek/kararli platoya ulasir.\n"
-     "Karsilastirma: Tam ufukta PPO platosu daha yuksek.\n"
-     "Aciklama: SAC off-policy (replay buffer => adim basina verimli); PPO on-policy (rollout bir kez kullanilir).\n"
-     "Sonuc: Off-policy az adimda hizli, on-policy cok adimla yuksek nihai basari."),
-    ("C2_ornek_verimliligi.png", "PPO vs SAC - Ornek Verimliligi",
-     "Gozlem: Ayni env-adim penceresinde SAC ustte baslar.\n"
-     "Karsilastirma: SAC erken avantajli; PPO sonradan yakalar/gecer.\n"
-     "Aciklama: Replay buffer her deneyimi defalarca kullandigindan SAC ayni adimda daha cok ogrenir.\n"
-     "Sonuc: Ornek-butcesi kisitli senaryolar icin SAC, butce bolca ise PPO avantajli."),
-    ("C3_eval_ppo_vs_sac.png", "PPO vs SAC - Deterministik Eval",
-     "Gozlem: Greedy eval egrisinde PPO platosu SAC'in uzerinde.\n"
-     "Karsilastirma: Ikisi de stokastik egitimle tutarli; fark nihai seviyede.\n"
-     "Aciklama: PPO'nun klips'i kararli/yuksek-tavanli politika ogrenir.\n"
-     "Sonuc: Bu ortamda PPO nihai gorev basarisinda onde."),
-    ("C5_oda_ppo_vs_sac.png", "PPO vs SAC - Oda Kesif Sureci",
-     "Gozlem: PPO ortalama oda sayisinda 6'ya daha cok yaklasir.\n"
-     "Karsilastirma: SAC hizli baslar ama nihai oda kapsamasi PPO'nun gerisinde.\n"
-     "Aciklama: PPO'nun yuksek-tavanli politikasi sistematik oda-oda kesfi daha iyi yapar.\n"
-     "Sonuc: Gorev metriginde (oda) PPO ustun."),
-    ("C4_final_metrik_bar.png", "PPO vs SAC - Final Metrik Barlari",
-     "Gozlem: Getiri, oda, kapsama, basari PPO'da yuksek; carpisma PPO'da dusuk.\n"
-     "Karsilastirma: Dort kalite olcutunde PPO onde, guvenlikte (carpisma) de daha iyi.\n"
-     "Aciklama: Ayni ortam/seed/protokolde fark yalnizca algoritmadan gelir.\n"
-     "Sonuc: Bu cok-odali kesif gorevinde PPO nihai basari/guvenlikte ustun."),
+    ("C1_ogrenme_ppo_vs_sac.png", "PPO vs SAC — Öğrenme Eğrisi",
+     "Gözlem: SAC ilk birkaç yüz bin adımda PPO'dan hızlı yükselir; PPO daha çok adımla daha yüksek/kararlı platoya ulaşır.\n"
+     "Karşılaştırma: Tam ufukta PPO platosu daha yüksek.\n"
+     "Açıklama: SAC off-policy (replay buffer => adım başına verimli); PPO on-policy (rollout bir kez kullanılır).\n"
+     "Sonuç: Off-policy az adımda hızlı, on-policy çok adımla yüksek nihai başarı."),
+    ("C2_ornek_verimliligi.png", "PPO vs SAC — Örnek Verimliliği",
+     "Gözlem: Aynı env-adım penceresinde SAC üstte başlar.\n"
+     "Karşılaştırma: SAC erken avantajlı; PPO sonradan yakalar/geçer.\n"
+     "Açıklama: Replay buffer her deneyimi defalarca kullandığından SAC aynı adımda daha çok öğrenir.\n"
+     "Sonuç: Örnek-bütçesi kısıtlı senaryolar için SAC, bütçe bolca ise PPO avantajlı."),
+    ("C3_eval_ppo_vs_sac.png", "PPO vs SAC — Deterministik Eval",
+     "Gözlem: Greedy eval eğrisinde PPO platosu SAC'ın üzerinde.\n"
+     "Karşılaştırma: İkisi de stokastik eğitimle tutarlı; fark nihai seviyede.\n"
+     "Açıklama: PPO'nun klips'i kararlı/yüksek-tavanlı politika öğrenir.\n"
+     "Sonuç: Bu ortamda PPO nihai görev başarısında önde."),
+    ("C5_oda_ppo_vs_sac.png", "PPO vs SAC — Oda Keşif Süreci",
+     "Gözlem: PPO ortalama oda sayısında 6'ya daha çok yaklaşır.\n"
+     "Karşılaştırma: SAC hızlı başlar ama nihai oda kapsaması PPO'nun gerisinde.\n"
+     "Açıklama: PPO'nun yüksek-tavanlı politikası sistematik oda-oda keşfi daha iyi yapar.\n"
+     "Sonuç: Görev metriğinde (oda) PPO üstün."),
+    ("C4_final_metrik_bar.png", "PPO vs SAC — Final Metrik Barları",
+     "Gözlem: Getiri, oda, kapsama, başarı PPO'da yüksek; çarpışma PPO'da düşük.\n"
+     "Karşılaştırma: Dört kalite ölçütünde PPO önde, güvenlikte (çarpışma) de daha iyi.\n"
+     "Açıklama: Aynı ortam/seed/protokolde fark yalnızca algoritmadan gelir.\n"
+     "Sonuç: Bu çok-odalı keşif görevinde PPO nihai başarı/güvenlikte üstün."),
 ]
 
 prs = Presentation()
@@ -152,7 +152,7 @@ def bullets(slide, items, left=0.7, top=1.35, width=12.0, height=5.7, size=18):
         lvl = it[0] if isinstance(it, tuple) else 0
         txt = it[1] if isinstance(it, tuple) else it
         p.level = lvl
-        r = p.add_run(); r.text = ("- " + txt) if (lvl and txt) else txt
+        r = p.add_run(); r.text = ("• " + txt) if (lvl and txt) else txt
         r.font.size = Pt(size - 2 * lvl); r.font.color.rgb = GRAY
         p.space_after = Pt(7)
 
@@ -195,78 +195,78 @@ s = prs.slides.add_slide(BLANK); bg(s, DARK)
 tb = s.shapes.add_textbox(Inches(0.8), Inches(2.1), Inches(11.7), Inches(2.0))
 tf = tb.text_frame; tf.word_wrap = True
 p = tf.paragraphs[0]; r = p.add_run()
-r.text = "Kapali Ortamda PPO ile Lidar Tabanli Drone Kesfi"
+r.text = "Kapalı Ortamda PPO ile Lidar Tabanlı Drone Keşfi"
 r.font.size = Pt(40); r.font.bold = True; r.font.color.rgb = WHITE
 p2 = tf.add_paragraph(); r2 = p2.add_run()
-r2.text = "Pekistirmeli Ogrenme Donem Projesi - Teknik Sunum"
+r2.text = "Pekiştirmeli Öğrenme Dönem Projesi — Teknik Sunum"
 r2.font.size = Pt(22); r2.font.color.rgb = RGBColor(0xb0, 0xbe, 0xe8)
-for line in ["", "Berker Yigit - 220202046",
-             "Kocaeli Universitesi, Bilgisayar Muhendisligi (II. Ogretim)",
+for line in ["", "Berker Yiğit — 220202046",
+             "Kocaeli Üniversitesi, Bilgisayar Mühendisliği (II. Öğretim)",
              "Algoritma: PPO   |   Branch: algo/ppo"]:
     pp = tf.add_paragraph(); rr = pp.add_run(); rr.text = line
     rr.font.size = Pt(18); rr.font.color.rgb = WHITE
 
-# ---------------------------------------------------------------- 2) Icerik
+# ---------------------------------------------------------------- 2) İçerik
 s = prs.slides.add_slide(BLANK); bg(s)
-add_title(s, "Icerik")
+add_title(s, "İçerik")
 bullets(s, [
-    "Problem ve Neden Pekistirmeli Ogrenme?",
-    "Ortam ve MDP (durum / eylem / odul) - SAC ile birebir ayni",
-    "PPO Algoritmasi ve Hiperparametreler",
-    "Deney Duzeni (5 seed, deterministik eval, baseline)",
-    "5 Zorunlu Grafik + Ek Analizler (oda kesfi, carpisma, ic dinamikler, heatmap)",
-    "Hiperparametre Taramasi (clip/ent/gamma/lr/vf - yeniden egitim)",
+    "Problem ve Neden Pekiştirmeli Öğrenme?",
+    "Ortam ve MDP (durum / eylem / ödül) — SAC ile birebir aynı",
+    "PPO Algoritması ve Hiperparametreler",
+    "Deney Düzeni (5 seed, deterministik eval, baseline)",
+    "5 Zorunlu Grafik + Ek Analizler (oda keşfi, çarpışma, iç dinamikler, heatmap)",
+    "Hiperparametre Taraması (clip/ent/gamma/lr/vf — yeniden eğitim)",
     "Per-seed Detay Panelleri",
-    "PPO vs SAC Karsilastirmasi (ayni ortam/seed/protokol)",
-    "Savunma Ozeti ve Sonuc",
+    "PPO vs SAC Karşılaştırması (aynı ortam/seed/protokol)",
+    "Savunma Özeti ve Sonuç",
 ], size=19)
 
 # ---------------------------------------------------------------- 3) Problem
 s = prs.slides.add_slide(BLANK); bg(s)
-add_title(s, "Problem ve Neden Pekistirmeli Ogrenme?")
+add_title(s, "Problem ve Neden Pekiştirmeli Öğrenme?")
 bullets(s, [
-    "Gorev: GPS'siz kapali binada, sadece lidar + gurultulu odometri ile carpmadan en cok alani kesfet.",
-    "Neden RL? (rehber dort olcutu de saglanir)",
-    (1, "Ardisiklik: bir adimdaki donus, sonraki adimlarin kesif potansiyelini belirler."),
-    (1, "Gecikmeli odul: yeni oda / 6-oda bonusu ancak ileride toplanir."),
-    (1, "Buyuk, bilinmeyen, stokastik durum uzayi (75-D surekli; lidar/odom/ruzgar gurultusu)."),
-    (1, "A*/BFS uygulanamaz: harita onceden bilinmez, hareketli engeller var, tek hedef yok (amac kapsama)."),
+    "Görev: GPS'siz kapalı binada, sadece lidar + gürültülü odometri ile çarpmadan en çok alanı keşfet.",
+    "Neden RL? (rehber dört ölçütü de sağlanır)",
+    (1, "Ardışıklık: bir adımdaki dönüş, sonraki adımların keşif potansiyelini belirler."),
+    (1, "Gecikmeli ödül: yeni oda / 6-oda bonusu ancak ileride toplanır."),
+    (1, "Büyük, bilinmeyen, stokastik durum uzayı (75-D sürekli; lidar/odom/rüzgar gürültüsü)."),
+    (1, "A*/BFS uygulanamaz: harita önceden bilinmez, hareketli engeller var, tek hedef yok (amaç kapsama)."),
 ], size=18)
 
 # ---------------------------------------------------------------- 4) Ortam/MDP
 s = prs.slides.add_slide(BLANK); bg(s)
-add_title(s, "Ortam ve MDP: Durum / Eylem / Odul")
+add_title(s, "Ortam ve MDP: Durum / Eylem / Ödül")
 bullets(s, [
-    "Ortam: 8 m yaricapli, 6 odali bina; 64 isinli lidar; 3 hareketli engel.",
-    "*** SAC teslimiyle BAYT-BAYT ayni ortam (MD5 61ec1d6a); state Box(75), action Box(-1,1)^3 birebir ayni. ***",
-    "Durum (75-D, [0,1]): 64 lidar + yaw cos/sin + onceki eylem(3) + ilerleme/oda(2) + min_lidar/idle(2) + kapi/duvar(2).",
-    "Eylem (3-D surekli): ileri/geri hiz, yanal hiz, donus hizi.",
-    "Odul (kod step() ile birebir): +3 yeni voxel, +20 yeni oda, -40 carpisma, +60 tum odalar, kucuk zaman/idle cezalari.",
-    "Bolum: carpisma veya 6-oda ile biter, 600 adimda kesilir.",
+    "Ortam: 8 m yarıçaplı, 6 odalı bina; 64 ışınlı lidar; 3 hareketli engel.",
+    "◆ SAC teslimiyle BAYT-BAYT aynı ortam (MD5 61ec1d6a); state Box(75), action Box(-1,1)³ birebir aynı.",
+    "Durum (75-D, [0,1]): 64 lidar + yaw cos/sin + önceki eylem(3) + ilerleme/oda(2) + min_lidar/idle(2) + kapı/duvar(2).",
+    "Eylem (3-D sürekli): ileri/geri hız, yanal hız, dönüş hızı.",
+    "Ödül (kod step() ile birebir): +3 yeni voxel, +20 yeni oda, -40 çarpışma, +60 tüm odalar, küçük zaman/idle cezaları.",
+    "Bölüm: çarpışma veya 6-oda ile biter, 600 adımda kesilir.",
 ], size=17)
 
 # ---------------------------------------------------------------- 5) PPO
 s = prs.slides.add_slide(BLANK); bg(s)
-add_title(s, "PPO Algoritmasi")
+add_title(s, "PPO Algoritması")
 bullets(s, [
-    "Aktor-kritik, ON-POLICY politika gradyani. Aktor surekli eylemde Gauss dagilimi; kritik durum degeri.",
-    "Clipped surrogate: yeni/eski politika orani 1 +/- 0.2 ile kirpilir => kararli, asiri sapmasiz guncelleme.",
+    "Aktör-kritik, ON-POLICY politika gradyanı. Aktör sürekli eylemde Gauss dağılımı; kritik durum değeri.",
+    "Clipped surrogate: yeni/eski politika oranı 1 ± 0.2 ile kırpılır => kararlı, aşırı sapmasız güncelleme.",
     "GAE (lambda=0.95) ile avantaj tahmini.",
-    "Replay buffer YOK: rollout verisi birkac epoch kullanilip atilir => off-policy'ye gore daha az ornek-verimli.",
-    "Telafi: 8 paralel ortam + daha uzun egitim (1.5M adim/seed).",
-    "Adil karsilastirma: learning_rate, gamma, ag mimarisi, num_envs SAC teslimiyle AYNI.",
+    "Replay buffer YOK: rollout verisi birkaç epoch kullanılıp atılır => off-policy'ye göre daha az örnek-verimli.",
+    "Telafi: 8 paralel ortam + daha uzun eğitim (1.5M adım/seed).",
+    "Adil karşılaştırma: learning_rate, gamma, ağ mimarisi, num_envs SAC teslimiyle AYNI.",
 ], size=17)
 
 # ---------------------------------------------------------------- 6) HP + Deney
 s = prs.slides.add_slide(BLANK); bg(s)
-add_title(s, "Hiperparametreler ve Deney Duzeni")
+add_title(s, "Hiperparametreler ve Deney Düzeni")
 bullets(s, [
     "config.yaml: lr=3e-4, gamma=0.98, net=[256,256], n_steps=1024, batch=512, n_epochs=10, clip=0.2, gae=0.95, ent=0.005, vf=0.5.",
-    "5 seed: 7,13,42,123,2025 (>=5 zorunlu). Her seed ayri politika; her 10k adimda deterministik eval.",
-    "Final: 20 bolum DETERMINISTIK (greedy) koSu (egitim egrisi tek basina kanit degil).",
-    "Baseline: rastgele + sezgisel politika, ayni ortamda.",
-    "HP taramasi (yeniden egitim): clip_range, ent_coef, gamma, learning_rate, vf_coef -> her biri >=3 deger x 5 seed.",
-    "Tum rastgelelik numpy.random.default_rng; import gym / np.random.seed YOK.",
+    "5 seed: 7,13,42,123,2025 (>=5 zorunlu). Her seed ayrı politika; her 10k adımda deterministik eval.",
+    "Final: 20 bölüm DETERMİNİSTİK (greedy) koşu (eğitim eğrisi tek başına kanıt değil).",
+    "Baseline: rastgele + sezgisel politika, aynı ortamda.",
+    "HP taraması (yeniden eğitim): clip_range, ent_coef, gamma, learning_rate, vf_coef -> her biri >=3 değer × 5 seed.",
+    "Tüm rastgelelik numpy.random.default_rng; import gym / np.random.seed YOK.",
 ], size=16)
 
 # ---------------------------------------------------------------- Grafikler
@@ -287,7 +287,7 @@ for fname, title in PER_SEED:
 
 # ---------------------------------------------------------------- PPO vs SAC tablo
 s = prs.slides.add_slide(BLANK); bg(s)
-add_title(s, "PPO vs SAC - Ozet (ayni ortam/seed/protokol)")
+add_title(s, "PPO vs SAC — Özet (aynı ortam/seed/protokol)")
 
 
 def _avg(name):
@@ -303,13 +303,13 @@ ppo, sac = _avg("eval_per_episode.csv"), _avg("sac_eval_per_episode.csv")
 def fmt(d, k, f="{:.1f}"):
     return f.format(d[k]) if d else "--"
 rows = [
-    ("Olcut", "PPO (bu calisma)", "SAC (ayni ortam)"),
+    ("Ölçüt", "PPO (bu çalışma)", "SAC (aynı ortam)"),
     ("Aile", "on-policy", "off-policy"),
     ("Replay buffer", "yok", "var"),
     ("Ort. eval getirisi", fmt(ppo, "ret"), fmt(sac, "ret")),
-    ("Basari orani (6 oda)", fmt(ppo, "succ", "{:.2f}"), fmt(sac, "succ", "{:.2f}")),
+    ("Başarı oranı (6 oda)", fmt(ppo, "succ", "{:.2f}"), fmt(sac, "succ", "{:.2f}")),
     ("Ort. kapsama %", fmt(ppo, "cov"), fmt(sac, "cov")),
-    ("Eval carpisma orani", fmt(ppo, "crash", "{:.2f}"), fmt(sac, "crash", "{:.2f}")),
+    ("Eval çarpışma oranı", fmt(ppo, "crash", "{:.2f}"), fmt(sac, "crash", "{:.2f}")),
 ]
 tbl = s.shapes.add_table(len(rows), 3, Inches(1.4), Inches(1.5), Inches(10.5), Inches(4.0)).table
 tbl.columns[0].width = Inches(4.3); tbl.columns[1].width = Inches(3.1); tbl.columns[2].width = Inches(3.1)
@@ -325,8 +325,8 @@ for ri, row in enumerate(rows):
         else:
             cell.fill.solid(); cell.fill.fore_color.rgb = LIGHT
 bullets(s, [
-    "Ortam, durum/eylem uzayi, seed ve protokol birebir ayni -> fark yalnizca algoritmadan.",
-    "SAC az adimda hizli oturur (off-policy, replay buffer); PPO daha cok adimla daha yuksek nihai basari.",
+    "Ortam, durum/eylem uzayı, seed ve protokol birebir aynı -> fark yalnızca algoritmadan.",
+    "SAC az adımda hızlı oturur (off-policy, replay buffer); PPO daha çok adımla daha yüksek nihai başarı.",
 ], top=5.8, size=15)
 
 # ---------------------------------------------------------------- PPO vs SAC grafikleri
@@ -338,22 +338,22 @@ for fname, title, comment in COMPARE:
 
 # ---------------------------------------------------------------- Savunma
 s = prs.slides.add_slide(BLANK); bg(s)
-add_title(s, "Savunma Ozeti (4 Kavram Alani)")
+add_title(s, "Savunma Özeti (4 Kavram Alanı)")
 bullets(s, [
-    "Stokastik mi? EVET. Kanit kod satiri: ruzgar (step), lidar (_compute_lidar), odom (_make_obs) gurultusu => p(s'|s,a) dejenere degil.",
-    "On/Off-policy? ON-POLICY. Davranis = hedef politika; replay buffer yok; veri kullanilip atilir.",
-    "Markov? Yaklasik saglanir: lidar + hiz (onceki eylem) + adim-deterministik engeller; gurultu/sinirli gorus ile yalnizca yaklasik.",
-    "POMDP mi? EVET. Gercek durum != gozlem: odom gurultusu, gorus-disi duvarlar, engelin gelecek konumu gozlemde yok.",
+    "Stokastik mi? EVET. Kanıt kod satırı: rüzgar (step), lidar (_compute_lidar), odom (_make_obs) gürültüsü => p(s'|s,a) dejenere değil.",
+    "On/Off-policy? ON-POLICY. Davranış = hedef politika; replay buffer yok; veri kullanılıp atılır.",
+    "Markov? Yaklaşık sağlanır: lidar + hız (önceki eylem) + adım-deterministik engeller; gürültü/sınırlı görüş ile yalnızca yaklaşık.",
+    "POMDP mi? EVET. Gerçek durum != gözlem: odom gürültüsü, görüş-dışı duvarlar, engelin gelecek konumu gözlemde yok.",
 ], size=16)
 
-# ---------------------------------------------------------------- Sonuc
+# ---------------------------------------------------------------- Sonuç
 s = prs.slides.add_slide(BLANK); bg(s)
-add_title(s, "Sonuc")
+add_title(s, "Sonuç")
 bullets(s, [
-    "PPO, on-policy ve replay buffer'siz olmasina ragmen rastgele ve sezgisel taban politikalarini belirgin gecti.",
-    "5 hiperparametre (clip/ent/gamma/lr/vf) yeniden egitilerek tarandi; secilen taban degerler gurbuz orta nokta.",
-    "Ayni ortamda egitilen SAC ile kiyas, on-policy/off-policy ayrimini gercek egrilerle gosterdi.",
-    "Tum grafikler sonuclar/loglar/ altindaki ham loglardan yeniden uretilebilir.",
+    "PPO, on-policy ve replay buffer'sız olmasına rağmen rastgele ve sezgisel taban politikalarını belirgin geçti.",
+    "5 hiperparametre (clip/ent/gamma/lr/vf) yeniden eğitilerek tarandı; seçilen taban değerler gürbüz orta nokta.",
+    "Aynı ortamda eğitilen SAC ile kıyas, on-policy/off-policy ayrımını gerçek eğrilerle gösterdi.",
+    "Tüm grafikler sonuclar/loglar/ altındaki ham loglardan yeniden üretilebilir.",
 ], size=18)
 
 OUT.parent.mkdir(parents=True, exist_ok=True)
