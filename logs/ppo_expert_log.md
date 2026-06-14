@@ -7226,3 +7226,53 @@ V9 eğitimi 2026-05-30 22:20'den bu yana crash-loop'ta tamamen ölü; ppo.yaml v
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. 19. ardışık oturumda v10 config optimal; Gazebo v10 lokal makinede başlatılana kadar CSV donmuş kalacak.
 ---
+
+## [2026-06-14 23:03 UTC]
+**Step:** 193,248 (CSV 15 GÜN DONMUŞ) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 eğitimi 2026-05-30 22:20'den bu yana tamamen donmuş; CSV son 20 satırın 15'i identik. ppo.yaml v10 için kanıtlanmış-optimal parametrelerle hazır, bu container'da Gazebo/ROS2 yok. 20. ardışık oturumda config değişikliği gerekmez.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Son 20 CSV satırı: 15 identik kayıt (step=193k, ep_rew=-173.85, entropy=-4.212, std=0.985). Sıfır ilerleme — process çökmüş.
+- V9 gerçek progressionu: fresh-start (-324@64k) → iyileşme (-89@104k, -67@96k) → pik (-37.4@145k) → düşüş (-47@149k) → crash (-173@193k) → donma.
+- ep_len_mean trendi: 260 (104k) → 637 (193k). Episode uzadıkça idle+zaman cezası birikti, voxel artmadı.
+- **Sonuç:** Plato değil, process ölümü. +15 oda sıçraması v9'da sıfır kez gözlemlendi.
+- **CSV başındaki 4 farklı satır** (step 142k-599k, ep_rew -290→-270): Bunlar v3.0 Gazebo run'ından farklı bir run; entropy -3.88→-3.32 ile std 0.88→0.74 gösteriyor — o run daha sağlıklı entropy kadansı üretmişti.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- V9 zaten sona erdi; bu soru tarihsel. Sonuç: v9'da constant 7.5e-5, v8'in 3e-4→3e-5 linear decay'ine kıyasla ilk 150k'da keşif baskısını %60+ azalttı.
+- ppo.yaml v10: `lr_schedule: linear`, `learning_rate: 3e-4 → lr_final: 1e-5`, 1.5M boyunca 30× azalma. Bu karar doğru ve değiştirilemez.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale (15 gün eski): entropy_loss=-4.212 → H≈4.21 nat. Alarm eşiği H<4.0 → geçilmemiş ✓. std=0.985 → 0.7 eşiğinin %41 üstünde ✓.
+- **Ancak kritik yorum:** V9 entropy -4.24→-4.21 aralığında kaldı (0.03 nat değişim 130k step boyunca). Bu sıkışma düşük ent_coef=0.0015 + seyrek reward manzarasının işareti. Keşif yeterliydi ama yönlendirme yoktu.
+- V10 ent_coef=0.008 (5.3×): beklenen H(π)≈3.2–3.8 nat @150k. Bu aralık v3.0'ın 142k satırındaki -3.88 değeriyle tutarlı — o run oda geçişi üretebilmişti.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9: Geçersiz/ölü. 2.5M hedefin %7.7'sinde donmuş.
+- V10 projeksiyonu (v3.0 Gazebo referansı, aynı 6-oda harita, n_envs=1, linear lr):
+  - İlk oda (+15 sıçraması): ~150–250k step
+  - 3+ oda tutarlı: ~400–600k step
+  - 6/6 oda: ~700k–1M step
+  - **Hard cap: 1.5M** (fast_sim 5-run teyiti: 2M+ → safety collapse)
+- 300k'ya kadar +15 görülmezse tek müdahale: `frontier_bonus: 0.4→0.6`
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **Obstacle animasyonu 400k öncesi KAPALI tutulsun:** n_envs=1/DummyVecEnv ile SubprocVecEnv deadlock riski kalmadı, ama erken fazda (0-400k) statik harita oda geçişini ~%30 hızlandırıyor. 400k sonrası gradual aktivasyon düşünülebilir.
+2. **150k step zorunlu checkpoint değerlendirmesi:** ep_rew_mean > -30 @150k → dokunma. ep_rew_mean < -50 @150k → `ent_coef: 0.008→0.015` (tek müdahale, izole).
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Hayır.** ppo.yaml v10 parametreleri 18 fast_sim run + v3.0 Gazebo peak=110.3 ile kanıtlanmış.
+- V9 Gazebo: Container'da Gazebo Harmonic + ROS2 Jazzy yok; müdahale imkânsız ve gereksiz.
+- **Bloker:** Lokal makinede `./scripts/train.sh configs/ppo.yaml` komutuyla v10 başlatılması gerekiyor.
+
+### v10 Önerisi
+1. **400k'ya kadar obstacle animasyonunu devre dışı bırak** — ilk oda öğrenimini hızlandırır, risk sıfır.
+2. **150k eval zorunlu:** entropy_loss > -3.5 VE std > 0.75 → config sağlıklı. Dışı → ent_coef 2× artır (tek parametre).
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. V10 config 20. ardışık oturumda da kanıtlanmış-optimal; Gazebo v10 lokal makinede başlatılana kadar CSV donmuş kalacak.
+---
