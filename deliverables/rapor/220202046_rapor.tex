@@ -399,37 +399,91 @@ varyans gürültüsü ekler; ``catastrophic forgetting'' veya geç yükseliş yo
 1,5 milyon adımın yeterli olduğunu ve seçilen bütçenin israf da eksik de olmadığını
 niceliksel olarak doğrular.}
 
-\section{Savunma Analizi}
+\section{Savunma Analizi (Detaylı)}
 \label{sec:savunma}
-Bu bölüm, rehberin dört kavram alanını projeye uygulayarak yanıtlar.
+Bu bölüm rehberin dört kavram alanını projeye uygulayarak yanıtlar. ``Evet/Hayır''
+demek yeterli değildir; her cevabın gerekçesi, kod satırı ve örnekle verilmiştir.
 
-\textbf{Deterministik mi, stokastik mi?} Ortam \textbf{stokastiktir}; bu kod
-satırlarıyla kanıtlanır. Geçiş gürültüsü: \reff{step()} içinde hız komutlarına
-$\mathcal{N}(0,\sigma_{\text{wind}})$ rüzgar eklenir; aynı $(s,a)$ çifti farklı $s'$
-verir, yani $p(s'\mid s,a)$ dejenere değildir. Gözlem gürültüsü: lidar
-(\reff{\_compute\_lidar}) ve odometri (\reff{\_make\_obs}) ölçümlerine Gauss gürültüsü
-katılır. Bu nedenle aynı durumdan aynı eylem dizisi tekrar oynatıldığında aynı yörünge
-elde edilmez. Not: yalnızca başlangıç konumunun rastgele olması ortamı stokastik
-yapmaz; stokastiklik geçiş ve gözlem gürültüsünden gelir.
+\subsection*{Alan 1 --- Deterministik mi, Stokastik mi? \textnormal{(Cevap: \textbf{STOKASTİK})}}
+\textbf{Tanım.} Bir ortam stokastiktir $\Leftrightarrow$ geçiş çekirdeği $p(s'\mid s,a)$
+dejenere değildir; yani \emph{aynı} $(s,a)$ \emph{farklı} $s'$ üretebilir.
 
-\textbf{On-policy mi, off-policy mi?} PPO \textbf{on-policy}'dir. Veriyi üreten
-davranış politikası ile iyileştirilen hedef politika aynıdır; her rollout, güncel
-politika ile toplanır ve güncellemeden sonra atılır. Replay buffer yoktur. Bu, SAC ve
-DQN'in (off-policy, replay buffer'lı) tersidir ve PPO'nun neden daha çok örnek
-gerektirdiğini açıklar (Bölüm~\ref{sec:kiyas}'teki eğriler bunu somutlaştırır).
+\textbf{Stokastikliği sağlayan değerler (kod satırı ile).} Ortamda üç bağımsız Gauss
+gürültü kaynağı + zaman-değişken engeller vardır:
+\begin{itemize}
+\item \textbf{Rüzgar (geçiş gürültüsü)} $\sigma_{\text{wind}}=0{,}015$: \reff{step()}
+satır 133--135'te hız komutlarına eklenir:
+$v_x\!\mathrel{+}=\!\mathcal{N}(0,\sigma_{\text{wind}}),\;
+ v_y\!\mathrel{+}=\!\mathcal{N}(0,\sigma_{\text{wind}}),\;
+ \omega\!\mathrel{+}=\!\mathcal{N}(0,\sigma_{\text{wind}})$.
+Bu, doğrudan \emph{geçiş} dinamiğini stokastik yapar.
+\item \textbf{Lidar (gözlem gürültüsü)} $\sigma_{\text{lidar}}=0{,}015$:
+\reff{\_compute\_lidar} satır 319--320'de her ışın mesafesine eklenir.
+\item \textbf{Odometri (gözlem gürültüsü)} $\sigma_{\text{odom}}=0{,}004$:
+\reff{\_make\_obs} satır 233--236'da ölçülen poz/yaw'a eklenir.
+\item \textbf{Hareketli engeller} (3 adet): \reff{\_moving\_obstacles} satır 203--206'da
+$\sin(2\pi t/T)$ ile zaman-değişken; $s'$ adım $t$'ye göre değişir.
+\end{itemize}
 
-\textbf{Markov özelliği.} Durum, anlık lidar, yönelim, hız (önceki eylem yoluyla) ve
-keşif istatistiklerini içerir. Tek bir gözlem, sonraki durumun dağılımını yaklaşık
-olarak belirlemeye yeter; çünkü hareketli engellerin konumu adım sayısının
-deterministik bir fonksiyonudur ve hız bilgisi gözlemde taşınır. Yine de gürültü ve
-sınırlı görüş nedeniyle Markov özelliği yalnızca yaklaşık sağlanır.
+\textbf{$p(s'\mid s,a)$ nasıl davranır + somut örnek.} Konum güncellemesi
+$\text{pos}\mathrel{+}= R(\text{yaw})\,[v_x,v_y]^\top dt$ ($dt=0{,}12$). Drone $(5{,}0;5{,}0)$'da
+ve $a=[1,0,0]$ (tam ileri) iken gürültüsüz $s'=(5{,}144;5{,}0)$ olurdu; ama
+$v_x\mathrel{+}=\varepsilon,\,\varepsilon\sim\mathcal{N}(0,0{,}015)$ olduğundan
+$s'=(5{,}144+0{,}12\varepsilon_x;\,5{,}0+0{,}12\varepsilon_y)$ \emph{her oynatımda farklıdır}.
+Yani tek bir $(s,a)$ sürekli bir $s'$ \emph{dağılımı} verir (tek nokta değil) ---
+$p(s'\mid s,a)$ dejenere değildir.
 
-\textbf{Kısmi gözlemlenebilirlik (POMDP).} Ortam \textbf{kısmi gözlemlenebilirdir}.
-Gerçek durum ile gözlem ayrışır: (i) poz/yönelim gözleme odometri gürültüsüyle girer,
-yani ajan gerçek konumunu tam bilmez; (ii) lidar yalnızca görüş hattındaki engelleri
-görür, duvar arkası bilinmez; (iii) hareketli engellerin gelecekteki konumu doğrudan
-gözlemde yoktur. Optimal karar için eksik olan bu bilgiyi ajan, önceki eylemi gözleme
-ekleyerek ve politikanın hız/yön bağlamını taşımasıyla kısmen telafi eder.
+\textbf{Aynı tohumla tekrar.} \reff{default\_rng} aynı tohumdan aynı diziyi üretir, ama
+bu ortamı deterministik yapmaz: tohum yalnız \emph{tekrarlanabilirlik} içindir; geçiş
+kuralı hâlâ bir olasılık dağılımını örnekler. \textbf{Başlangıç rastgeleliği tek başına
+stokastiklik değildir} (yalnız $\mu(s_0)$'ı etkiler); bizdeki stokastiklik geçiş+gözlem
+gürültüsünden gelir. (FrozenLake benzetmesi: bizim rüzgar gürültümüz \reff{is\_slippery=True}'a
+karşılık gelir; gürültü kapatılsa \reff{False} gibi deterministik olurdu.)
+
+\subsection*{Alan 2 --- On-policy mi, Off-policy mi? \textnormal{(Cevap: \textbf{ON-POLICY})}}
+\textbf{Hangi politika veri üretir, hangisi iyileştirilir?} PPO'da \emph{davranış}
+politikası ile \emph{hedef} politika \textbf{aynıdır} ($\pi_\theta$). Veri her rollout'ta
+\emph{güncel} $\pi_\theta$ ile toplanır (\reff{RolloutBuffer}), $n\_epochs$ güncelleme
+sonrası \textbf{atılır}; \reff{replay buffer YOK}. Bu, on-policy'nin tanımıdır.
+\textbf{Neden örnek-verimsiz?} Her veri yalnız bir kez kullanılır; politika değişince
+eski veri ``off-policy'' olup atılır $\Rightarrow$ daha çok çevre etkileşimi gerekir
+(8 paralel ortam ile telafi). \textbf{SARSA vs Q-Learning} (tek satır fark): SARSA hedefi
+$Q(s',a')$ (davranıştan gelen $a'$, on-policy); Q-Learning $\max_a Q(s',a)$ (greedy hedef,
+off-policy). SAC/DQN replay buffer ile eski veriyi tekrar kullanır (off-policy) ---
+bu yüzden adım başına daha verimlidirler.
+
+\subsection*{Alan 3 --- Markov Özelliği \textnormal{(Cevap: \textbf{YAKLAŞIK Markov})}}
+\textbf{Tanım.} $P(s_{t+1}\mid s_t,a_t)=P(s_{t+1}\mid s_t,a_t,s_{t-1},\dots,s_0)$ ---
+gelecek yalnız şimdiki duruma bağlı, geçmişe değil. \textbf{Durum vektörünün her
+bileşeni (75-D):} 64 lidar (anlık çevre), yaw cos/sin (yön), \emph{önceki eylem (3)}
+--- bu \textbf{hız/momentum} bilgisini taşır, keşif+oda oranı (2), min-lidar+idle (2),
+kapı+duvar (2). \textbf{Eksik bilgi var mı?} Evet, kısmen: hareketli engellerin konumu
+adım sayısı $t$'nin deterministik fonksiyonudur ($\sin(2\pi t/T)$) ama durum vektörü
+$t$'yi (engel fazını) \emph{açıkça içermez} $\Rightarrow$ engelin gelecekteki yeri tek
+gözlemden tam belirlenemez. Bu yüzden Markov \emph{yaklaşık} sağlanır.
+\textbf{Top örneği:} topun yalnız konumu Markov değildir (hız eksik); konum+hız
+Markov'dur --- biz \emph{önceki eylemi} (\,$\approx$ hız) duruma ekleyerek bunu telafi
+ettik. \textbf{Atari örneği:} tek kare hızı vermez (Markov değil), DeepMind 4 kare
+istifledi; bizim karşılığımız önceki eylemi durumda tutmaktır. \textbf{Markov değilse iki
+çözüm:} (i) durumu zenginleştir (hız/faz ekle --- biz önceki eylemi ekledik), (ii) bellek
+ekle (RNN/LSTM veya kare istifleme).
+
+\subsection*{Alan 4 --- Kısmi Gözlemlenebilirlik \textnormal{(Cevap: \textbf{EVET, POMDP})}}
+\textbf{Gerçek durum vs gözlem (ayrı ayrı).} \emph{Gerçek durum} $s$: drone'un
+\emph{gerçek} konumu/yaw'ı, tüm engellerin gerçek konumu, haritanın tam geometrisi.
+\emph{Gözlem} $o$: \emph{gürültülü} lidar (yalnız görüş hattı), \emph{gürültülü}
+odometri poz/yaw, keşif istatistikleri. \textbf{Aradaki boşluk (eksik bilgi):}
+(i) poz/yaw gözleme $\sigma_{\text{odom}}$ gürültüsüyle girer $\Rightarrow$ ajan gerçek
+konumu \emph{tam bilmez}; (ii) lidar yalnız görüş-hattındaki engelleri görür, \emph{duvar
+arkası bilinmez}; (iii) hareketli engellerin \emph{gelecek konumu} gözlemde yoktur.
+\textbf{Gürültü tek başına POMDP yapar mı?} Gözlem gürültüsü gerçek$\neq$gözlem yaptığından
+katkıdır; ama asıl kısmi-gözlemlenebilirlik \emph{sınırlı görüş} (duvar arkası) ve eksik
+bilgiden gelir. \textbf{Vanilla DQN neden yetersiz?} Tek gözlem gerçek durumu vermez;
+bellek (RNN) veya gözlem istifleme gerekir. \textbf{Belief state:} gerçek durum üzerindeki
+olasılık dağılımıdır (inanç); gözlemlerle Bayes ile güncellenir ve POMDP'de optimal
+politika belief üzerinde tanımlıdır --- tek gözlem yetersiz olduğundan geçmiş bilgi
+\emph{belief}'te taşınır. Biz bunu önceki eylemi gözleme ekleyerek ve politikanın hız/yön
+bağlamını koruyarak \emph{kısmen} telafi ederiz.
 
 \section{Sonuç}
 PPO, replay buffer kullanmadan, on-policy bir politika gradyanı yöntemi olarak, aynı

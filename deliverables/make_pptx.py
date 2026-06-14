@@ -96,32 +96,22 @@ GRAPHS = [
 PER_SEED = [(f"per_seed_{s}.png", f"Tohum {s} — Detaylı Panel (getiri / eval / kapsama / oda)")
             for s in (123, 42, 7, 13, 2025)]
 
+# PPO (sol) vs SAC (sağ, M.A. Albayrak 220202082) YAN-YANA figürler.
 COMPARE = [
-    ("C1_ogrenme_ppo_vs_sac.png", "PPO vs SAC — Öğrenme Eğrisi",
-     "Gözlem: SAC ilk birkaç yüz bin adımda PPO'dan hızlı yükselir; PPO daha çok adımla daha yüksek/kararlı platoya ulaşır.\n"
-     "Karşılaştırma: Tam ufukta PPO platosu daha yüksek.\n"
-     "Açıklama: SAC off-policy (replay buffer => adım başına verimli); PPO on-policy (rollout bir kez kullanılır).\n"
-     "Sonuç: Off-policy az adımda hızlı, on-policy çok adımla yüksek nihai başarı."),
-    ("C2_ornek_verimliligi.png", "PPO vs SAC — Örnek Verimliliği",
-     "Gözlem: Aynı env-adım penceresinde SAC üstte başlar.\n"
-     "Karşılaştırma: SAC erken avantajlı; PPO sonradan yakalar/geçer.\n"
-     "Açıklama: Replay buffer her deneyimi defalarca kullandığından SAC aynı adımda daha çok öğrenir.\n"
-     "Sonuç: Örnek-bütçesi kısıtlı senaryolar için SAC, bütçe bolca ise PPO avantajlı."),
-    ("C3_eval_ppo_vs_sac.png", "PPO vs SAC — Deterministik Eval",
-     "Gözlem: Greedy eval eğrisinde PPO platosu SAC'ın üzerinde.\n"
-     "Karşılaştırma: İkisi de stokastik eğitimle tutarlı; fark nihai seviyede.\n"
-     "Açıklama: PPO'nun klips'i kararlı/yüksek-tavanlı politika öğrenir.\n"
-     "Sonuç: Bu ortamda PPO nihai görev başarısında önde."),
-    ("C5_oda_ppo_vs_sac.png", "PPO vs SAC — Oda Keşif Süreci",
-     "Gözlem: PPO ortalama oda sayısında 6'ya daha çok yaklaşır.\n"
-     "Karşılaştırma: SAC hızlı başlar ama nihai oda kapsaması PPO'nun gerisinde.\n"
-     "Açıklama: PPO'nun yüksek-tavanlı politikası sistematik oda-oda keşfi daha iyi yapar.\n"
-     "Sonuç: Görev metriğinde (oda) PPO üstün."),
-    ("C4_final_metrik_bar.png", "PPO vs SAC — Final Metrik Barları",
-     "Gözlem: Getiri, oda, kapsama, başarı PPO'da yüksek; çarpışma PPO'da düşük.\n"
-     "Karşılaştırma: Dört kalite ölçütünde PPO önde, güvenlikte (çarpışma) de daha iyi.\n"
-     "Açıklama: Aynı ortam/seed/protokolde fark yalnızca algoritmadan gelir.\n"
-     "Sonuç: Bu çok-odalı keşif görevinde PPO nihai başarı/güvenlikte üstün."),
+    ("KIYAS_1_ogrenme.png", "PPO ↔ SAC — Öğrenme Eğrisi",
+     "Sol PPO (bu çalışma), sağ SAC (M.A. Albayrak). PPO platosu (~480) SAC'ın (~390) üzerinde ve daha kararlı; "
+     "SAC off-policy olduğu için daha az adımda yakınsar (örnek-verimli)."),
+    ("KIYAS_3_perseed.png", "PPO ↔ SAC — Tohum 123 Detay Paneli",
+     "Dört panelde de (getiri/eval/kapsama/oda) PPO eğrileri daha yüksek ve daha az dalgalı; ikisi de coverage'ı %90+ "
+     "ve odayı 5-6'ya taşır. İki algoritma da görevi çözer, PPO daha yüksek tavanla."),
+    ("KIYAS_5_baseline.png", "PPO ↔ SAC — Baseline (görev metrikleri)",
+     "Her ikisi de rastgele/sezgiseli geçer; tam-keşif başarısında PPO (~%96) SAC'ın (~%60 en iyi, %34 ort.) belirgin önünde."),
+    ("KIYAS_4_hiperparametre.png", "PPO ↔ SAC — Hiperparametre Duyarlılığı",
+     "İki algoritmada da orta hiperparametre değerleri en iyi (keşif-sömürü dengesi); sonuç ince ayara aşırı duyarlı değil."),
+    ("KIYAS_2_loss.png", "PPO ↔ SAC — Loss Eğrileri",
+     "PPO'da klips güncellemeleri sıkı sınırlar (actor loss küçük/yatay); SAC'ta entropi+replay ile loss daha geniş salınır. İkisi de kararlı."),
+    ("KIYAS_6_heatmap.png", "PPO ↔ SAC — γ × lr Araması",
+     "Her ikisinde de en iyi bölge orta-yüksek γ + düşük-orta lr köşesi; ortamın paylaşılan yapısını (gecikmeli oda ödülü) yansıtır."),
 ]
 
 prs = Presentation()
@@ -242,8 +232,9 @@ bullets(s, [
     "Durum (75-D, [0,1]): 64 lidar + yaw cos/sin + önceki eylem(3) + ilerleme/oda(2) + min_lidar/idle(2) + kapı/duvar(2).",
     "Eylem (3-D sürekli): ileri/geri hız, yanal hız, dönüş hızı.",
     "Ödül (kod step() ile birebir): +3 yeni voxel, +20 yeni oda, -40 çarpışma, +60 tüm odalar, küçük zaman/idle cezaları.",
+    "STOKASTİK: rüzgar σ=0.015 (geçiş, satır 133-135) + lidar σ=0.015 + odometri σ=0.004 (gözlem) + 3 hareketli engel → p(s′|s,a) dejenere değil.",
     "Bölüm: çarpışma veya 6-oda ile biter, 600 adımda kesilir.",
-], size=17)
+], size=16)
 
 # ---------------------------------------------------------------- 5) PPO
 s = prs.slides.add_slide(BLANK); bg(s)
@@ -299,17 +290,18 @@ def _avg(name):
                cov=d["coverage_pct"].mean(), crash=d["crashed"].mean())
 
 
-ppo, sac = _avg("eval_per_episode.csv"), _avg("sac_eval_per_episode.csv")
-def fmt(d, k, f="{:.1f}"):
+ppo = _avg("eval_per_episode.csv")
+def fp(d, k, f="{:.1f}"):
     return f.format(d[k]) if d else "--"
+# SAC: M. A. Albayrak (220202082) yayinlanmis degerleri (kendi SAC'imizi tekrar egitmedik)
 rows = [
-    ("Ölçüt", "PPO (bu çalışma)", "SAC (aynı ortam)"),
+    ("Ölçüt", "PPO (bu çalışma)", "SAC (M.A. Albayrak, 220202082)"),
     ("Aile", "on-policy", "off-policy"),
     ("Replay buffer", "yok", "var"),
-    ("Ort. eval getirisi", fmt(ppo, "ret"), fmt(sac, "ret")),
-    ("Başarı oranı (6 oda)", fmt(ppo, "succ", "{:.2f}"), fmt(sac, "succ", "{:.2f}")),
-    ("Ort. kapsama %", fmt(ppo, "cov"), fmt(sac, "cov")),
-    ("Eval çarpışma oranı", fmt(ppo, "crash", "{:.2f}"), fmt(sac, "crash", "{:.2f}")),
+    ("Ort. getiri (5 tohum)", fp(ppo, "ret"), "314.6"),
+    ("Ort. oda (/6)", "5.80", "4.83"),
+    ("Tam-keşif başarı oranı", fp(ppo, "succ", "{:.2f}"), "0.34"),
+    ("En iyi tohum getirisi", "474.6", "393.7"),
 ]
 tbl = s.shapes.add_table(len(rows), 3, Inches(1.4), Inches(1.5), Inches(10.5), Inches(4.0)).table
 tbl.columns[0].width = Inches(4.3); tbl.columns[1].width = Inches(3.1); tbl.columns[2].width = Inches(3.1)
@@ -329,22 +321,53 @@ bullets(s, [
     "SAC az adımda hızlı oturur (off-policy, replay buffer); PPO daha çok adımla daha yüksek nihai başarı.",
 ], top=5.8, size=15)
 
-# ---------------------------------------------------------------- PPO vs SAC grafikleri
+# ---------------------------------------------------------------- PPO vs SAC YAN-YANA grafikleri
 for fname, title, comment in COMPARE:
-    if fname == "C4_final_metrik_bar.png":
-        wide_graph_slide(fname, title, comment)
-    else:
-        graph_slide(fname, title, comment)
+    wide_graph_slide(fname, title, comment)
 
-# ---------------------------------------------------------------- Savunma
+# ---------------------------------------------------------------- Savunma (4 detaylı slayt)
 s = prs.slides.add_slide(BLANK); bg(s)
-add_title(s, "Savunma Özeti (4 Kavram Alanı)")
+add_title(s, "Savunma 1 — Deterministik mi, Stokastik mi?  →  STOKASTİK")
 bullets(s, [
-    "Stokastik mi? EVET. Kanıt kod satırı: rüzgar (step), lidar (_compute_lidar), odom (_make_obs) gürültüsü => p(s'|s,a) dejenere değil.",
-    "On/Off-policy? ON-POLICY. Davranış = hedef politika; replay buffer yok; veri kullanılıp atılır.",
-    "Markov? Yaklaşık sağlanır: lidar + hız (önceki eylem) + adım-deterministik engeller; gürültü/sınırlı görüş ile yalnızca yaklaşık.",
-    "POMDP mi? EVET. Gerçek durum != gözlem: odom gürültüsü, görüş-dışı duvarlar, engelin gelecek konumu gözlemde yok.",
-], size=16)
+    "Tanım: ortam stokastik ⇔ p(s′|s,a) dejenere DEĞİL — aynı (s,a) farklı s′ üretebilir.",
+    "Stokastikliği sağlayan değerler (kod satırı ile):",
+    (1, "Rüzgar σ=0.015 → hız komutuna eklenir: vx,vy,ω += N(0,0.015)  [step(), satır 133-135] — GEÇİŞ gürültüsü."),
+    (1, "Lidar σ=0.015 → her ışın mesafesine  [_compute_lidar, 319-320] — gözlem gürültüsü."),
+    (1, "Odometri σ=0.004 → ölçülen poz/yaw'a  [_make_obs, 233-236] — gözlem gürültüsü."),
+    (1, "3 hareketli engel, sinüzoidal/zaman-değişken  [_moving_obstacles, 203-206]."),
+    "Örnek: drone (5,5), eylem 'tam ileri'. Gürültüsüz s′=(5.144, 5.0); ama vx+=ε → her oynatımda farklı → s′ bir DAĞILIM (tek nokta değil).",
+    "Aynı tohum = sadece TEKRARLANABİLİRLİK (deterministik değil). Başlangıç rastgeleliği TEK BAŞINA stokastiklik değildir; stokastiklik geçiş+gözlem gürültüsünden gelir.",
+], size=14)
+
+s = prs.slides.add_slide(BLANK); bg(s)
+add_title(s, "Savunma 2 — On-policy mi, Off-policy mi?  →  ON-POLICY")
+bullets(s, [
+    "Davranış politikası = hedef politika (aynı π_θ). Veri güncel π_θ ile toplanır, n_epochs sonra ATILIR; replay buffer YOK.",
+    "Bu on-policy'nin tanımı; SAC/DQN'in (replay buffer'lı off-policy) tersi.",
+    "Neden örnek-verimsiz? Her veri yalnız 1 kez kullanılır; politika değişince eski veri off-policy olup atılır → daha çok çevre etkileşimi (8 paralel ortam telafi).",
+    "SARSA vs Q-Learning (tek satır fark): SARSA hedefi Q(s′,a′) (davranıştan a′, on-policy); Q-Learning max_a Q(s′,a) (greedy hedef, off-policy).",
+    "Off-policy avantajı: replay ile veriyi tekrar kullanır (örnek-verimli); riski: eski veri güncel politikadan sapabilir (kararlılık).",
+], size=15)
+
+s = prs.slides.add_slide(BLANK); bg(s)
+add_title(s, "Savunma 3 — Markov Özelliği?  →  YAKLAŞIK Markov")
+bullets(s, [
+    "Tanım: P(s_{t+1}|s_t,a_t) = P(s_{t+1}|s_t,a_t,...,s_0) — gelecek yalnız şimdiki duruma bağlı, geçmişe değil.",
+    "Durumda önceki eylem(3) VAR → HIZ/momentum bilgisini taşır (top örneği: yalnız konum Markov değil, konum+hız Markov).",
+    "Eksik bilgi: hareketli engel konumu t'nin fonksiyonu (sin(2πt/T)) ama durum t'yi/engel fazını AÇIKÇA içermez → engelin gelecek yeri tek gözlemden tam belirlenemez → YAKLAŞIK Markov.",
+    "Atari: tek kare hızı vermez (Markov değil), DeepMind 4 kare istifledi; bizdeki karşılık önceki eylemi durumda tutmak.",
+    "Markov değilse 2 çözüm: (i) durumu zenginleştir (hız/faz ekle — biz önceki eylemi ekledik), (ii) bellek (RNN/LSTM, kare istifleme).",
+], size=15)
+
+s = prs.slides.add_slide(BLANK); bg(s)
+add_title(s, "Savunma 4 — Kısmi Gözlemlenebilir mi?  →  EVET (POMDP)")
+bullets(s, [
+    "Gerçek durum s: drone'un GERÇEK konum/yaw'ı, TÜM engellerin gerçek konumu, haritanın tam geometrisi.",
+    "Gözlem o: GÜRÜLTÜLÜ lidar (yalnız görüş hattı) + GÜRÜLTÜLÜ odometri poz/yaw + keşif istatistikleri.",
+    "Aradaki boşluk (eksik bilgi): (i) odom gürültüsü → ajan gerçek konumu TAM bilmez; (ii) lidar duvar ARKASINI görmez; (iii) engelin GELECEK konumu gözlemde yok.",
+    "Gözlem gürültüsü tek başına değil; asıl POMDP sınırlı görüşten (duvar arkası) gelir. Vanilla DQN yetersiz → bellek (RNN) veya gözlem istifleme gerekir.",
+    "Belief state: gerçek durum üzerindeki olasılık dağılımı (inanç); gözlemlerle Bayes ile güncellenir, POMDP'de optimal politika belief üzerinde tanımlıdır. Biz önceki eylem + politika bağlamıyla KISMEN telafi ederiz.",
+], size=14)
 
 # ---------------------------------------------------------------- Sonuç
 s = prs.slides.add_slide(BLANK); bg(s)
@@ -352,7 +375,7 @@ add_title(s, "Sonuç")
 bullets(s, [
     "PPO, on-policy ve replay buffer'sız olmasına rağmen rastgele ve sezgisel taban politikalarını belirgin geçti.",
     "5 hiperparametre (clip/ent/gamma/lr/vf) yeniden eğitilerek tarandı; seçilen taban değerler gürbüz orta nokta.",
-    "Aynı ortamda eğitilen SAC ile kıyas, on-policy/off-policy ayrımını gerçek eğrilerle gösterdi.",
+    "Akif'in yayınlanmış SAC grafikleriyle yan-yana kıyas, on-policy/off-policy ayrımını gösterdi.",
     "Tüm grafikler sonuclar/loglar/ altındaki ham loglardan yeniden üretilebilir.",
 ], size=18)
 
