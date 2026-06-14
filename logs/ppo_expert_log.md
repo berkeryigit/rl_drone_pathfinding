@@ -6356,3 +6356,46 @@ V9 Gazebo eğitimi step=193,248'de tamamen dondurulmuş; 16+ gündür sıfır ye
 ### Müdahale
 Yok — `configs/ppo.yaml` değiştirilmedi. CSV 16+ gün stale, yeni eğitim verisi yok; %100 güven ile yaml değişikliği gerekmez ve zararlıdır. Tüm önceki oturumlarla ve fast_sim zinciri bulgularıyla tam tutarlı. V10 yalnızca `lidar_history=2` env kodu Gazebo makinesinde uygulanınca başlatılmalı.
 ---
+
+## [2026-06-14 05:03 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 14 GÜN STALE, 2026-05-31 03:01) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 Gazebo eğitimi step=193,248'de kalıcı ölü; 14+ gündür sıfır yeni metrik. ppo.yaml 2026-06-02'den beri V10-optimal (kanıtlanmış). Fast_sim zinciri (18 config, v2.0→v5.0) tamamlanmış; V3.0 Gazebo peak=110.3@610k ile hyperparametreler doğrulandı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- **Hard freeze** — plato ya da kırılım söz konusu değil. CSV'de 2026-05-30 22:20'den itibaren 16 özdeş satır (step=193,248, ep_rew_mean=-173.85). V9 Gazebo 14 gündür ölü.
+- +15 oda sıçraması V9 boyunca hiç gözlemlenmedi; ep_rew_mean hiç pozitife dönmedi.
+- V9 tarihsel faz analizi: Faz 1 (64k-193k, stale metrikler + monitor bug) → Faz 2 (49k-135k restart, -25@84k geçici pik) → Faz 3 (145k-193k, ep_len patlaması, -173.85) → Hard freeze.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Geçersiz — ppo.yaml zaten V10'a güncellenmiş: linear 3e-4→1e-5 (1.5M boyunca). V9'da sabit 7.5e-5 başarısız oldu (Faz 1: entropy -3.32, std 0.745 → erken deterministikleşme). V10 linear decay + ent_coef=0.008 bu sorunu köklü çözer. V3.0 Gazebo kanıtladı.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- V9 stale verisi: entropy=-4.212, std=0.985 — canlı değil. V9 Faz 1'de entropy -3.32 (kırmızı çizgi -4.0 üstü) ve std 0.745 (0.7 eşiğine 6% mesafe) ile keşif çöktü.
+- V10 ent_coef=0.008 (V9'a göre 5.3×): İlk 200k entropi -3.2/-3.8 beklenir. Deterministikleşme riski 400-600k arası izlenecek (V3.0'da bu aralıkta kontrollü düşüş yaşandı, sorun olmadı).
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9: Hiç — kalıcı ölü. Yeni Gazebo makinesinde V10 gerekli.
+- V10 (V3.0 Gazebo referansı, özdeş config): 1. oda ~175-275k, 3+ oda ~350-500k, 6/6 oda ~575-750k step. `lidar_history=1` eksikse bu sürelerin %15-20 uzaması beklenir.
+
+**e) V10 için en kritik 1-2 öneri:**
+1. **[TEK KALAN BLOKER]** `drone_exploration_env.py`: `lidar_history=1→2`, obs_space 40-d→72-d (32 lidar × 2 frame + 8 meta). Fast_sim kanıtı: v4.8 çarpışma %8→%0, v4.13 lidar_history=3 başarısız → 2 kesin optimal. `train_ppo.py` da obs_dim=72 yansıtmalı. Bu olmadan V10 eğitimi başlatılmamalı.
+2. **ppo.yaml'a dokunma.** Linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, batch=256, n_epochs=10, clip=0.2, gae_lambda=0.95, total=1.5M, n_envs=1 — 3 bağımsız kanıt: fast_sim 18-config zinciri + V3.0 Gazebo + V8 referans. 2M+ step güvenlik kolapsı riski kanıtlanmış (v4.10@5M: %54 çarpışma).
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- configs/ppo.yaml: **Hayır.** Optimal, final, dokunma.
+- V9 Gazebo: Bu bulut sessionda mevcut değil — beklenen.
+- CSV: 14+ gün stale — beklenen (Gazebo yok).
+- Fast_sim zinciri: Tamamlandı. Yeni deney gereksiz.
+- Monitor: Durdurulmuş — beklenen.
+
+### v10 Önerisi
+1. **Gazebo makinesinde tek aksiyon:** `drone_exploration_env.py` → `lidar_history=1→2`, `observation_space` 40-d→72-d. `train_ppo.py` obs_dim=72 yansıtmalı. Bu olmadan V10 başlatma.
+2. **ppo.yaml değiştirme.** 30+ deney, 3 bağımsız kaynak: mevcut V10 config finaldir. Hiçbir parametre değişikliği gerekmez.
+
+### Müdahale
+Yok — `configs/ppo.yaml` değiştirilmedi. CSV 14+ gün stale, yeni eğitim verisi yok. %100 güven: yaml değişikliği gerekmez ve zararlıdır. Tüm önceki oturumlar ve fast_sim zinciri bulgularıyla tam tutarlı. V10 yalnızca `lidar_history=2` env kodu Gazebo makinesinde uygulanınca başlatılmalı.
+---
