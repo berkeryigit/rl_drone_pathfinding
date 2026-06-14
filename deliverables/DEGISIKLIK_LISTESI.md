@@ -124,4 +124,31 @@ listeler (hocanin "metrikleri degistirip yeniden egit, kiyasla" istegi dogrultus
 
 ## E6. Kural ihlali kontrolu (tekrar dogrulandi)
 - `import gym` yok; `np.random.seed`/`np.random.choice` yok; `default_rng` var.
-- Yeni eklenen `viz.py`, `make_comparison_figs.py`, `make_tables.py` de ayni kurallara uyar.
+- Yeni eklenen `viz.py`, `make_comparison_figs.py`, `make_episode_figs.py`,
+  `make_tables.py` de ayni kurallara uyar.
+
+## E7. Savunma analizi DETAYLANDIRILDI (rapor + sunum)
+- Eskiden: 4 kavram alani kisa paragraflarla yanitlaniyordu.
+- Simdi: her isterler.md sorusu **gerekceli** yanitlandi ("Evet/Hayir" yetmez; sebep +
+  kod satiri + ornek). Hem **rapor** (Bolum 9, dort alt-bolum) hem **sunum** (tek slayt
+  -> 4 detayli slayt):
+  - **Alan 1 (Stokastik):** stokastikligi saglayan DEGERLER + kod satirlari acikca yazildi
+    --- ruzgar $\sigma=0.015$ [step, 133-135, GECIS], lidar $\sigma=0.015$ [319-320],
+    odometri $\sigma=0.004$ [233-236], 3 hareketli engel [203-206]; somut $p(s'|s,a)$
+    ornegi (drone (5,5) + ileri -> $s'$ bir dagilim); tohum/baslangic-rastgeleligi ayrimi.
+  - **Alan 2 (On-policy):** davranis=hedef politika, replay buffer yok, neden ornek-verimsiz,
+    SARSA vs Q-Learning tek-satir fark.
+  - **Alan 3 (Markov):** yaklasik Markov; onceki eylem ile hiz tasinir (top ornegi),
+    engel fazi eksik; Atari 4-kare analojisi; iki cozum.
+  - **Alan 4 (POMDP):** gercek durum vs gozlem ayri ayri; eksik bilgi; belief state.
+- Sunum Ortam/MDP slaytina stokastiklik deger kutusu eklendi.
+
+## E8. Episode-eksenli grafikler eklendi (`make_episode_figs.py`)
+- Rehber "episode sayisina gore ogrenme egrisi" istiyor ve "x: episode VEYA adim --
+  ikisi de gecerli" diyor. Ana egrilerin x-ekseni kumulatif adim idi; ek olarak
+  **x = episode** versiyonlari uretildi:
+  `EP1_ogrenme_episode.png` (ogrenme), `EP2_oda_episode.png` (oda kesfi),
+  `EP3_carpisma_episode.png` (carpisma), `EP4_seed_episode.png` (seed karsilastirma).
+  Ayrica mevcut `1b_ogrenme_egrisi_episode.png` (episode-bazli ogrenme) korunur.
+- Bu PNG'ler `sunum/grafikler/` altinda; ana 5-seed `training_log.csv`'lerin `episode`
+  kolonundan uretilir (sentetik degil).
