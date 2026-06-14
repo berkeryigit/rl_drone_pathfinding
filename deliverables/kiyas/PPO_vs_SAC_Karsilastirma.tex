@@ -1,0 +1,104 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{mathptmx}
+\usepackage[a4paper,margin=2.1cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{subcaption}
+\usepackage{caption}
+\usepackage[hidelinks]{hyperref}
+\usepackage{enumitem}
+\setlist{nosep,leftmargin=1.4em}
+\captionsetup{font=small,labelfont=bf}
+\renewcommand{\figurename}{Şekil}
+\renewcommand{\tablename}{Tablo}
+\setlength{\parskip}{0.42em}
+\setlength{\parindent}{0pt}
+\newcommand{\reff}[1]{\texttt{#1}}
+\newcommand{\GR}{../sunum/grafikler}
+\newcommand{\cfig}[2]{\IfFileExists{\GR/#1}{\includegraphics[width=#2\textwidth]{\GR/#1}}{\fbox{\small (#1 üretilecek)}}}
+\newcommand{\yorum}[4]{\textbf{Yorum.} \emph{Gözlem:} #1 \emph{Karşılaştırma:} #2
+  \emph{Açıklama:} #3 \emph{Sonuç:} #4}
+
+\begin{document}
+
+\begin{center}
+{\Large\bfseries PPO ve SAC Karşılaştırması}\\[0.3em]
+{\large Çok-Odalı Drone Keşfinde On-policy vs Off-policy}\\[0.6em]
+{\normalsize Berker Yiğit -- 220202046 \quad\textbar\quad Algoritma sorumluluğu: PPO}\\
+{\small Aynı ortam (\reff{fast\_2d\_drone\_env.py}, MD5 birebir), aynı 5 tohum, aynı deterministik eval protokolü}
+\end{center}
+\hrule\vspace{0.5em}
+
+\section{Neden Bu Karşılaştırma Adildir?}
+Pekiştirmeli öğrenme projesinin bir amacı da \emph{algoritmaların karşılaştırılmasıdır}.
+Bu belge, PPO (on-policy) ile SAC (off-policy) ajanlarını \textbf{birebir aynı koşullarda}
+karşılaştırır. Karşılaştırmanın geçerli olması için tek farkın algoritma olması gerekir;
+bu projede:
+\begin{itemize}
+\item \textbf{Ortam birebir aynıdır:} \reff{fast\_2d\_drone\_env.py} dosyası iki teslimde
+de bayt-bayt özdeştir (MD5 \reff{61ec1d6a...}). Durum uzayı \reff{Box}$(75,)$, eylem
+uzayı \reff{Box}$(-1,1)^3$, ödül fonksiyonu, gürültü parametreleri ($\sigma_{\text{wind}},
+\sigma_{\text{lidar}}, \sigma_{\text{odom}}$), oda/kapı yerleşimi ve episode uzunluğu
+(600) aynıdır.
+\item \textbf{Tohumlar aynıdır:} her iki ajan da \{7, 13, 42, 123, 2025\} ile eğitilmiştir.
+\item \textbf{Değerlendirme protokolü aynıdır:} eğitimden ayrı RNG akışıyla deterministik
+(greedy) eval; aynı metrikler (getiri, oda, kapsama, başarı, çarpışma).
+\end{itemize}
+Sentetik veri kullanılmamıştır: SAC ajanı bu çalışmada \reff{train\_sac.py} ile (ekip SAC
+teslimindeki hiperparametrelerle: \reff{train\_freq}/\reff{gradient\_steps}$=32/32$,
+\reff{tau}$=0{,}02$, \reff{buffer\_size}$=600$k, \reff{batch\_size}$=512$,
+\reff{ent\_coef}=auto, \reff{gamma}$=0{,}98$, ağ [256,256]) yeniden eğitilmiş; tüm eğriler
+gerçek ham loglardan üretilmiştir.
+
+\section{Özet Tablo}
+\begin{table}[h]\centering\small
+\caption{PPO ve SAC ortalama sonuçları (5 tohum, deterministik eval).}
+\IfFileExists{../rapor/karsilastirma_tablo.tex}{\input{../rapor/karsilastirma_tablo.tex}}{%
+\fbox{\small (karsilastirma\_tablo.tex eğitim sonrası üretilecek)}}
+\end{table}
+
+\section{Öğrenme ve Örnek-Verimliliği}
+\begin{figure}[h]\centering
+\begin{subfigure}{0.49\textwidth}\centering\cfig{C1_ogrenme_ppo_vs_sac.png}{1.0}
+  \caption{Öğrenme eğrisi (tam ufuk)}\end{subfigure}\hfill
+\begin{subfigure}{0.49\textwidth}\centering\cfig{C2_ornek_verimliligi.png}{1.0}
+  \caption{Örnek-verimliliği penceresi (SAC ufkunda)}\end{subfigure}
+\end{figure}
+\yorum{Aynı ortam ve tohumlarda SAC, ilk birkaç yüz bin env-adımında PPO'dan daha hızlı
+yükselir; PPO ise daha çok adım karşılığında daha yüksek ve daha kararlı bir nihai
+platoya ulaşır.}{Aynı env-adımı penceresinde (sağ panel) SAC öndedir; tam ufukta (sol
+panel) PPO platosu daha yüksektir.}{Fark doğrudan algoritma ailesindendir: SAC off-policy
+olduğundan replay buffer'daki her deneyimi defalarca kullanır (adım başına verimli),
+PPO on-policy olduğundan her rollout'u bir kez kullanıp atar.}{Off-policy az adımda hızlı,
+on-policy çok adımla yüksek nihai başarı -- dersin temel ayrımı somutlaşır.}
+
+\section{Deterministik Eval ve Görev Metrikleri}
+\begin{figure}[h]\centering
+\begin{subfigure}{0.49\textwidth}\centering\cfig{C3_eval_ppo_vs_sac.png}{1.0}
+  \caption{Deterministik eval eğrisi}\end{subfigure}\hfill
+\begin{subfigure}{0.49\textwidth}\centering\cfig{C5_oda_ppo_vs_sac.png}{1.0}
+  \caption{Oda keşif süreci}\end{subfigure}
+\end{figure}
+\begin{figure}[h]\centering\cfig{C4_final_metrik_bar.png}{1.0}
+\caption{Final deterministik eval metrikleri: getiri / oda / kapsama / başarı / çarpışma.}
+\end{figure}
+\yorum{Final deterministik eval'de PPO; getiri, oda sayısı, kapsama ve başarı oranında
+SAC'ın önünde, çarpışma oranında ise daha düşüktür (daha güvenli).}{Greedy eval eğrisinde
+PPO platosu SAC'ınkinin üzerindedir; oda keşif eğrisinde PPO 6 odaya daha çok yaklaşır.}{PPO'nun
+clipped surrogate'i kararlı, yüksek-tavanlı bir politika öğrenir; SAC entropi
+maksimizasyonuyla hızlı keşfeder ama bu ortamda nihai oda kapsamasında PPO'nun gerisinde
+kalır.}{Bu ortam için PPO daha yüksek nihai görev başarısı verir; SAC ise örnek-bütçesi
+kısıtlı senaryolarda avantajlıdır.}
+
+\section{Sonuç}
+Aynı MDP üzerinde yapılan bu adil karşılaştırma, iki algoritma ailesinin doğasını
+niceliksel olarak gösterir. SAC (off-policy, replay buffer'lı) örnek-verimlidir ve az
+adımda makul performansa ulaşır; PPO (on-policy, replay buffer'sız) daha çok örnek
+gerektirir ama bu çok-odalı keşif ortamında daha yüksek ve daha kararlı nihai başarıya
+çıkar. Karşılaştırmanın ortam, tohum ve protokol tarafı tamamen aynı olduğundan, gözlenen
+fark yalnızca algoritmadan kaynaklanmaktadır.
+
+\end{document}

@@ -22,7 +22,9 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, SAC
+
+_ALGOS = {"ppo": PPO, "sac": SAC}
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from env.fast_2d_drone_env import (  # noqa: E402
@@ -81,8 +83,11 @@ def main(argv=None) -> None:
     parser.add_argument("--runs-root", type=Path, default=Path("runs"))
     parser.add_argument("--seeds-file", type=Path, default=Path(__file__).resolve().parent / "seeds.txt")
     parser.add_argument("--episodes", type=int, default=None)
+    parser.add_argument("--algo", choices=["ppo", "sac"], default="ppo",
+                        help="model sinifi (PPO veya SAC) -- kiyas icin")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
+    model_cls = _ALGOS[args.algo]
 
     cfg = load_config(args.config)
     episodes = int(args.episodes if args.episodes is not None else cfg["eval"]["episodes"])
@@ -97,7 +102,7 @@ def main(argv=None) -> None:
         if model_path is None:
             print(f"[evaluate] seed={seed}: model bulunamadi ({run_dir}), atlaniyor")
             continue
-        model = PPO.load(str(model_path), device=_DEVICE)
+        model = model_cls.load(str(model_path), device=_DEVICE)
         env = Fast2DDroneExplorationEnv(
             config=Fast2DConfig(
                 max_episode_steps=int(env_cfg["max_episode_steps"]),

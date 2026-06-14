@@ -1,0 +1,15 @@
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Ölçüt & PPO (bu çalışma) & SAC (aynı ortam) \\
+\midrule
+Aile & on-policy & off-policy \\
+Replay buffer & yok & var \\
+Eğitim adımı (ort.) & 1.5\,M & 50\,k \\
+Eğitim episode (ort.) & $\sim$6081 & $\sim$120 \\
+\midrule
+Ort. eval getirisi & \textbf{458.5} & -- \\
+Eval başarı oranı (6 oda) & \textbf{0.96} & -- \\
+Ort. kapsama \% & \textbf{96.7} & -- \\
+Eval çarpışma oranı & \textbf{0.04} & -- \\
+\bottomrule
+\end{tabular}
