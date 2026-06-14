@@ -7043,3 +7043,46 @@ v9 Gazebo eğitimi 2026-05-30'da 193k step'te dondu, süreç bir daha düzelmedi
 ### Müdahale
 Yok — `configs/ppo.yaml` değiştirilmedi. 18 fast_sim + Gazebo v3.0 kanıtıyla config finaldir; yüzde 80+ güven eşiğini karşılayan hiçbir değişiklik yok. 15. ardışık oturumda aynı karar.
 ---
+
+## [2026-06-14 19:04 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 15 GÜN STALE, 2026-05-30 22:20) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV 15 gündür donmuş; v9 Gazebo 193k step'te çöktü, bir daha toparlanamadı. ppo.yaml 2026-06-02'de v10 config'e finaliz edildi (18 fast_sim + Gazebo v3.0 kanıtı). Bu 16. ardışık oturumdur; durum, CSVler ve config değişmedi.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- v9'da kırılım hiç yaşanmadı. Gerçek v9 verisi (17:34 May 30'dan itibaren): ep_rew_mean −37.4 en iyi değer (step ~145k) → −173.8 (freeze öncesi). +15'lik oda sıçraması sıfır gözlem.
+- CSV'nin ilk 4 satırı (step 142k–599k, hepsi ppo_drone_80000_steps.zip checkpoint'i) stale TB dizin hatasından kaynaklanıyor — KICKOFF.md uyarısı; bu veri gerçek değil.
+- FPS trendi: 106 (17:34) → 67–72 (20:00+); kaynak kısıtlaması veya container ısıl baskısı işareti — GZ deadlock öncüsü.
+- Referans: Gazebo v3.0 (Jun 1) → peak=110.3 @610k, fast_sim şampiyon v4.8 → %0 çarpışma / voxels=117.
+
+**b) lr=7.5e-5 constant seçimi doğru muydu?**
+- KICKOFF.md v9'u "lr=7.5e-5 constant" olarak belgeliyor — o config'de lineer decay yoktu ve bu düşük sabit LR yeni haritada yavaş başlangıcı pekiştirdi; hiç oda geçilemedi.
+- ppo.yaml şu an: `learning_rate: 3e-4`, `lr_schedule: linear`, `lr_final: 1e-5`. KICKOFF'taki bilgi geçerliliğini yitirdi; v10 config doğru ve 18 fast_sim ile kanıtlanmış.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- v9 son faz: entropy=−4.212 (eşik −4.0 → borderline deterministik), std=0.985 (güvenli; 0.7 eşiğinin çok üzerinde).
+- v10 beklentisi: ent_coef=0.008 (v9'un 5.3×'i) → ilk 150k entropy −3.2/−3.8 aralığında olmalı. Müdahale tetikleyicisi: entropy > −3.0 @150k VEYA std < 0.6 @300k.
+
+**d) Oda geçişi için ne kadar step gerekir?**
+- v9 için artık geçersiz — 193k'da kalıcı kilitlendi.
+- v10 Gazebo projeksiyonu (fast_sim kanıtı): 1. oda 250k–400k, 3+ oda 500k–700k, 6 oda 700k–1M. Kritik sınır: 1.5M (v4.10 @5M ve v4.11 @5M safety collapse — 2M+ aşılmamalı).
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py` env kodu doğrulaması:** `lidar_history=1→2` (obs 41-d→72-d, 32 lidar × 2 frame + 8 meta) VE `collision_penalty=10→25`. Fast_sim v4.8 kanıtı: lidar_history=2 çarpışmayı %80→%1'e, collision_penalty=25 %8→%0'a indirdi. Bu iki değişiklik ppo.yaml'da değil, env kodunda olmalı — v10 başlamadan önce teyit edilmesi zorunlu.
+2. **Checkpoint sweep planı:** 1.5M'in tamamını bekleme. Fast_sim v4.10 @5M ve v4.11 @5M collapse kanıtına göre peak 600k–900k arasında çıkıyor. 500k, 750k, 1M, 1.25M, 1.5M milestonlarında eval yap; en yüksek ep_rew_mean'li checkpointi final olarak sakla.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml`: Hayır — 16 oturum konsensüsüyle config finaldir.
+- V9 Gazebo: Zaten ölü; container'da müdahale imkânsız ve gereksiz.
+- Dışsal bloker: Lokal makinede Gazebo v10 eğitiminin `./scripts/train.sh configs/ppo.yaml` ile başlatılması bekleniyor.
+
+### v10 Önerisi
+1. Lokal makinede `drone_exploration_env.py`'de `lidar_history=2` ve `collision_penalty=25` satırlarını teyit et; ardından `./scripts/train.sh configs/ppo.yaml` ile fresh 1.5M eğitim başlat.
+2. Eğitim başladığında `training_metrics.csv` yeni satırlarla güncellenecek — ilk pozitif reward ~250k–400k step'te beklenir. Milestone'larda checkpoint eval yap; 1.5M'e kadar gitme, peak'ten sonra dur.
+
+### Müdahale
+Yok — `configs/ppo.yaml` değiştirilmedi. 18 fast_sim + Gazebo v3.0 kanıtıyla config %100 finaldir. %80+ güven eşiğini karşılayan müdahale tetikleyicisi mevcut değil. 16. ardışık oturumda aynı karar.
+---
