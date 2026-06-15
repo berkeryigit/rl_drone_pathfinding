@@ -8000,3 +8000,40 @@ v9 kalıcı olarak step=193k'da takılı (4. teyit). ppo.yaml v10 optimal. YENİ
 ### Müdahale
 **Yok** — ppo.yaml değiştirilmedi (%80+ güven eşiği karşılanmadı). Yeni kanıt: env obs=40-d (belgelendirmede hata), collision_penalty=25 uygulanmış ✓, lidar_history=2 bekliyor. Lokal Gazebo ortamı bekleniyor.
 ---
+
+## [2026-06-15 16:04 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 16 GÜN STALE, 2026-05-31 03:01'den beri) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 training ölü (5. teyit). ppo.yaml v10-optimal durumda, hiçbir değişiklik gerekmedi. Bu container'da Gazebo/ROS2 Jazzy yok; v10 lokal makinede başlatılmayı bekliyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV tamamen donmuş — 193,248 steps'ten sonra değer üretilmedi. v9 içi peak: step~84k'da -25.3 (tek iyimser nokta); ardından crash-loop sonrası regresyon (-173.85). +15 oda sıçraması hiç gözlemlenmedi; ep_rew_mean pozitife hiç çıkmadı. Eğitim aktif değil.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz: ppo.yaml çoktan v10 config'ine güncellendi. `learning_rate: 3e-4`, `lr_schedule: linear`, `lr_final: 1e-5` → 1.5M boyunca 30× azalma. v3.0 Gazebo bu schedule ile peak=110.3@610k üretti → kanıtlanmış optimal. v9'un sabit 7.5e-5'ine dönüş yapılmayacak.
+
+**c) Entropy/std keşif için yeterli mi?**
+- Stale crash-anı değerleri: entropy=-4.212 (**-4.0 eşiğinde borderline ✓**), std=0.985 (**0.7 eşiğinin çok üstünde ✓**). v10 başladığında ent_coef=0.008 ile entropy -3.2 ile -3.8 beklenir. İzleme alarmı: 400-600k aralığında std<0.7 VE entropy>-3.5 birlikte.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 henüz başlamadı. v3.0 Gazebo referansı (aynı hyperparams): ilk oda ~150-250k, 3+ oda ~350-500k, tüm 6 oda ~500-700k. `lidar_history=2` uygulanırsa erken terminate azalır → %10-15 iyileşme beklenir.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **`lidar_history=2` (env kodu, YAML değil):** `drone_exploration_env.py` obs 40-d→72-d. fast_sim v2 kanıtı: çarpışma %80→%1. v10 başlamadan bu fix uygulanmalı.
+2. **1.5M hard cap:** fast_sim v4.10/v4.11/v4.13/v5.0 — 5 bağımsız deneyde 2M+ sonrası güvenlik kollapsu deterministik. `total_timesteps=1500000` korunduktan sonra 1.0M, 1.2M, 1.4M checkpoint'lerini eval ile karşılaştır.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- ppo.yaml: **Hayır.** Beşinci oturumda da sonuç aynı — config finaldir. %80+ güven eşiğini karşılayan yeni bir sorun yok.
+- Operasyonel: Bu container Gazebo Harmonic + ROS2 Jazzy barındırmıyor. v10 yalnızca lokal makinede başlatılabilir.
+- CSV 16 gündür donmuş → bir sonraki saatlik analiz de aynı sonucu üretecek. Eğitim başlamadan bu monitoring döngüsü üretken değer taşımıyor.
+
+### v10 Önerisi
+1. **Env kodu önce:** `drone_exploration_env.py` lidar_history=2 → obs 40→72-d. Ardından `./scripts/train.sh configs/ppo.yaml`. Sıralamayı tersine çevirme — lidar_history=2 olmadan v10 erken terminate ile zayıf oda geçişi riski taşır.
+2. **Checkpoint eval planı:** 500k, 750k, 1M, 1.25M adımlarında `eval.sh` çalıştır; rooms_visited + ep_rew_mean karşılaştır; 1.5M'e gitmeden en iyiyi sabitle.
+
+### Müdahale
+**Yok** — ppo.yaml değiştirilmedi. Config v10 için finaldir; 5 oturum boyunca %80+ güven eşiğini karşılayan yeni anomali tespit edilmedi. Tek actionable item env kodunda (YAML dışı). Lokal Gazebo ortamı bekleniyor.
+---
