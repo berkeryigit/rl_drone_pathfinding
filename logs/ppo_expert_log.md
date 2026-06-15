@@ -7831,3 +7831,43 @@ v9 training 2026-05-31 03:01'den bu yana donmuş (step=193k, crash-loop). v10 bu
 ### Müdahale
 **Yok** — ppo.yaml değiştirilmedi. Config finaldir (%80+ güven eşiği karşılanmıyor: yeni kanıt yok). Bloker YAML dışında; lokal makine Gazebo ortamında `./scripts/train.sh configs/ppo.yaml` komutu bekliyor.
 ---
+## [2026-06-15 12:05 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 15 GÜN STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 training 2026-05-31 03:01'den bu yana donmuş (crash-loop). ppo.yaml v10 final config'de. Container'da Gazebo/ROS2 yok; v10 lokal makinede başlatılmayı bekliyor.
+
+### Detay
+
+**a) Reward eğrisi nerede?**
+- CSV tamamen donmuş: son 36 satır step=193k ve ep_rew_mean=-173.85 tekrarı. Aktif eğitim yok.
+- v9 tarihsel peak: ep_rew_mean≈-25 ila -37 arası (step ~84-145k), +15'lik oda sıçraması hiç gözlemlenmedi.
+- v10 `runs/` dizini mevcut değil — plato/kırılım değerlendirmesi imkânsız.
+
+**b) lr seçimi doğru mu?**
+- ppo.yaml artık v10: `lr=3e-4 → 1e-5 linear, 1.5M boyunca`. v9'un sabit 7.5e-5'i terk edildi.
+- v3.0 aynı schedule ile peak=110.3 @ 610k kanıtladı — mevcut config optimal.
+
+**c) Entropy/std keşif için yeterli mi?**
+- Mevcut değerler stale (crash anından kalma). entropy=-4.212 (eşik -4.0 ✓), std=0.985 (eşik 0.7 ✓).
+- v10 başladığında ent_coef=0.008 ile 0-200k arası entropy -3.2 ile -3.8 beklenir — yeterli.
+- İzleme noktası: 400-600k step arası, std<0.7 + entropy>-3.5 birlikte görülürse ent_coef artırılmalı.
+
+**d) Oda geçişi için ne kadar step?**
+- v10 başlamamış. v3.0 referansı (aynı hyperparams): ilk oda ~150-250k, 3+ oda ~350-500k, tüm 6 oda ~500-700k.
+- fast_sim: lidar_history=2 olmadan bu süreler +50-100k uzayabilir (obs kalitesi düşük).
+
+**e) v10 en kritik 2 öneri:**
+1. **`drone_exploration_env.py`'de lidar_history=2 (obs 41-d→72-d):** fast_sim v2 kanıtı: çarpışma %80→%1. YAML değil env kodu değişikliği.
+2. **1.5M step sınırını aşma:** 5 bağımsız fast_sim deneyi (v4.10/v4.11/v4.13/v5.0): 2M+ sonrası güvenlik kollapsı. 750k ve 1M'de eval ile peak checkpoint al.
+
+**f) Acil müdahale var mı?**
+- ppo.yaml açısından hayır. Bloker: v10 lokal Gazebo+ROS2 ortamında henüz başlatılmamış.
+
+### v10 Önerisi
+1. `drone_exploration_env.py` lidar_history=2 uygula → fresh start `./scripts/train.sh configs/ppo.yaml`.
+2. 200k step sonra std ve entropy izle; alarm: std<0.7 VE entropy>-3.5 birlikte → `ent_coef: 0.008→0.015`.
+
+### Müdahale
+**Yok** — ppo.yaml değiştirilmedi. Config 18+ fast_sim oturumu ve v3.0 Gazebo kanıtıyla finaldir. %80+ güven eşiği yalnızca lidar_history değişikliği için karşılanıyor ancak bu YAML dışı (env kodu). Lokal makine bekleniyor.
+---
