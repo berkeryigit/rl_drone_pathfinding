@@ -7959,3 +7959,44 @@ v9 training step=193k'da crash-loop'a girdi ve bir daha ilerlemedi (3. kez teyit
 ### Müdahale
 **Yok** — ppo.yaml değiştirilmedi. Config v10 için zaten optimal durumda; %80+ güven eşiğini karşılayan yeni bir sorun tespit edilmedi. Lokal Gazebo ortamı bekleniyor.
 ---
+
+## [2026-06-15 15:05 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 16 GÜN STALE, 2026-05-31'den beri) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 kalıcı olarak step=193k'da takılı (4. teyit). ppo.yaml v10 optimal. YENİ BULGU: `drone_exploration_env.py` incelendi — obs space gerçekte **40-d** (KICKOFF'da 41-d yazıyor), action space **2-d [v,w]** (KICKOFF'da 3-d [vx,vz,wz] yazıyor); `collision_penalty=25` uygulanmış ✓, `lidar_history=2` henüz uygulanmamış ✗. Config değişikliği yapılmadı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV tamamen donmuş: step=193k, ep_rew_mean=-173.85 (2026-05-30 22:00'dan 2026-05-31 03:01'e kadar 13 identik satır). v9 aktif değil.
+- v9 kendi içinde: ilk faz ep_len=1000 (max timeout, drone yer öğreniyordu), step~84k peak=-25.3 (v9'un en iyisi, hiç pozitife geçmedi). Hiçbir +15 oda sıçraması gözlemlenmedi.
+- v10 başlatılmamış — lokal Gazebo bekleniyor.
+
+**b) lr=7.5e-5 constant seçimi doğru mu?**
+- Geçersiz: ppo.yaml çoktan v10'a güncellendi. `lr=3e-4 → lr_final=1e-5` linear schedule, 1.5M boyunca. v3.0 Gazebo aynı config ile peak=110.3@610k → kanıtlanmış optimal.
+
+**c) Entropy/std keşif için yeterli mi?**
+- Stale değerler (crash anından): entropy=-4.212, std=0.985 (**her ikisi de sağlıklı eşiklerin içinde**).
+- v10 başladığında ent_coef=0.008 → ilk 200k'da entropy -3.2 ile -3.8 beklenir (aktif keşif bölgesi). İzleme eşikleri: 400-600k aralığında std<0.7 VE entropy>-3.5 birlikte alarm.
+
+**d) Oda geçişi için ne kadar step beklenir?**
+- v3.0 referans (v10 ile aynı hyperparams, n_envs=1): ilk oda ~150-250k, 3+ oda ~350-500k, tüm 6 oda ~500-700k.
+- lidar_history=2 uygulanırsa erken terminate azalır → oda geçiş süresi %10-15 kısalabilir.
+
+**e) v10 için kritik 1-2 öneri:**
+1. **`lidar_history=2` uygula (env kod — YAML DEĞİL):** `drone_exploration_env.py` obs space'i 40-d → 72-d (32 ekstra lidar history). fast_sim v2 kanıtı: çarpışma oranı %80→%1. **ppo.yaml net_arch=[256,256] bu genişleme için yeterli** (inputu tolere eder). Uygulamadan v10 başlatmak daha zayıf oda geçiş performansı doğurur.
+2. **1.5M step sınırı — YIKILMAMALI:** 5 bağımsız fast_sim deneyinde (v4.10/v4.11/v4.13/v5.0) 2M+ sonrası güvenlik kollapsu deterministik. En iyi checkpoint 1.0-1.4M aralığında, eval ile karşılaştırmalı seçilmeli.
+
+**f) Acil müdahale?**
+- ppo.yaml: **Hayır.** Config finaldir (4. onay).
+- **YENİ:** KICKOFF.md ve prompt'taki obs 41-d/action 3-d açıklamaları eski. Gerçek env: obs=40-d, action=2-d [v,w]. Bu tutarsızlık eğitimi etkilemiyor (env kodu doğru), ama izleme/raporlamada yanıltıcı olabilir.
+- Bu container'da Gazebo/ROS2 yok → v10 lokal makinede başlatılmalı.
+
+### v10 Önerisi
+1. **Env kodu önce:** `drone_exploration_env.py` lidar_history=2 fix → obs 40→72-d. Ardından `./scripts/train.sh configs/ppo.yaml`. Bu sırayı tersine çevirme — env fix olmadan eğitim daha zayıf converge eder.
+2. **Checkpoint eval planı:** 500k, 750k, 1M, 1.25M adımlarında `eval.sh` çalıştır; rooms_visited + ep_rew_mean karşılaştır; 1.5M'e gitmeden en iyiyi sabitle.
+
+### Müdahale
+**Yok** — ppo.yaml değiştirilmedi (%80+ güven eşiği karşılanmadı). Yeni kanıt: env obs=40-d (belgelendirmede hata), collision_penalty=25 uygulanmış ✓, lidar_history=2 bekliyor. Lokal Gazebo ortamı bekleniyor.
+---
