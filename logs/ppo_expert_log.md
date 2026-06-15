@@ -7467,3 +7467,47 @@ V9 training kalıcı olarak ölü (son 36 saatten bu yana 02:04 UTC girdisinden 
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. V10 parametreleri kanıtlanmış ve sabit; env kodu değişiklikleri (collision_penalty, lidar_history) lokal makinede uygulanmalı.
 ---
+
+## [2026-06-15 04:03 UTC]
+**Step:** 193,248 (CSV 16 GÜN + 5 SAAT DONMUŞ — son değişim: 2026-05-31 03:01 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 eğitimi kalıcı olarak ölü (02:04 ve 03:04 UTC girdilerinden bu yana sıfır değişim). Fast_sim 18-run zinciri (v4.1→v5.0) kapandı ve iki kesin çıktı üretildi: v4.8 (%0 çarpışma/5 oda/117 voxel) ve v4.10 (%54 çarpışma/6 oda/281 voxel). **ppo.yaml v10 için kanıtlanmış optimal parametrelerle hazır — hiçbir değişiklik yapılmadı.**
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim yok. V9'da ep_rew_mean hiçbir zaman pozitife geçmedi. +15 oda sıçraması sıfır kez gözlemlendi.
+- Son CSV yayı (2026-05-30): -324@64k → kısa pik -25@83k → gerileme -173@193k → ölüm.
+- Bu oturumdan önceki 02:04 ve 03:04 UTC girdileriyle karşılaştırıldığında: CSV değerleri atom-atomuna aynı → eğitim lokal makinede hâlâ başlatılmamış.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz. ppo.yaml `lr_schedule: linear, 3e-4→1e-5` olarak güncellenmiş (v3.0 Gazebo peak=110.3 parametresi). V9 sabit lr terk edildi.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale V9 snapshot: entropy_loss=-4.212 (H≈4.21 nat, alarm eşiği H<4.0 → **aşılmamış ✓**), std=0.985 (**eşik 0.7 üzeri ✓**).
+- Ölü V9 için yorum — V10 başlamadan anlamsız. V10 beklenti (ent_coef=0.008, 5.3× artış): entropy≈4.5-5.0 nat, std≈0.9-1.0 (ilk 200k). Deterministikleşme riski yok.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V10 projeksiyonu (v3.0 Gazebo peak=110.3@610k, aynı harita+reward, kanıtlanmış referans):
+  - İlk +15 sıçrama: **150k–300k step**
+  - 3+ oda tutarlı: 400k–600k
+  - 6/6 oda: 700k–1.2M
+- Hard cap: 1.5M (fast_sim 5-run teyidi: 2M+ sonrası güvenlik kollapsu v4.10/v4.11).
+- max_episode_steps=2500 (v10) vs v9=1000: 2.5× uzun keşif penceresi — kritik yapısal avantaj.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **[KRİTİK — lokal env kodu] drone_exploration_env.py collision_penalty -10→-25:** Fast_sim v4.8 %0 çarpışma/5 oda bu cezayla; v4.9 25→22 ile 2 odaya çöktü (dar tatli nokta). V10 bu değişiklik olmadan crash-loop riskiyle başlar. ppo.yaml'a değil env koduna dokunanacak.
+2. **Training başlat:** `./scripts/train.sh configs/ppo.yaml` — yaml optimal ve hazır. Bu container Gazebo/ROS2 barındırmıyor; lokal makinede yapılacak.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **configs/ppo.yaml açısından: Hayır.** Parametreler v3.0 Gazebo + 18 fast_sim run (v4.1→v5.0) ile tam kanıtlanmış. Hiçbir değer değiştirilmedi.
+- **Operasyonel:** Lokal makinede eğitim başlatılmamış durumda; bu olmadan CSV dondurulmuş kalmaya devam eder. Tek kilit noktası: drone_exploration_env.py satır 34 (collision_penalty -10→-25) ve ardından train.sh.
+
+### v10 Önerisi
+1. **Lokal: drone_exploration_env.py'de collision_penalty -10→-25** (v4.8 fast_sim kanıtı: tatli nokta tam 25, 22'de colapso). Training başlatmadan önce zorunlu adım.
+2. **250k milestone denetimi:** ep_rew_mean > -20 ise dokunsma; ep_rew_mean < -60 VE entropy_loss < -4.0 ise tek izole değişiklik ent_coef 0.008→0.012.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. Mevcut V10 parametreleri 18 fast_sim run + v3.0 Gazebo peak=110.3 ile kanıtlanmış optimal. Env kodu değişiklikleri lokal makinede uygulanacak; cloud container Gazebo/ROS2 barındırmıyor.
+---
