@@ -7652,3 +7652,55 @@ V9 eğitimi step=193,248'de ölü. `ppo.yaml` zaten v10 optimal parametrelerinde
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. V10 parametreleri (3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, max_ep=2500, n_envs=1, 1.5M) v3.0 Gazebo + 18 fast_sim run ile kanıtlanmış optimal; yeni aktif v10 verisi olmadan %80 eşiği aşılmıyor.
 ---
+
+## [2026-06-15 08:06 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 15 GÜN STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV 2026-05-31 03:01'den bu yana donmuş (15 gün). `runs/` dizini yok, `/tmp/train_ppo.log` yok, train_ppo process'i yok → v9 tamamen ölü, v10 bu container'da hiç başlamadı. `ppo.yaml` v10 optimal durumunda; config değişikliğine gerek yok.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- v9 training step=193k'da crash-loop ile donduruldu. Aktif eğitim yok.
+- CSV'deki iki ayrı run incelendi:
+  - **İlk run** (May 30, 11:02–12:32): step 142k→599k, ep_len=1000 (her episode max süreyi dolduruyor = drone keşfetmiyor), ep_rew=-290→-270. Plato değil — drone kör gezişte sıkışmış.
+  - **Recovery run** (May 30, 13:02–22:00): step 49k'dan başladı, peak **-25.3 @ ~84k**, ardından oscilasyon (-29→-55→-84→-109→-174), son değer -173.8 @ 193k.
+- **+15 oda sıçraması:** Hiç gözlemlenmedi. ep_rew_mean hiçbir zaman pozitife geçmedi; 6 oda sıfır episodeda tam keşfedilmedi.
+- Kırılım yok, plato yok — erken oscillation + crash-loop terminasyonu.
+
+**b) lr=7.5e-5 constant seçimi doğru mu?**
+- Bu soru artık geçersiz: `ppo.yaml` zaten v10'a güncellenmiş — `learning_rate: 3e-4`, `lr_schedule: linear`, `lr_final: 1e-5` (v3.0 Gazebo peak=110.3 üreten kanıtlanmış schedule).
+- v9'un sabit 7.5e-5'i terk edildi, doğru karar. v10 linear 3e-4→1e-5 (150× azalma, 1.5M boyunca) erken keşif + late fine-tune dengesini sağlıyor.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- **ÖNEMLİ TESPİT — ilk run'da erken deterministikleşme uyarısı:**
+  - İlk run (steps 142k–599k): entropy_loss **-3.886→-3.324** (tüm değerler -4'ün ÜSTÜNDE = entropy DÜŞÜYOR), std **0.888→0.746** (0.7 eşiğine yaklaşıyor!). Crash recovery bu deterministikleşmeyi kesti.
+  - Recovery run: entropy_loss -4.259→-4.212 (tümü -4'ün ALTINDA ✓), std 0.985–1.003 (çok sağlıklı ✓). Crash recovery std'yi 1.0'a döndürdü.
+- Son stale değerler: entropy=-4.212 ✓, std=0.985 ✓ — ama bunlar 15 günlük donmuş snapshot.
+- v10 için `ent_coef=0.008` (v9'un 5.3×'i) → ilk 200k'da entropy -3.2 ile -3.8 aralığında beklenir; 400-600k arası deterministikleşme riski izlenmeli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v9'da sıfır oda geçişi yaşandı. v10 için v3.0 Gazebo referansı (aynı hyperparams, n_envs=1):
+  - İlk oda: 150–250k step
+  - 3+ oda tutarlı: 350–500k step
+  - 6 oda tam keşif: 500–700k step
+- Hareketli engeller şimdilik devre dışı → statik harita avantajı → tahmin aralığı geçerli.
+- Risk: `lidar_history=1` (henüz değiştirilmedi) → duvar teması → erken terminate → +50-100k gecikme olası.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **`lidar_history=2` env kod değişikliği:** `drone_exploration_env.py`'de obs 40-d→72-d. fast_sim kanıtı: çarpışma %80→%1. Bu olmadan collision penalty = 25 olsa bile erken terminate riski devam eder.
+2. **200k milestone aktif izleme:** std<0.7 VEYA entropy>-3.8 (entropi düşüyor) görülürse ent_coef 0.008→0.012. İlk oda 250k'ya kadar gelmezse frontier_bonus katsayısını 0.4→0.6 artır.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- Hayır. `ppo.yaml` v10 optimal ✓, `collision_penalty=25` uygulandı ✓.
+- **Kritik bulgu (yeni):** İlk run'daki deterministikleşme sinyali (entropy >-4, std→0.75) crash recovery ile düzeldi — v10 başlangıcında bunu repeat etmemek için n_steps=2048 (v9'un 4×'i, daha büyük batch) avantaj sağlar.
+- Tek bloker: Bu container'da Gazebo Harmonic + ROS2 Jazzy yok → v10 lokal makinede başlatılmalı.
+
+### v10 Önerisi
+1. **Lokal makinede `./scripts/train.sh configs/ppo.yaml` ile v10 başlat (acil):** 15 gün geçti, v10 bir adım bile atmadı. Container dışında çalıştır, runs/ppo_v10/tb/ üret.
+2. **`lidar_history=2` uygula:** `drone_exploration_env.py` obs stack → 72-d, ardından fresh start. v10.1 olarak etiketle.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. V10 parametreleri (linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, 1.5M, n_envs=1) kanıtlanmış optimal; aktif v10 verisi olmadan %80 eşiği aşılmıyor, yeni veri yok.
+---
