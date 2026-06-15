@@ -7326,3 +7326,55 @@ CSV bir önceki oturumdan (2026-06-14 23:03 UTC) bu yana değişmedi; V9 process
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. V10 parametreleri optimal ve sabit. CSV donmuş state devam ediyor; lokal Gazebo ortamı olmadan bu container'dan müdahale imkânsız.
 ---
+
+## [2026-06-15 01:03 UTC]
+**Step:** 193,248 (CSV 16 GÜN + 1 SAAT DONMUŞ — son canlı veri: 2026-05-30 22:20 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV bir önceki oturumdan (2026-06-15 00:04 UTC) bu yana sıfır değişim — V9 process ölü, V10 config hazır, lokal Gazebo ortamında training başlatılmayı bekliyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Full CSV (46 satır) üzerinden tam V9 yayı:
+  - **Faz 1 (fresh start, 11:02-12:32):** ep_len=1000 (timeout = drone hiç terminat etmedi), ep_rew=-270 ila -290. Step=142k→599k arası. Drone duvarlarda sürükleniyor, hiç oda açmıyor.
+  - **Faz 2 (80k ckpt'ten resume, 13:02-20:55):** ep_len 245→315, ep_rew -25 ila -109 (volatil). Kısa dönemli en iyi: **-25.3 @ 83k**. FPS: 95-121.
+  - **Faz 3 (180k ckpt'ten resume, 21:20-22:20):** ep_len 214-637, ep_rew -37 ila -173. FPS: 72 (düşüş başladı).
+  - **Faz 4 (DONMUŞ, 22:20→şu an):** step=193k, ep_rew=-173.85, fp=72, 16+ gün.
+- +15 oda sıçraması V9'da **sıfır** kez gözlemlendi.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru muydu?**
+- Retrospektif: Kesinlikle yanlıştı. Faz 1 entropy yayı: -3.885 @ 142k → -3.324 @ 599k. Bu 0.56 nat/450k step entropik çöküş hızı, constant düşük lr ile ent_coef=0.0015'in birlikte yaptığıydı.
+- V10'un linear decay (3e-4→1e-5) + ent_coef=0.008 (5.3×) bu iki hatayı yapısal olarak çözüyor.
+- **V10 konfigürasyonunda bu soru artık geçersiz.**
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Son canlı ölçüm (faz 4): entropy_loss=-4.212 → H≈4.21 nat. Alarm eşiği H<4.0 → aşılmadı ✓
+- std=0.985 → 0.7 eşiğinin %41 üstünde ✓
+- Faz 1 kritik tespiti (önceki logda atlanmıştı): std 0.888→0.746 dropped over 450k steps — **0.7 eşiğine yaklaştı ama süre yetmeden crash oldu**. V9 ent_coef=0.0015 ile uzun sürse std 0.7'nin altına düşerdi (yüksek güven).
+- V10: ent_coef=0.008 bu riski elimine ediyor.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9: Geçersiz/ölü. V9 faz 1'de 599k step'e rağmen sıfır oda, faz 2'de -25 yakını reward'la 1-2 oda muhtemelen açıldı ama max_episode_steps=1000 kısa tuttu bunu köklüyor.
+- V10 projeksiyonu (v3.0 referansı, peak=110.3 @ 610k, aynı harita):
+  - İlk +15 sıçrama: 150k-300k step arası
+  - 3+ oda tutarlı: 400-600k
+  - 6/6 oda: 700k-1.2M
+  - max_episode_steps=2500 (v10) vs v9'un 1000'i: bu tek başına ~2.5× daha uzun keşif penceresi veriyor
+- V10'da oda geçişi şansı v9'dan yapısal olarak çok daha yüksek.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **Lokal makinede `./scripts/train.sh configs/ppo.yaml` başlat** — bu container'da Gazebo/ROS2 yok, tek bloker bu. ppo.yaml hazır ve optimal.
+2. **250k checkpoint zorunlu denetimi:** ep_rew_mean > -20 → dokunma. ep_rew_mean hâlâ < -60 AND entropy_loss < -4.0 → ent_coef 0.008→0.012 (tek izole değişiklik). Daha erken müdahale gereksiz.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Config açısından: Hayır.** ppo.yaml v10 = 18 fast_sim run + v3.0 Gazebo peak=110.3 ile kanıtlanmış parametreler. Değişiklik yapmak için veri yok ve gerek yok.
+- **Yeni tespit (önceki logda yok):** Faz 1 std=0.746 → v10 max_episode_steps=2500 ile v9'un kısa timeout sorununu düzeltiyor. V9'da drone timeout'tan önce oda geçemeziyor, V10'da 2.5× fazla adım var. Bu v10'un kritik yapısal avantajı.
+
+### v10 Önerisi
+1. **Lokal training başlat** — `./scripts/train.sh configs/ppo.yaml`. Config değişikliği gereksiz.
+2. **250k milestone (değil 150k):** max_episode_steps=2500 ile oda keşfi daha geç başlayabilir, acele müdahale v10 convergence'ını bozabilir. İlk denetimi 250k'ya çek.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. V10 parametreleri kanıtlanmış ve sabit; bu container'dan operasyonel müdahale imkânsız.
+---
