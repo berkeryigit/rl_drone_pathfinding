@@ -7378,3 +7378,49 @@ CSV bir önceki oturumdan (2026-06-15 00:04 UTC) bu yana sıfır değişim — V
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. V10 parametreleri kanıtlanmış ve sabit; bu container'dan operasyonel müdahale imkânsız.
 ---
+
+## [2026-06-15 02:04 UTC]
+**Step:** 193,248 (CSV 16 GÜN + 2 SAAT DONMUŞ — son canlı veri: 2026-05-30 22:20 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV'de sıfır değişim (bu oturumdan önce 01:03 UTC'de de aynı durum). V9 training 15+ gündür ölü; ppo.yaml v10 için kanıtlanmış optimal parametrelerle hazır; lokal Gazebo ortamında training başlatılması tek blokaj.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif training yok. Son CSV yayı: fresh-start -324@64k → kısa pik -25.3@83k → gerileme -173@193k → process ölümü.
+- +15 oda sıçraması: V9'da **sıfır** kez gözlemlendi. ep_rew_mean hiçbir zaman pozitife geçmedi.
+- Değerlendirme imkansız; veri 16 gündür dondurulmuş.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Soru geçersiz; ppo.yaml çoktan `lr_schedule: linear, 3e-4→1e-5` ile değiştirildi.
+- V9 constant lr'nin hatası kanıtlanmış: Phase-1'de entropy -3.885→-3.324 (450k'da 0.56 nat çöküş). Linear decay + ent_coef=0.008 bu hatayı yapısal olarak düzeltiyor.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale ölçüm: entropy_loss=-4.212 (H≈4.21 nat, alarm eşiği H<4.0 → **aşılmamış ✓**), std=0.985 (eşik 0.7 → **güvenli ✓**).
+- V9 phase-1'de std=0.888→0.746 geriledi (process ölmese eşiği delerdi). V10 ent_coef=0.008 (5.3×) bu riski elimine ediyor.
+- Mevcut veri 16 günlük; anlık yorumlama yapılamaz.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9: Ölü. V10 projeksiyonu (v3.0 Gazebo referansı, peak=110.3@610k, aynı harita):
+  - İlk +15 sıçrama: **150k–300k step**
+  - 3+ oda tutarlı: 400k–600k
+  - 6/6 oda: 700k–1.2M
+- max_episode_steps=2500 (v10) vs v9'un 1000'i: 2.5× daha uzun keşif penceresi — yapısal avantaj.
+- Hard cap: 1.5M (fast_sim 5-run teyidi; 2M+ sonrası v4.10@5M %54 çarpışma, v4.13@8M voxel 281→134).
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **Training başlat:** Lokal makinede `./scripts/train.sh configs/ppo.yaml`. Config değişikliği gereksiz. Bu container Gazebo/ROS2 barındırmıyor.
+2. **250k checkpoint denetimi (erken değil):** ep_rew_mean > -20 → dokunma. ep_rew_mean < -60 VE entropy_loss < -4.0 → tek müdahale: `ent_coef 0.008→0.012`.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Config açısından: Hayır.** ppo.yaml parametreleri 18 fast_sim run (v4.1→v5.0) + v3.0 Gazebo peak=110.3 ile kanıtlanmış. Hiçbir değer değiştirilmedi.
+- **Operasyonel:** V10 training lokal makinede hâlâ başlatılmamış. Bu durum değişmeden CSV donmuş kalmaya devam edecek.
+
+### v10 Önerisi
+1. **Tek eylem: lokal `./scripts/train.sh configs/ppo.yaml`** — config hazır ve optimal, başlatmayı bekliyor.
+2. **250k milestone kontrol:** entropy ve std eşiklerini izle; yalnızca ikisi birden alarmda olursa ent_coef 0.008→0.012 tek izole değişiklik.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. V10 parametreleri 18 fast_sim + v3.0 Gazebo ile kanıtlanmış; lokal Gazebo olmadan config değişikliği körün değişikliği olur. CSV donmuş durum devam ediyor.
+---
