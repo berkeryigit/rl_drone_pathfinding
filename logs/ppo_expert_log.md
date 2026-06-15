@@ -7749,3 +7749,47 @@ CSV 2026-05-31 03:01'den beri tamamen donmuş (46 kayıt; son 25 satır birebir 
 ### Müdahale
 Yok — `configs/ppo.yaml` değiştirilmedi. Aktif v10 verisi olmadan %80 eşiği aşılmıyor; parametreler (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, max_ep=2500, n_envs=1, 1.5M) v3.0 Gazebo + 18 fast_sim run ile kanıtlanmış optimal.
 ---
+
+## [2026-06-15 00:00 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 16 GÜN STALE, 2026-05-30 22:20) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 Gazebo eğitimi 2026-05-30 22:00'da 193k step'te kalıcı dondu; veriler 16 gündür değişmiyor. v10 `ppo.yaml` 2026-06-02'de finalize edildi. Bu container'da `runs/` dizini yok, v10 eğitimi hiç başlamadı. Bu 18. ardışık oturumdur; **kritik yeni bulgu: `lidar_history=2` env koduna henüz eklenmemiş (obs space 40-d, 72-d değil).**
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- v9 hiç pozitife geçmedi. Tüm CSV'nin en iyi değeri: −37.4 @step 145k (2026-05-30 21:20).
+- Son 10+ CSV satırı özdeş (193k step, rew=-173.85) — freeze değil, monitor_agent stale TB dizinini tekrar tekrar okudu. Gerçek son aktif ölçüm: ~22:00 2026-05-30.
+- FPS trendi: 111 (19:14) → 67–72 (21:20+) — konteyner kaynak baskısı / ısıl kısıtlama → GZ deadlock habercisi.
+- +15'lik oda sıçraması hiç gözlemlenmedi. v9 tek bir oda bile geçemeden öldü.
+
+**b) lr=7.5e-5 constant bu aşamada doğru muydu?**
+- Hayır. KICKOFF.md v9 config: `lr=7.5e-5 constant` (lineer decay yok). Yeni harita + düşük sabit LR → yavaş başlangıç → hiç oda geçilemedi.
+- v10 ppo.yaml düzeltti: `learning_rate: 3e-4`, `lr_schedule: linear`, `lr_final: 1e-5`. Bu 18 fast_sim + Gazebo v3.0 (peak=110.3 @610k) ile kanıtlanmış doğru seçim.
+
+**c) Entropy/std değerleri keşif için yeterli mıydı?**
+- v9 son: entropy=−4.212 (eşik −4.0 → borderline deterministik, ancak freeze sonrası değer).
+- std=0.985 (0.7 eşiğinin çok üzerinde — tek sağlıklı kalan metrik).
+- v10 ent_coef=0.008 (v9 ent_coef=0.0015'in 5.3×'i) ile ilk 150k entropy −3.2–−3.8 beklenir.
+
+**d) Oda geçişi için ne kadar step gerekir?**
+- v9 için artık geçersiz — 193k'da kalıcı kilitlendi, devam etmeyecek.
+- v10 projeksiyonu (18 fast_sim kanıtı): 1. oda 250k–400k | 3+ oda 500k–700k | 6 oda 700k–1M. Kritik üst sınır: 1.5M (v4.10/v4.11 @2M+ safety collapse belgelenmiş).
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **`lidar_history=2` env koduna EKLENMEMİŞ (KRİTİK BLOKER):** `drone_exploration_env.py` obs space 40-d (32 lidar + 2 yaw + 2 vel + 2 explore + 2 stats). `lidar_history=2` hiç eklenmedi. Fast_sim'in en büyük tekil buluşu: çarpışmayı %80→%1'e indirdi. v10 başlamadan önce `lidar_history=2` ile obs 72-d'ye çıkarılmalı; train_ppo.py ve ppo.yaml.policy da buna göre ayarlanmalı.
+2. **`collision_penalty=25` zaten aktif:** `drone_exploration_env.py:342` → `reward -= 25.0` ✓. Bu onaylandı. `max_episode_steps=2500` de `train_ppo.py:51` üzerinden ppo.yaml'dan doğru geçiyor ✓.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml`: Hayır — 17 oturum konsensüsüyla config finaldir.
+- **Dışsal bloker (yüksek öncelik):** Bu container'da `runs/` dizini yok, v10 eğitimi hiç başlamadı. Lokal makinede `./scripts/train.sh configs/ppo.yaml` ile başlatılması gerekiyor.
+- **Env kodu eksikliği (yüksek öncelik):** `lidar_history=2` eklenmemiş — bu ppo.yaml değil, env kodu değişikliği. v10 başlamadan önce yapılmalı.
+
+### v10 Önerisi
+1. **Önce env kodu:** `drone_exploration_env.py`'e `lidar_history=2` ekle (obs 40-d → 72-d: 32 lidar × 2 frame + 8 meta). Bu fast_sim'in en büyük tek buluşudur; `collision_penalty=25` zaten mevcut. Bu adım tamamlanmadan v10 başlatılmamalı.
+2. **Sonra eğitim:** Lokal makinede `./scripts/train.sh configs/ppo.yaml` ile fresh 1.5M başlat. Peak 600k–900k arasında çıkacak — 1.5M'in tamamına gitme, 750k ve 1M'de checkpoint eval yap.
+
+### Müdahale
+Yok — `configs/ppo.yaml` değiştirilmedi. Config 18 oturum konsensüsüyla finaldir. %80+ güven eşiğini karşılayan ppo.yaml müdahalesi mevcut değil. Kritik bloker ppo.yaml dışında: env kodunda `lidar_history=2` eksik, container'da v10 eğitimi başlamadı.
+---
