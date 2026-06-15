@@ -8262,3 +8262,45 @@ v9 eğitimi step=193,248'de crash-loop'a girdi ve bir daha ilerleyemedi; CSV 202
 ### Müdahale
 **Yok** — ppo.yaml değiştirilmedi. Mevcut v10 config (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M, n_envs=1) 18 fast_sim + v3.0 Gazebo run ile doğrulanmış optimal parametreler içeriyor. Değiştirmeyi gerektirecek %80+ emin olunan yeni anomali yok. **Acil eylem lokal makinede:** `lidar_history=2` env kodu uygulandıktan sonra `./scripts/train.sh configs/ppo.yaml` ile v10 başlat.
 ---
+
+## [2026-06-15 22:03 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 15 GÜN STALE, donmuş 2026-05-31 03:01) | **ep_rew_mean:** -173.85 | **entropy_loss:** -4.212 | **std:** 0.985
+
+### Durum
+v9 eğitimi step=193k'da crash-loop'a girdi ve durmadan beri 15 gün geçti. Bu günkü önceki analiz turları (20:04, 21:05 UTC) ile aynı tablo. ppo.yaml v10 optimal konfigürasyonunda (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, total_timesteps=1.5M, n_envs=1). Eğitimi başlatmak için container dışında Gazebo Harmonic + ROS2 Jazzy gerekiyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- v9 aktif değil — step=193k, 22 ardışık satır aynı değer (-173.85). Çarpışma döngüsü, öğrenme yok.
+- v9 tek gerçek pozitif yönelim: restart sonrası step~84k → -25.3 (v9 all-time en iyi). Oda sıçraması (+15) hiç gözlemlenmedi; ep_rew_mean sıfırın üzerine çıkmadı.
+- v9 Phase 1 (orijinal): ep_len=1000 (max timeout), reward -272→-270 sabit → drone çarpışmadan dolaşıyor ama oda geçemiyor; Phase 2 (restart): kısa bölüm, collision hala baskın.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Güncel değil: ppo.yaml v10'da, learning_rate=3e-4 linear→1e-5. v9'un sabit 7.5e-5'i zaten terk edildi.
+- Phase 1 entropisi -3.89→-3.32 ile azalıyordu: sabit düşük lr + zayıf exploration bir arada erken deterministikleşme yaratmıştı. v10 linear schedule bunu doğrudan giderir.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale Phase 2 değerleri: entropy=-4.21, std≈0.985 → σ≈1 (tam random policy). Öğrenme olmadan anlam taşımaz.
+- v10 beklentisi (ent_coef=0.008 ile): early phase entropy -3.2→-3.8 arası, std 0.85-1.0; 400-600k arası drift riski izlenmeli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 referansı (aynı config, n_envs=1): ilk oda 150-250k, 3+ oda 350-500k, 6/6 oda 500-700k.
+- lidar_history=1 riski: +50-100k gecikme potansiyeli. Hareketli engel yok → statik harita avantajı bunu kısmen dengeliyor.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **`lidar_history=2` env kodu önce uygulanmalı** (drone_exploration_env.py, obs 41-d→72-d). fast_sim v2 kanıtı: çarpışma oranı %80→%1. v10 başlatılmadan kritik.
+2. **250k milestone kuralı:** std<0.7 VE entropy_loss>-3.5 aynı anda → ent_coef 0.008→0.015; ilk oda 200k'dan geç → frontier bonus 0.4→0.6. Bu iki kural dışında ppo.yaml dokunulmasın.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- ppo.yaml: Hayır — v10 konfigürasyonu optimal, 18 fast_sim + v3.0 Gazebo ile doğrulanmış.
+- Container bloker devam ediyor: Gazebo Harmonic + ROS2 Jazzy yok → eğitim lokal makinede başlatılmalı.
+- Günün 3. analiz turu — yeni veri yok, durum değişmedi.
+
+### v10 Önerisi
+1. **Lokal makinede `lidar_history=2` env kodu uygulandıktan sonra `./scripts/train.sh configs/ppo.yaml` ile v10 başlat** — 15 gündür bekliyor.
+2. **250k milestone checkpoint kontrolü:** std<0.7+entropy_loss>-3.5 → ent_coef artır; ilk oda 200k'a kadar gelmezse frontier bonus artır. Bu iki eşik dışında yaml'a dokunma.
+
+### Müdahale
+**Yok** — ppo.yaml değiştirilmedi. v10 config kanıtlanmış optimal. %80+ emin olunan yeni anomali bulunmadı.
+---
