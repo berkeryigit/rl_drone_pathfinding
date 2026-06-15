@@ -8126,3 +8126,47 @@ v9 training tamamen ölü — CSV 15 gündür donmuş, step=193k'dan ilerlememi�
 ### Müdahale
 Yok — ppo.yaml değiştirilmedi. Mevcut v10 config (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M, n_envs=1) 18 fast_sim deneyi ve v3.0 Gazebo run ile doğrulanmış optimal parametreler içeriyor. Değiştirmeyi gerektirecek %80+ emin olunan bir anomali yok.
 ---
+
+## [2026-06-15 19:10 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 15 GÜN STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV 2026-05-31 03:01'den bu yana tamamen donmuş; v9 eğitimi step=193k'da crash-loop'a girdi ve bir daha ilerlemedi. Bu container'da Gazebo/ROS2 yoktur — v10 burada başlatılamaz. ppo.yaml zaten v10 optimal konfigürasyonunda (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, total_timesteps=1.5M). **Acil müdahale yok — bloker lokal makinedeki v10 başlatılmamış olması.**
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- v9 aktif değil. 15 gündür step=193,248'de donmuş.
+- v9 içi gerçek trend (CSV tam analizi): step 49k→-102.9 (restart sonrası); 84k→**-25.3 (v9 all-time best)**; 108-193k arası -54→-174 regresyon. Plato değil — erken oscillation + crash-loop. +15'lik oda sıçraması v9'da HİÇ gözlemlenmedi.
+- 22:20 UTC'den itibaren 22 satır aynı değerlerin tekrarı: watchdog crash_recovery döngüsü, gerçek eğitim yok.
+- v10 `runs/` dizini bu container'da mevcut değil → güncel plato/kırılım değerlendirmesi imkânsız.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz soru: ppo.yaml **zaten v10'a geçmiş** (`learning_rate: 3e-4 → lr_final: 1e-5, lr_schedule: linear`).
+- v9'un sabit 7.5e-5'i kalıcı olarak terk edildi — doğru karar. v3.0 Gazebo aynı schedule ile peak=110.3 (610k) ve peak=133.35 (501k) üretti.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut stale: entropy=-4.212 (**-4.0 eşiği üstünde, sınırda ✓**), std=0.985 (**0.7 eşiğinin çok üstünde ✓**). Ancak bunlar 15 günlük crash-loop anlık görüntüsü, gerçek v10 davranışı değil.
+- v10 config: ent_coef=0.008 (v9'un 5.3×'i) → early training'de entropy -3.2 ile -3.8 beklenir (sağlıklı keşif). Risk bölgesi: 400-600k step arası deterministikleşme — izlenmeli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 referansı (aynı hyperparameler, n_envs=1): ilk oda **150-250k**, 3+ oda **350-500k**, 6/6 oda **500-700k**.
+- Geciktirici faktör: `lidar_history=1` (henüz 2'ye yükseltilmedi) → duvar temas oranı yüksek → erken terminate → oda geçişi +50-100k kayabilir.
+- Hızlandırıcı faktör: Hareketli engeller devre dışı → statik harita → tahmin aralığı üst sınırında makul.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **`lidar_history=2` (YAML dışı — env kod değişikliği):** `drone_exploration_env.py`'de obs 41-d→72-d. fast_sim v2 kanıtı: çarpışma %80→%1. Bu olmadan v10 duvar yakınında suboptimal, erken terminate reward sinyali bozuyor. v10 başlatılmadan önce uygulanması şiddetle tavsiye edilir.
+2. **1.5M step sınırına kesinlikle uy:** 5 bağımsız fast_sim deneyi (v4.10@5M, v4.11@5M, v4.13@8M) teyit etti: 2M+ sonrası safety collapse kaçınılmaz. Mevcut `total_timesteps=1500000` değiştirme.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- Hayır. ppo.yaml v10 optimal ✓. collision_penalty=25 uygulandı ✓ (2026-06-02).
+- Watchdog crash_recovery döngüsü 2026-05-31 03:01'de durdu — container'da Gazebo yoksa devam etmemesi beklenir.
+- **Bloker:** Bu container Gazebo Harmonic + ROS2 Jazzy barındırmıyor → v10 lokal makinede `./scripts/train.sh configs/ppo.yaml` ile başlatılmalı. 15 gündür bekleme sürüyor.
+
+### v10 Önerisi
+1. **`lidar_history=2` önce uygula:** `drone_exploration_env.py` obs stack'ini güncelledikten sonra v10'u başlat. Bu tek değişiklik çarpışma oranını dramatik düşürür.
+2. **250k milestone checkpoint kontrolü:** std<0.7 + entropy>-3.5 → ent_coef 0.008→0.015; ilk oda 200k'ya kadar gelmezse frontier bonus 0.4→0.6 artır. Bu iki kural dışında ppo.yaml'a dokunma.
+
+### Müdahale
+**Yok** — ppo.yaml değiştirilmedi. Mevcut v10 config (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M, n_envs=1) 18 fast_sim + v3.0 Gazebo ile doğrulanmış optimal. Değiştirmeyi gerektirecek %80+ emin olunan yeni bir anomali yok.
+---
