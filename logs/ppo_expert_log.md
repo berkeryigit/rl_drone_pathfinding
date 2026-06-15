@@ -7559,3 +7559,50 @@ V9 eğitimi 30 Mayıs 22:00 UTC'de ölü (193k step'te freeze, 16 gün sıfır d
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. Mevcut v10 parametreleri (3e-4→1e-5 lineer, ent_coef=0.008, n_steps=2048, batch=256, n_epochs=10, max_ep=2500, n_envs=1, 1.5M) v3.0 Gazebo peak=110.3 + 18 fast_sim run ile kanıtlanmış optimal; değiştirmek için %80 eşiği aşılmıyor.
 ---
+
+## [2026-06-15 06:04 UTC]
+**Step:** 193,248 (CSV 16 GÜN 8 SAAT DONMUŞ — son gerçek değişim: 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 eğitimi 2026-05-30 22:00 UTC'den bu yana ölü (step=193,248 → hiç ilerlemedi). `ppo.yaml` 2 Haziran'da v10 kanıtlanmış parametrelerine güncellenmiş; lokal makinede training hâlâ başlatılmamış. Bu 3. saatlik analizde tablo değişmedi.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim yok — CSV 16 gün 8 saattir dondurulmuş.
+- V9'un tüm eğitim yayı (46 satır, ~11 saat): fresh start -290 → kısa parlama -54@13:52 UTC → crash-recovery döngüsü → final ölüm -173.85@193k.
+- **+15 oda sıçraması: 46 kayıtta SIFIR KERE.** V9 hiçbir zaman pozitife geçmedi.
+- Plato değil, erken çöküş: V9'da 3 ana sorun → ent_coef=0.0015 (yetersiz keşif), n_steps=512 (kısa rollout), max_episode_steps=1000 (drone odalar arası gezmeye yetemiyor).
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz — v9 terk edildi. `ppo.yaml` şu an v10: `lr=3e-4, lr_schedule=linear, lr_final=1e-5` (1.5M boyunca). Bu, v3.0 Gazebo peak=110.3@610k parametresiyle kanıtlanmış. V9 sabit lr=7.5e-5 deneysel bir seçimdi ve başarısız oldu.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- V9 stale snapshot: entropy_loss=-4.212 (H≈4.21 nat), std=0.985 — alarm eşiklerini aşmıyor (H<4.0 veya std<0.7 değil). Ancak bu değerler ölü bir eğitimin son anlık görüntüsü.
+- V10 beklentisi (ent_coef=0.008, 5.3× artış): entropy_loss ≈ -4.5~-5.0 (ilk 300k), std ≈ 0.95-1.05. Fast_sim v4.8 bu bandı 100k'da tuttu.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V10 referansı (identik harita+reward, kanıtlanmış v3.0 Gazebo):
+  - 1. oda (+15 sıçrama): **150k–300k step**
+  - 3+ oda tutarlı: **400k–600k step**
+  - 6/6 oda: **700k–1.2M step**
+- Hard cap: 1.5M (fast_sim v4.10/v4.11: 2M+ sonrası güvenlik kollapsu).
+- max_episode_steps=2500 (v10 yaml): v9'un 1000'inden 2.5× uzun → kritik avantaj.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **[KRİTİK-LOKAL] `drone_exploration_env.py` collision_penalty -10→-25:** Fast_sim v4.8 (tatli nokta tam -25): %0 çarpışma, 5 oda, 117 voxel. V4.9 (-22'ye çekilince): 2 odaya kollaps. V9 geçmişi: 193k adımda crash-loop; -10 terminal cezası yetersiz caydırıcıydı. Bu değişiklik yapılmadan v10 aynı crash-loop riskiyle başlar. Lokal makinede uygulanacak, yaml'a değil env koduna.
+2. **[SONRASI-250k] Eğer ep_rew_mean<-60 VE entropy_loss>-4.0 ise:** ent_coef 0.008→0.012 (tek izole değişiklik). Ancak v10 data (CSV'de henüz yok) görülmeden karar verilmeyecek.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml` açısından: **Hayır.** V10 parametreleri (18 fast_sim + v3.0 Gazebo peak=110.3) ile kanıtlanmış; hiçbir değer değiştirilmedi.
+- **Operasyonel (lokal makine):** `drone_exploration_env.py` collision_penalty -10→-25 uygulanmadan `train.sh` çalıştırılmamalı. Bu container Gazebo/ROS2 barındırmıyor.
+- **FPS:** V9 son kayıtlarda fps=72 (n_envs=2). V10 n_envs=1 → fps≈80-100 bekleniyor (tek instance, daha stabil).
+- **İnterventions.jsonl:** Son anlamlı giriş 2026-06-01 01:30 (fast_sim v3.0 434k milestone). Lokal makinede 15 gündür yeni kayıt yok → training başlatılmamış teyidi.
+
+### v10 Önerisi
+1. **Lokal: `drone_exploration_env.py` collision_penalty -10→-25** (zorunlu, v4.8 kanıtı: tatli nokta tam -25; -22'de kollaps). Bu olmadan `train.sh` çalıştırılmamalı.
+2. **V10 başladıktan sonra 250k milestone'da:** ep_rew_mean < -60 VE entropy_loss > -4.0 → ent_coef 0.008→0.012; aksi hâlde dokunma. ppo.yaml şu an optimal.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. Aktif v10 training verisi olmadan (%80 eşiği aşılmıyor); mevcut parametreler v3.0 Gazebo + 18 fast_sim run ile kanıtlanmış optimal. Lokal makine aksiyon bekliyor: (1) env kodu collision_penalty -10→-25, (2) `./scripts/train.sh configs/ppo.yaml`.
+---
