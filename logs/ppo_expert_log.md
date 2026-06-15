@@ -7276,3 +7276,53 @@ V9 eğitimi 2026-05-30 22:20'den bu yana tamamen donmuş; CSV son 20 satırın 1
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. V10 config 20. ardışık oturumda da kanıtlanmış-optimal; Gazebo v10 lokal makinede başlatılana kadar CSV donmuş kalacak.
 ---
+
+## [2026-06-15 00:04 UTC]
+**Step:** 193,248 (CSV 16 GÜN DONMUŞ — son canlı: 2026-05-30 22:20 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV bir önceki oturumdan (2026-06-14 23:03 UTC) bu yana değişmedi; V9 process 16 gündür ölü, ppo.yaml v10 config'e geçirilmiş durumda, lokal Gazebo ortamında training başlatılması bekleniyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Son 25 CSV satırından 15'i identik (step=193k, ep_rew=-173.85). Sıfır ilerleme.
+- V9 gerçek yay: fresh-start (-324@64k) → iyileşme (-67@96k) → kısa pik (-37.4@145k) → düşüş (-173@193k) → process ölümü.
+- +15 oda sıçraması v9'da **sıfır** kez gözlemlendi.
+- Plato değil, **process ölümü**. 16 günde bir byte değişmedi.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Soru artık geçersiz: ppo.yaml v10 config ile değiştirilmiş.
+- Mevcut config: `lr_schedule: linear`, 3e-4 → 1e-5 (1.5M boyunca 30× azalma). Bu optimal.
+- V9'un constant 7.5e-5 seçimi ilk 150k'da keşif baskısını azalttı; linear decay v10'da bu hatayı düzeltiyor.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Son ölçüm (stale): entropy_loss=-4.212 → H≈4.21 nat. Alarm eşiği H<4.0 → aşılmadı ✓
+- std=0.985 → 0.7 eşiğinin %41 üstünde ✓
+- V9 entropy yayı: -4.26 → -4.21 (130k boyunca 0.05 nat değişim). Sıkışma, düşük ent_coef=0.0015'in ve seyrek reward manzarasının işareti.
+- V10 ent_coef=0.008 (5.3×) bu sorunu yapısal olarak çözüyor.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9: Geçersiz/ölü. Hedefin %7.7'sinde donmuş.
+- V10 projeksiyonu (v3.0 Gazebo referansı, aynı harita, linear lr, n_envs=1):
+  - İlk +15 sıçrama: ~150–250k step
+  - 3+ oda tutarlı: ~400–600k step
+  - 6/6 oda tamamlama: ~700k–1M step
+  - **Hard cap:** 1.5M total_timesteps (fast_sim 5-run teyidi: 2M+ → safety collapse)
+- 300k'ya kadar +15 gözlemlenmezse tek müdahale: `frontier_bonus max` 0.4→0.6
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **v10 training'i lokal makinede başlat:** `./scripts/train.sh configs/ppo.yaml` — ppo.yaml hazır, bu container'da Gazebo/ROS2 yok, tek bloker bu.
+2. **150k zorunlu checkpoint denetimi:** ep_rew_mean > -30 → dokunma. ep_rew_mean < -50 → `ent_coef: 0.008→0.015` (tek izole değişiklik).
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Config açısından: Hayır.** ppo.yaml v10 parametreleri 18 fast_sim run + v3.0 Gazebo peak=110.3 ile kanıtlanmış ve hazır.
+- **Operasyonel bloker:** V10 training lokal Gazebo ortamında başlatılmadı. 16 gündür CSV donmuş.
+
+### v10 Önerisi
+1. **Tek eylem:** Lokal makinede `./scripts/train.sh configs/ppo.yaml` — config değişikliği gerekmiyor, training başlatılması gerekiyor.
+2. **150k milestone kontrolü:** entropy ve std eşiklerini 2026-06-14 log'undaki kriterlere göre değerlendir; dışarıda kalırsa ent_coef 2× artır.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. V10 parametreleri optimal ve sabit. CSV donmuş state devam ediyor; lokal Gazebo ortamı olmadan bu container'dan müdahale imkânsız.
+---
