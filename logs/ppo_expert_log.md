@@ -7606,3 +7606,49 @@ V9 eğitimi 2026-05-30 22:00 UTC'den bu yana ölü (step=193,248 → hiç ilerle
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. Aktif v10 training verisi olmadan (%80 eşiği aşılmıyor); mevcut parametreler v3.0 Gazebo + 18 fast_sim run ile kanıtlanmış optimal. Lokal makine aksiyon bekliyor: (1) env kodu collision_penalty -10→-25, (2) `./scripts/train.sh configs/ppo.yaml`.
 ---
+
+## [2026-06-15 07:03 UTC]
+**Step:** 193,248 (CSV 16 GÜN 9 SAAT DONMUŞ — son gerçek değişim: 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 eğitimi step=193,248'de ölü. `ppo.yaml` zaten v10 optimal parametrelerinde (2 Haziran'dan bu yana). `runs/` dizini yok — v10 Gazebo run hiç başlatılmadı. Bu saatlik analizde tabloda hiçbir değişim yok; bu container'da Gazebo/ROS2 çalıştırılamıyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim yok. CSV 46 kayıt içeriyor; son 25 satır aynı değerlerin tekrarı (watchdog crash_recovery döngüsü).
+- V9 tüm yayı: fresh start -290 → kısa pik -25.3@84k → regresyon + crash-loop → ölüm -173.85@193k.
+- **+15 oda sıçraması: 46 CSV kaydının SIFIRINDA görüldü.** V9 pozitif bölgeye hiç geçmedi.
+- Kök neden: ent_coef=0.0015 (yetersiz keşif), n_steps=512 (çok kısa rollout), max_episode_steps=1000 (6 oda gezmek için yetersiz süre).
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz soru — V9 terk edildi. `ppo.yaml` şu an v10: `lr=3e-4`, `lr_schedule=linear`, `lr_final=1e-5` (1.5M boyunca). V3.0 Gazebo bu schedule'la peak=110.3@610k üretti. Doğru seçim.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut stale: entropy=-4.212 (H≈4.21 nat), std=0.985. Alarm eşikleri (H<4.0, std<0.7) aşılmıyor — ama bu değerler ölü v9'dan, yorumlama sınırlı.
+- V10 beklentisi: `ent_coef=0.008` (v9'un 5.3×'i) → early training entropy -4.5 ila -5.0, std 0.95-1.05. Sağlıklı keşif aralığı. Risk penceresi: 400-600k step arası deterministikleşme.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V3.0 Gazebo referansı (identik harita+reward, n_envs=1, 6 oda):
+  - 1. oda (+15 sıçrama): **150k–250k step**
+  - 3+ oda tutarlı: **350k–500k step**
+  - 6/6 oda: **500k–700k step**
+- `max_episode_steps=2500` (v10) → v9'un 1000'inin 2.5×'i → kritik avantaj (drone kapıdan geçip geri dönebiliyor).
+- Hard cap: 1.5M (fast_sim: 5 bağımsız deneyle kanıtlandı — 2M+ sonrası safety collapse kaçınılmaz).
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **[LOKAL-ÖNCE] `drone_exploration_env.py` collision_penalty -10 → -25:** Fast_sim v4.8 tatli nokta teyidi — %0 çarpışma, 5 oda, 117 voxel. V4.9 (-22): 2 odaya kollaps. V9 193k crash-loop'u -10'luk yetersiz caydırıcıdan kaynaklandı. Bu env kodu değişikliği yapılmadan `train.sh` çalıştırılmamalı.
+2. **[250k KONTROL] ep_rew_mean < -60 VE entropy_loss > -4.0 ise:** `ent_coef: 0.008 → 0.012` (tek izole değişiklik). Şu an v10 verisi olmadan karar yok.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml` açısından: **Hayır.** 18 fast_sim run + v3.0 Gazebo peak=110.3 ile kanıtlanmış; 06:04 UTC analizinden bu yana yeni veri yok.
+- **Operasyonel:** Bu container Gazebo/ROS2 barındırmıyor. Lokal makinede `drone_exploration_env.py` fix + `./scripts/train.sh configs/ppo.yaml` bekleniyor.
+- **interventions.jsonl:** Son anlamlı giriş 2026-06-01 01:30 (fast_sim v3.0 434k milestone). 14 günde yeni kayıt yok.
+
+### v10 Önerisi
+1. **Lokal: `drone_exploration_env.py` collision_penalty -10 → -25** (zorunlu; -22 bile kollapsa neden oldu).
+2. **V10 250k milestone'da:** ep_rew_mean < -60 VE entropy_loss > -4.0 → ent_coef 0.008 → 0.012; aksi hâlde dokunma.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. V10 parametreleri (3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, max_ep=2500, n_envs=1, 1.5M) v3.0 Gazebo + 18 fast_sim run ile kanıtlanmış optimal; yeni aktif v10 verisi olmadan %80 eşiği aşılmıyor.
+---
