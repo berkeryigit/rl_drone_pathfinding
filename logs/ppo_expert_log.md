@@ -8691,3 +8691,58 @@ V9 Gazebo eğitimi 193k step'te kalıcı freeze/crash durumunda (aynı frozen de
 ### Müdahale
 **Yok** — configs/ppo.yaml değiştirilmedi. V10 config 18 fast_sim deneyinin kanıtlanmış optimumu; spekülatif değişiklik yapılacak yeterli canlı Gazebo verisi mevcut değil. Frozen CSV (16 gün) dışında yeni veri yok.
 ---
+
+## [2026-06-16 08:04 UTC]
+**Step:** 193,248 (CSV FROZEN — 2026-05-31 03:01'den beri, 16 gün) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 Gazebo eğitimi step=193k'da kalıcı crash-loop durumunda (donmuş 16 gün). ppo.yaml v10 optimal parametrelerini taşıyor; 18 fast_sim deneyi ve önceki 4+ uzman analiz seansı bunu kanıtladı. Yeni canlı veri yok — bu container'da Gazebo/ROS2 erişilemez. Bugün ikinci analiz (07:05 UTC'de birinci yapıldı); config değişikliğine gerek yok.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- V9 aktif değil. CSV eşsiz satırları iki farklı run yakaladı:
+  - **İlk run (11:02-12:32 UTC, May 30):** Step 142k→599k, ep_rew=-290→-270, ep_len=1000 (max clip), FPS=83, entropy -3.89→-3.32 (hızlı düşüş), std 0.888→0.746 (eşiğe yaklaşıyor). Bu run crash etti.
+  - **Restart recovery sequence:** Step 100k→193k, ep_rew peak **-37.4 @ 130k step**, ardından -173.85 @ 193k ile freeze. ep_len 231→637 (köşe kilidi büyüyor).
+- Kırılım YOK, plato YOK — erken crash. +15 oda sıçraması hiç gözlemlenmedi.
+- ep_len'in 231→637 artışı alarm verici: drone duvarlar arasında uzun idle döngülerine giriyor → -0.5 idle cezası ama çıkamıyor → negatif ödül birikimi → freeze/crash döngüsü.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Artık geçersiz — ppo.yaml tam olarak v10'a güncellenmiş:
+  - `learning_rate: 0.0003` (`lr_schedule: linear`, `lr_final: 1e-5`)
+  - V9 sabit 7.5e-5 tamamen terk edildi. Doğru karar.
+- Linear 3e-4→1e-5 (150x decay, 1.5M boyunca): erken keşif güçlü, son 200k fine-tune kaliteli. V3.0 Gazebo (aynı schedule) peak=110.3 @ 610k → kanıtlanmış optimal.
+- NOT: İlk CSV run'ında (11:02-12:32) entropy hızla -3.32'ye düştü — bu v9 lr=7.5e-5 + düşük ent_coef=0.0015 kombinasyonunun erken deterministikleşmesinin kanıtı. V10 ent_coef=0.008 (5.3x) bu riski ortadan kaldırıyor.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Frozen stale değerler (16 gün öncesi crash): entropy=-4.212 (eşik -4.0 ✓), std=0.985 (eşik 0.7 ✓ — rahat marjin).
+- Ancak bu değerler anlamlı öğrenme verisi değil — crash anının kalıntısı.
+- **Gerçek risk V9'da gözlemlendi:** İlk run'da std 0.888→0.746 yalnızca 457k step (90 dakika) içinde. Ent_coef=0.0015 ile bu düşüş 300k step öncesi erken deterministikleşme anlamına geliyordu.
+- V10 ent_coef=0.008 ve daha geniş ağ (256x256) ile bu risk önemli ölçüde azaltıldı.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V10 config (n_envs=1, n_steps=2048, FPS ~83 Gazebo):
+  - İlk oda geçişi: 150-300k step (wall-time ~45-90 dakika)
+  - 3+ oda: 500-700k step (~2.5-3.5 saat)
+  - Tüm 6 oda: 800k-1.2M step (~5-8 saat)
+- Referans: V3.0 Gazebo (aynı hyperparams) peak=110.3 @ 610k step.
+- Kritik hız faktörü: FPS=72-83 Gazebo vs 2000-4000 fast_sim → Gazebo'da aynı grafik ~25-50x daha yavaş üretiyor. Her checkpoint 25k step = ~5-8 dakika.
+
+**e) v10 için şu an en kritik 1-2 önerin ne olur?**
+1. **1.5M HARD CAP → değiştirme (kanıtlanmış kural):** Fast_sim v4.10 (5M), v4.11 (6M), v4.13 (8M), v5.0 (7M) — hepsi 2M+ sonrasında güvenlik kollapsu yaşadı. V10 1.5M limiti tartışmaya kapalı; en iyi checkpoint'i sakla, son adıma götürme.
+2. **500k adım tetikleyici:** ep_rew_mean < 50 VE oda sayısı < 3 birlikte görülürse → `ent_coef: 0.008 → 0.012`. Fast_sim v4.2 kanıtı: yalnızca room_bonus yeterli değil, entropi artışı oda kırılımını tetikler. Bu kuralı 500k checkpoint'e not al.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Config:** ppo.yaml v10 optimalinde. Değiştirilecek parametre SIFIR.
+- **Env kodu:** `drone_exploration_env.py` → collision_penalty=25 ✓, obs=72-d ✓, lidar_history=2 ✓. Tüm fast_sim bulgular uygulandı.
+- **Eğitim durumu:** 16 gün boyunca hiçbir ilerleme yok. V10 bu container'da başlayamaz (Gazebo Harmonic + ROS2 Jazzy eksik).
+- **Bugün 2. analiz (07:05 + 08:04 UTC):** İki analiz arasında 59 dakika, veri değişmedi.
+- **%80+ emin olunan anomali:** SIFIR → müdahale yapılmadı.
+
+### v10 Önerisi
+1. **Lokal makinede başlat:** `./scripts/train.sh configs/ppo.yaml` — env ✓, config ✓, 18 fast_sim deneyi kanıtladı. İlk 200k step metric'lerini bu log'a ekle.
+2. **500k checkpoint kuralı:** ep_rew_mean < 50 VE oda < 3 → `ent_coef: 0.008 → 0.012` (yaml'ı düzenle, eğitimi DURDURMA — SB3 callback ile dinamik güncellenebilir).
+
+### Müdahale
+**Yok** — configs/ppo.yaml değiştirilmedi. 16 günlük frozen CSV, birden fazla expert analiz seansı ve 18 fast_sim deneyi sonrası config v10 optimumunda. Spekülatif değişiklik için yeterli canlı veri yok.
+---
