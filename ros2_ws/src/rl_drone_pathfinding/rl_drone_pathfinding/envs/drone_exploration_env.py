@@ -15,12 +15,13 @@ Aksiyon uzayi 2D (odev tanimina birebir: lineer hiz v + acisal hiz w):
     a[1] -> w  (donus hizi)  in [-1, 1]
     Irtifa SABIT (vz=0). Model gravity=false oldugu icin z=0.6'da asili kalir.
 
-Gozlem (40-d, hepsi normalize [-1,1] / [0,1]):
-    [0:32]  : 32-bin yatay lidar (min-pool, /LIDAR_MAX)            -> [0,1]
-    [32:34] : (cos(yaw), sin(yaw))                                 -> [-1,1]
-    [34:36] : (v/V_MAX, w/W_MAX)                                   -> [-1,1]
-    [36:38] : (kesif_orani, ziyaret_edilen_oda_orani)              -> [0,1]
-    [38:40] : (min_lidar/LIDAR_MAX, idle_orani)                    -> [0,1]
+Gozlem (72-d, hepsi normalize [-1,1] / [0,1]):
+    [0:32]  : 32-bin yatay lidar t   (min-pool, /LIDAR_MAX)        -> [0,1]
+    [32:64] : 32-bin yatay lidar t-1 (onceki adim; hiz cikarimi)   -> [0,1]
+    [64:66] : (cos(yaw), sin(yaw))                                 -> [-1,1]
+    [66:68] : (v/V_MAX, w/W_MAX)                                   -> [-1,1]
+    [68:70] : (kesif_orani, ziyaret_edilen_oda_orani)              -> [0,1]
+    [70:72] : (min_lidar/LIDAR_MAX, idle_orani)                    -> [0,1]
 
 Odul (v2.1 — YON-DUYARLI ceza; v2.0 eval'inde %70 carpisma -> kapi/engel-bilincli):
     bir adimda toplam r =
@@ -191,9 +192,10 @@ class DroneExplorationEnv(gym.Env):
             high=np.array([1.0, 1.0], dtype=np.float32),
             dtype=np.float32,
         )
-        # Gozlem: 32 lidar + 2 yaw + 2 vel + 2 explore + 2 stats = 40
+        # Gozlem: 32 lidar_t + 32 lidar_t-1 + 2 yaw + 2 vel + 2 explore + 2 stats = 72
+        # fast_sim v2: lidar_history=2 carpismayi %80->%1'e indirdi (engel hizi cikarimi)
         self.observation_space = spaces.Box(
-            low=-1.0, high=1.0, shape=(40,), dtype=np.float32
+            low=-1.0, high=1.0, shape=(72,), dtype=np.float32
         )
 
         if not rclpy.ok():
@@ -208,6 +210,7 @@ class DroneExplorationEnv(gym.Env):
         self._explored = np.zeros((GRID_NXY, GRID_NXY), dtype=bool)
         self._visited_rooms: set[int] = set()
         self._steps_since_new_voxel = 0
+        self._prev_lidar_obs = np.ones(LIDAR_BINS, dtype=np.float32)
         self._np_random, _ = gym.utils.seeding.np_random(seed)
 
     # ----- Gozlem -----
@@ -232,8 +235,12 @@ class DroneExplorationEnv(gym.Env):
         rooms_scalar = (max(1, len(self._visited_rooms)) - 1) / float(max(1, N_ROOMS - 1))
         idle_norm    = min(1.0, self._steps_since_new_voxel / float(self.max_episode_steps))
 
+        prev_lidar   = self._prev_lidar_obs.copy()
+        self._prev_lidar_obs = lidar_obs.copy()  # bir sonraki adim icin guncelle
+
         obs = np.concatenate([
-            lidar_obs,                                                      # 32
+            lidar_obs,                                                      # 32  (t)
+            prev_lidar,                                                     # 32  (t-1)
             np.array([math.cos(yaw), math.sin(yaw)], dtype=np.float32),     # 2
             np.array([np.clip(v / V_MAX, -1, 1),                           # 2
                       np.clip(w / W_MAX, -1, 1)], dtype=np.float32),
@@ -284,6 +291,7 @@ class DroneExplorationEnv(gym.Env):
         self._explored.fill(False)
         self._visited_rooms = set()
         self._steps_since_new_voxel = 0
+        self._prev_lidar_obs = np.ones(LIDAR_BINS, dtype=np.float32)
         time.sleep(0.2)
         for _ in range(100):
             if self._node.snapshot()[0] is not None:
