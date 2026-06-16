@@ -8461,3 +8461,44 @@ CSV identik (önceki tur ile sıfır değişiklik). **KRİTİK MÜDAHALE:** `lid
 - `observation_space`: shape=(40,) → shape=(72,)
 - fast_sim v2 kanıtı: çarpışma %80→%1 (hareketli engel hızı çıkarımı)
 ---
+
+## [2026-06-16 03:06 UTC]
+**Step:** 193,248 (CSV STALE — 16+ GÜN, 2026-05-31 03:01'de donmuş) | **ep_rew_mean:** -173.85 | **entropy_loss:** -4.212 | **std:** 0.985
+
+### Durum
+CSV identik, v10 runs/ dizini YOK → eğitim başlamadı. **Tüm önkoşullar doğrulandı:** collision_penalty=25 (drone_exploration_env.py:350), lidar_history=2 (obs=72-d, commit f616f66), ppo.yaml v10 optimal. Tek eksik: lokal makinede `./scripts/train.sh configs/ppo.yaml` başlatılması.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- V9 193k'da crash, 16+ gün stale. V10 henüz başlamadı.
+- +15 oda sıçraması v9'da hiç gözlemlenmedi. Tüm v9 ep_rew_mean negatif kaldı (en iyi: -25.3 @84k).
+- Plato/kırılım değerlendirmesi mümkün değil (v10 veri yok).
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Geçersiz soru: ppo.yaml artık `lr=3e-4 linear→1e-5` (v10). V3.0 Gazebo aynı schedule ile peak=110.3 @610k üretti. Kanıtlanmış optimal.
+
+**c) Entropy/std keşif için yeterli mi?**
+- Stale değerler analiz edilemez. V10 beklentisi: ent_coef=0.008 → ilk 150k'da entropy ~-3.2...-3.8. Deterministikleşme riski 400k+ bandında izlenmeli (eşik: entropy>-3.5 VE std<0.7 → ent_coef artır).
+
+**d) Oda geçişi için ne kadar step beklenir?**
+- V3.0 Gazebo referansı (identik hyperparametreler, peak=110.3): ilk oda 150-250k, 3+ oda 350-500k, 6/6 oda 500-700k.
+- V10 avantajı: lidar_history=2 (engel hızı çıkarımı) → kapı geçişi ~30-50k daha erken.
+- Kısıt: total_timesteps=1.5M zorunlu (2M+ sonrası güvenlik kollapsu, v4.10/v4.11/v4.13 kanıtladı).
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **DERHAL BAŞLAT** — `./scripts/train.sh configs/ppo.yaml` (lokal makinede). Tüm blokajlar çözüldü: env=72-d ✓, collision=25 ✓, action=2D [v,w] ✓, n_envs=1 (deadlock yok) ✓.
+2. **250k kontrolü:** entropy_loss > -3.5 VE std < 0.7 → ent_coef 0.008→0.015 yap. İlk oda 250k'dan geç gelirse frontier_bonus yoksa düşün (v3.0 reward sade, forward_open bonus=+0.05 zayıf olabilir).
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- Eğitim BAŞLAMADI (16+ gün). Container'da Gazebo/ROS2 yok — lokal makinede başlatılması gerekiyor.
+- **REWARD UYUŞMAZLIĞI (bilgi için):** Env'de oda_reward=+10 (task prompt'ta +15), step_penalty=-0.01 (task prompt'ta -0.001). Bu v3.0 reward — intentional, fast_sim kanıtlı optimal. Sorun değil.
+- Config değişikliği: GEREKMİYOR.
+
+### v10 Önerisi
+1. Lokal makinede hemen başlat: `./scripts/train.sh configs/ppo.yaml` — tüm önkoşullar tamamlandı.
+2. 250k milestone'da entropy ve std izle; reward eğrisi 100k'dan sonra pozitif değer görmediyse ent_coef artır.
+
+### Müdahale
+**Yok** — ppo.yaml değiştirilmedi. Env kodu zaten güncel (f616f66). CSV identik.
+---
