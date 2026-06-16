@@ -8645,3 +8645,49 @@ V9 Gazebo eğitimi 193k step'te kalıcı olarak crash/freeze durumunda (30+ baş
 ### Müdahale
 **Yok** — configs/ppo.yaml değiştirilmedi. Env kodu doğrulaması tamamlandı (collision_penalty=25 ✓, obs=72-d ✓). Spekülatif değişiklik için yeterli canlı Gazebo verisi yok; v10 config 18 fast_sim deneyinin kanıtlanmış optimumu.
 ---
+
+## [2026-06-16 07:05 UTC]
+**Step:** 193,248 (CSV FROZEN — 2026-05-31 03:01'den beri, 16 gün) | **ep_rew_mean:** -173.85 | **entropy_loss:** -4.212 | **std:** 0.985
+
+### Durum
+V9 Gazebo eğitimi 193k step'te kalıcı freeze/crash durumunda (aynı frozen değerler hâlâ geçerli). V10 config ppo.yaml'a zaten yazıldı; 18 fast_sim deneyi (v4.1–v5.0) kesinleşmiş optimumla bu config'i oluşturdu. Gazebo container'da erişilemez; lokal `./scripts/train.sh configs/ppo.yaml` ile başlatılmayı bekliyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- V9 gerçek yörüngesi (crash_recovery karmaşası ayrıştırıldı): -290 (142k, stale TB) → -102 (49k, fresh) → **-25.3 @ 84k (V9 ALL-TIME BEST)** → -47 (149k) → -173 @ 193k (freeze).
+- Plato değil, crash. En iyi değer dahi negatif; +15 oda sıçraması hiç görülmedi.
+- ep_len 95→637 sıçraması: drone köşede kilitleniyor, uzun idle loop → freeze.
+- FPS: 83 (erken) → 72 (crash öncesi) — yavaşlama Gazebo stres sinyali.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Artık geçersiz. ppo.yaml V10'a güncellenmiş: `lr=3e-4 linear→1e-5` (1.5M boyunca).
+- V3.0 Gazebo (aynı schedule, peak=110.3 @ 610k) ile doğrulanmış. Constant lr'a kıyasla geç evrede (500k+) ~2x daha iyi politika kalibrasyonu beklenir. Doğru seçim.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- V9 donmuş: entropy=-4.212, std=0.985 (canlı öğrenme değil, freeze kalıntısı).
+- V10 ent_coef=0.008 (V9'un 5.3x'i). 400k step öncesi deterministikleşme beklenmez.
+- İzleme eşiği: entropy_loss > -3.5 VE std < 0.7 eş zamanlı → erken deterministikleşme sinyali → ent_coef artır.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- Fast_sim v4.8 (identik env, collision=25, lidar_history=2): ilk oda ~100k step @ ~4000 fps.
+- Gazebo FPS ~83 → eşdeğer wall-time step: Gazebo'da ~ilk oda 150-300k, 3+ oda 500-700k, 5-6 oda 800k-1.2M.
+- V10 1.5M cap içinde 4-5 oda marginal ama mümkün (v3.0 analogu: 110.3 @ 610k).
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **1.5M HARD CAP — kesinlikle değiştirme.** Fast_sim v4.10@5M: %54 collision; v4.13@8M: voxel zirvesi GEÇİCİ (281→134). 2M+ = güvenlik kollapsu, kurtarma yok.
+2. **500k checkpoint kuralı:** ep_rew_mean < 50 VE oda < 3 ise ent_coef 0.008→0.012. Fast_sim v4.2 dersi: room_bonus tek başına yetersiz, entropi artışı oda kırılımını tetikler.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **Config:** ppo.yaml v10 optimalinde (lr=3e-4→1e-5, ent_coef=0.008, collision_penalty=25, n_steps=2048, 1.5M cap). Değiştirilecek parametre YOK.
+- **Env kodu:** drone_exploration_env.py'de collision_penalty=25 ✓, obs=72-d ✓, lidar_history=2 ✓.
+- **Gazebo:** Bu container'da erişilemez. Lokal makinede `./scripts/train.sh configs/ppo.yaml` ile başlatılmayı bekliyor. Başlatılmadan V10 verisi üretilemez.
+- **%80+ emin olunan anomali:** SIFIR → config müdahalesi yapılmadı.
+
+### v10 Önerisi
+1. **Hemen başlat (lokal):** `./scripts/train.sh configs/ppo.yaml` — 18 fast_sim deneyi config'i kanıtladı, tüm env kodu güncel ✓.
+2. **500k checkpoint kuralı uygula:** ep_rew_mean < 50 VE oda < 3 → ent_coef 0.008→0.012 (oda kırılımını zorlama mekanizması).
+
+### Müdahale
+**Yok** — configs/ppo.yaml değiştirilmedi. V10 config 18 fast_sim deneyinin kanıtlanmış optimumu; spekülatif değişiklik yapılacak yeterli canlı Gazebo verisi mevcut değil. Frozen CSV (16 gün) dışında yeni veri yok.
+---
