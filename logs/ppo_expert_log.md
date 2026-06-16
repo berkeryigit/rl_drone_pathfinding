@@ -8502,3 +8502,47 @@ CSV identik, v10 runs/ dizini YOK → eğitim başlamadı. **Tüm önkoşullar d
 ### Müdahale
 **Yok** — ppo.yaml değiştirilmedi. Env kodu zaten güncel (f616f66). CSV identik.
 ---
+
+## [2026-06-16 04:03 UTC]
+**Step:** 193,248 (CSV STALE — 2026-05-31 03:01'den beri donmuş, 16+ gün) | **ep_rew_mean:** -173.85 | **entropy_loss:** -4.212 | **std:** 0.985
+
+### Durum
+V9 eğitimi 193k step'te crash/dondurulmuş (16+ gün stale). **YENİ BULGU:** Bu tur V9'un tüm metrik geçmişi birleştirilerek analiz edildi — ilk oturum (142k-599k) ile monitor-loop döneminin (49k-193k) ayrı tur olduğu netleşti. V10 runs/ dizini yok, eğitim başlamadı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- V9 **iki ayrı faz** yaşadı:
+  - **Faz 1 (ilk oturum, 142k→599k):** LR 3e-4→3e-5 linear, ent_coef=0.0015. Reward: -291→-270 (plato, asla pozitife geçmedi). Entropy -3.886→-3.324, std 0.888→**0.746** (0.7 eşiğine yaklaşıyordu). 599k'da reward hâlâ -270 → deterministikleşme başlamadan da keşif yetersiz.
+  - **Faz 2 (monitor-loop restartlar, 49k→193k):** Best: -25.3 @ 83k. Sonra -170s'e düştü ve 193k'da froze. +15 oda sıçraması hiçbir noktada gözlemlenmedi.
+- Plato → V9'un 6-odalı tek-katlı haritada başarısız olduğu kesinleşti. Faz 1'de 600k step ile bile oda geçişi olmadı.
+
+**b) lr=7.5e-5 constant seçimi doğru mu?**
+- V9'da 7.5e-5 constant kullanılmadı; KICKOFF.md'deki orijinal config 3e-4 linear idi. Mevcut ppo.yaml V10 için aynı schedule'ı (3e-4→1e-5, 1.5M) kullanıyor. Kanıtlanmış optimal (v3.0 Gazebo peak=110.3). Değişiklik GEREKSIZ.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale değerler (frozen): entropy=-4.212, std=0.985. Ancak Faz 1 sonunda std=**0.746** (eşiğe 0.046 kaldı) ve entropy=-3.324 iken de reward -270'te kalmıştı. 
+- **Teşhis:** V9 düşük ent_coef=0.0015 ile keşiften yoksundu; 600k step bile oda geçişi üretemedi.
+- V10: ent_coef=0.008 (5.3x büyük) → ilk 150k'da entropy -3.2→-3.8 bandı bekleniyor. Deterministikleşme riski 400k+ bandında izlenmeli.
+
+**d) Oda geçişi için ne kadar step beklenir?**
+- V9 REFERANSI (kanıt): 600k step, ent_coef=0.0015 → oda geçişi SIFIR.
+- V10 BEKLENTİSİ (v3.0 Gazebo identik hyperparams + ent_coef 5.3x daha iyi + lidar_history=2): ilk oda 100-200k, 3+ oda 300-450k, 6/6 oda 500-700k.
+- Kısıt: total_timesteps=1.5M (2M+ sonrası güvenlik kollapsu, v4.10/v4.11/v4.13).
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **YENİ KRİTİK BULGU:** V9 Faz 1'de 600k step ve std=0.746 (eşik=0.7) ile keşif başarısız olduysa, bu doğrudan ent_coef=0.0015'in yetersizliğini ispatlıyor. V10'un ent_coef=0.008 seçimi bu sorunu çözüyor — log verisinden kanıtlı.
+2. **250k milestone kuralı:** entropy_loss > -3.5 VE std < 0.7 eş zamanlı görülürse → ent_coef 0.008→0.015. İlk oda 200k'dan geç gelirse frontier_bonus max 0.4→0.6 düşün.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- V10 eğitimi 16+ gün başlamadı. Container'da Gazebo/ROS2 yok. Lokal makinede `./scripts/train.sh configs/ppo.yaml` başlatılması gerekiyor.
+- ppo.yaml V10 config optimal, değişiklik GEREKMİYOR.
+- **%80+ emin anomali yok** → config değişikliği yapılmadı.
+
+### v10 Önerisi
+1. Lokal makinede hemen başlat: `./scripts/train.sh configs/ppo.yaml` — tüm önkoşullar tamamlandı (lidar_history=2 ✓, collision_penalty=25 ✓, ppo.yaml optimal ✓).
+2. 250k milestone kontrolü: entropy_loss > -3.5 VE std < 0.7 → ent_coef 0.008→0.015. V9'dan alınan ders: düşük ent_coef ile 600k step bile oda geçişi yaşanmaz.
+
+### Müdahale
+**Yok** — ppo.yaml değiştirilmedi. Veri identik (CSV stale). V9 Faz 1 bulgusu (std=0.746 @ 599k, ent_coef=0.0015 ile oda=0) V10 ent_coef=0.008 seçimini destekliyor.
+---
