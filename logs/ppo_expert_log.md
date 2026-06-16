@@ -8385,3 +8385,33 @@ v9 eğitimi crash-loop nedeniyle step=193k'da donmuş, 16 gündür sıfır ilerl
 ### Müdahale
 **Yok** — ppo.yaml değiştirilmedi. v10 config 18 fast_sim + v3.0 Gazebo ile kanıtlanmış optimal. Container'da Gazebo yok, eğitim lokal makinede başlatılmalı.
 ---
+
+## [2026-06-16 01:04 UTC]
+**Step:** 193,248 (CSV STALE — 16+ GÜN, 2026-05-31 03:01'de donmuş) | **ep_rew_mean:** -173.85 | **entropy_loss:** -4.212 | **std:** 0.985
+
+### Durum
+Veri sıfır değişiklik — önceki tur (00:04) ile identik. ppo.yaml v10 config optimal durumda. Container Gazebo barındırmıyor; lokal makinede v10 başlatılması bekleniyör.
+
+### Detay
+
+**a) Reward eğrisi:** Aktif eğitim yok. Son CSV verisi step=193k, rew=-173.85 (frozen). interventions.jsonl'e göre Mayıs 31'de gerçek eğitim step=501k'a ulaşmış, peak=133.35. v3.0 Gazebo 610k'da durdurulmuş (peak=110.3). Şu an v10 başlangıç noktasındayız.
+
+**b) lr=7.5e-5 constant sorusu:** Geçersiz — ppo.yaml v10 konfigürasyonunda: `lr=3e-4 linear→1e-5` (1.5M boyunca doğrusal azalma). v8'in başarılı linear decay yaklaşımı devralınmış, 7.5e-5 constant terk edilmiş. Bu doğru seçim: erken hızlı öğrenme + geç fine-tune.
+
+**c) Entropy/std keşif durumu:** Mevcut değerler donmuş policy'ye ait, analiz edilemez. v10 beklentisi: ent_coef=0.008 ile ilk 150k'da entropy -3.2→-3.8 bandında, std>0.85. Deterministikleşme riski 400k+ bandında. İzlenecek eşikler: entropy_loss > -3.5 VEYA std < 0.7.
+
+**d) Oda geçişi tahmini:** v3.0 Gazebo referansı (identik hyperparamlar): ilk oda 150-250k steps, 3+ oda 350-500k, 6/6 oda 500-700k. v10 avantajları: n_steps=2048 (daha iyi kredi ataması), ent_coef 5.3x yüksek, gae_lambda=0.95. Bu etkenler ~50k erken oda geçişi sağlayabilir.
+
+**e) v10 kritik 2 öneri (değişmedi):**
+1. `lidar_history=2` env kodu (drone_exploration_env.py) uygulanmadan v10 başlatılmamalı — fast_sim v2: çarpışma %80→%1.
+2. 250k milestone kuralı: std<0.7 VE entropy_loss>-3.5 → ent_coef 0.008→0.015; ilk oda 200k'dan geç → frontier_bonus max 0.4→0.6.
+
+**f) Acil müdahale:** v10 eğitimi 16+ gündür başlamadı. ppo.yaml optimal, env kodu kontrol gerekiyor (lokal). Config'de değişiklik gerektiren %80+ emin anomali yok.
+
+### v10 Önerisi
+1. Lokal makinede: `lidar_history=2` patch → `./scripts/train.sh configs/ppo.yaml` — 15+ gün bekledi.
+2. 250k kontrol noktası eşiklerini izle: entropy_loss > -3.5 veya std < 0.7.
+
+### Müdahale
+**Yok** — ppo.yaml değiştirilmedi. Veri değişmedi (identik CSV). Container'da Gazebo/ROS2 yok; eğitim lokal makinede başlatılmalı.
+---
