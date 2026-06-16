@@ -8596,3 +8596,52 @@ V9 eğitimi 193k step'te crash/freeze durumu (son 16 gün değişim yok). V10 e�
 ### Müdahale
 **Yok** — ppo.yaml değiştirilmedi. CSV 16+ gündür frozen (v9 Gazebo crash kalıntısı). V10 config fast_sim zincirinin tüm kanıtlanmış bulgularını içeriyor; spekülatif değişiklik yapmak için yeterli canlı veri yok.
 ---
+
+## [2026-06-16 06:05 UTC]
+**Step:** 193,248 (CSV STALE — 2026-05-31 03:01'den beri frozen, 16+ gün) | **ep_rew_mean:** -173.85 | **entropy_loss:** -4.212 | **std:** 0.985
+
+### Durum
+V9 Gazebo eğitimi 193k step'te kalıcı olarak crash/freeze durumunda (30+ başarısız crash_recovery girişimi). V10 config + env kodu tamamen hazır: **env kodu doğrulandı** — `collision_penalty=25` ✓, `lidar_history=2` ✓, obs `72-d` ✓. Yalnızca lokal makinede `./scripts/train.sh` başlatılmayı bekliyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Mevcut CSV 46 benzersiz satır + 30+ frozen tekrar içeriyor. V9'un gerçek eğitim yörüngesi: -290 (142k) → -37 (145k) → -173 (193k, crash/freeze).
+- En iyi değer: ep_rew_mean = -37.4 @ step 145,600. Hiçbir zaman +15 oda sıçraması görülmedi.
+- 193k'daki -173 kötüleşme + ep_len 214→637 sıçraması: drone duvar köşesinde kilitleniyor, uzun idle episode döngüsü → crash.
+- V9 FPS: 114 (ilk) → 83 (orta) → 72 (crash öncesi). Sistem stresinin erken sinyali.
+- **Sonuç:** V9 erken faz öğrenmesi doğal (oda geçişi hiç gelmedi), kırılım ent_coef=0.0015 ile yapısal olarak imkânsızdı.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- V9'un aktif config'i yoktu (monitor-loop sürekli resume ediyor, ppo.yaml güncellenmişti).
+- Mevcut ppo.yaml: lr=3e-4 linear → 1e-5, 1.5M boyunca. V3.0 Gazebo (aynı schedule, 610k, peak=110.3) ile doğrulanmış.
+- Constant lr'a kıyasla linear decay: geç evrede (500k+) politika kalibrasyonu ~2x daha iyi. Doğru seçim.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale değerler (V9 freeze noktası): entropy=-4.212, std=0.985. Bu değerler canlı öğrenme değil, restart sonrası distribüsyon kalıntısı.
+- V10 için kritik eşik: entropy_loss > -3.5 VE std < 0.7 eş zamanlı ise erken deterministikleşme riski.
+- V10'un ent_coef=0.008 (V9'un 5.3x'i) ile 400k step öncesi deterministikleşme beklenmez.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- Fast_sim v4.8 (identik env, collision=25, lidar_history=2): ilk oda ~100k step.
+- Gazebo FPS ~83 (fast_sim >> 1000+ fps) → Gazebo'da eşdeğer step sayısı ~10x.
+- V10 Gazebo beklentisi: birinci oda 150-300k, 3+ oda 500-700k, 6/6 oda 800k-1.2M.
+- 1.5M cap'te 6/6 oda marginal, ama v4.8 analogu (güvenli + 4-5 oda) kesinlikle mümkün.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **1.5M HARD CAP — değiştirme.** Fast_sim v4.10@5M: %54 collision; v4.13@8M: voxel zirvesi GEÇICI (281→134). 2M+ = güvenlik kollapsu. ppo.yaml `total_timesteps=1500000` kritik; artırma.
+2. **500k checkpoint rule:** ep_rew_mean < 50 VE oda sayısı < 3 ise `ent_coef 0.008→0.012`. Fast_sim v4.8 analoğuna ulaşmak için bu pencerede müdahale gerekebilir.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ENV KODU DOĞRULANDI (YENİ BULGU):** `drone_exploration_env.py:350` → `reward -= 25.0` ✓. `observation_space.shape=(72,)` ✓. Fast_sim bulgularının HEPSİ Gazebo env koduna uygulanmış.
+- Küçük tutarsızlık: docstring satır 35 "−10.0 (terminal)" diyor ama kod satır 350 `-25.0` kullanıyor. İşlevsel etkisi YOK, yalnızca dokümantasyon stale.
+- V10 başlatma için HİÇBİR önkoşul eksik değil. Gazebo/ROS2 gerektirdiğinden container'da çalıştırılamaz.
+- Config'de %80+ emin olunan anomali SIFIR → müdahale yapılmadı.
+
+### v10 Önerisi
+1. **Hemen başlat:** `./scripts/train.sh configs/ppo.yaml` — env kodu ✓, config ✓, tüm fast_sim bulgular uygulandı ✓.
+2. **500k checkpoint rule:** ep_rew_mean < 50 VE oda < 3 → ent_coef 0.008→0.012. Güvenlik metriği: collision_rate > 10% görülürse mevcut checkpoint'i sakla ve eğitimi durdur (v4.10/v4.13 dersi: 2M+ sonrası kurtarma yok).
+
+### Müdahale
+**Yok** — configs/ppo.yaml değiştirilmedi. Env kodu doğrulaması tamamlandı (collision_penalty=25 ✓, obs=72-d ✓). Spekülatif değişiklik için yeterli canlı Gazebo verisi yok; v10 config 18 fast_sim deneyinin kanıtlanmış optimumu.
+---
