@@ -8546,3 +8546,53 @@ V9 eğitimi 193k step'te crash/dondurulmuş (16+ gün stale). **YENİ BULGU:** B
 ### Müdahale
 **Yok** — ppo.yaml değiştirilmedi. Veri identik (CSV stale). V9 Faz 1 bulgusu (std=0.746 @ 599k, ent_coef=0.0015 ile oda=0) V10 ent_coef=0.008 seçimini destekliyor.
 ---
+
+## [2026-06-16 05:10 UTC]
+**Step:** 193,248 (CSV STALE — 2026-05-31 02:41'den beri frozen, 16+ gün) | **ep_rew_mean:** -173.85 | **entropy_loss:** -4.212 | **std:** 0.985
+
+### Durum
+V9 eğitimi 193k step'te crash/freeze durumu (son 16 gün değişim yok). V10 eğitimi hâlâ başlatılmamış — ppo.yaml v10 için güncel ve optimal durumda, config değişikliği gerekmemektedir.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV son 46 satırının tamamı v9 Gazebo monitor-loop fazından (May 30). Benzersiz son veri noktası: step=193,248 @ 22:00 UTC, 22:20'den itibaren aynı değerler tekrar ediyor → proses ölü/dondurulmuş.
+- V9 en iyi değer: ep_rew_mean = -37.4 @ step 145,600 (satır 30). Hiçbir zaman pozitife geçmedi.
+- +15 oda sıçraması CSV'nin hiçbir noktasında görülmedi (step 193k kapsamında).
+- FPS düşüşü: 108-114 (step 90k-105k) → 72 (step 193k) — crash öncesi sistem stresinin göstergesi.
+- ep_len: 161 stepten 637'ye zıpladı (frozen anında), muhtemelen drone duvar köşesinde sıkışarak uzun boş episode döngüsü.
+- **V10 metrikleri mevcut değil** — eğitim hiç başlamadı.
+
+**b) lr=7.5e-5 constant seçimi doğru mu?**
+- Task prompt'ta bahsedilen lr=7.5e-5 constant V9'un bir ara config'iydi; mevcut ppo.yaml V10 için lr=3e-4→1e-5 LINEAR kullanıyor.
+- V3.0 Gazebo (aynı schedule ile 610k step, peak=110.3) bu schedule'ın optimal olduğunu kanıtladı.
+- Değişiklik GEREKMİYOR: linear decay, constant lr'a kıyasla geç evrede yakınsama kalitesini artırır.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut stale değerler (V9 freeze noktası): entropy=-4.212, std=0.985.
+- V9 erken faz (satır 2-10): entropy -3.89→-3.62, std 0.888→0.813 — monitor-loop restartları sonrası entropy DAHA KÖTÜ (-4.2) döndü, bu restart kaynaklı distribüsyon kayması.
+- std=0.985 eşiğin (0.7) çok üzerinde, o açıdan sağlıklı.
+- **V10 için beklenti:** ent_coef=0.008 (V9'un 0.0015'inin 5.3x'i) ile entropy -3.2→-3.8 bandında başlamalı, 400k+ sonrasında deterministikleşme riski izlenmeli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9 kanıtı: ent_coef=0.0015, 600k step → oda geçişi SIFIR.
+- Fast_sim zinciri (v4.8, lidar_history=2, collision=25, ent_coef=0.008): ilk oda %0 collision ile ~150k step'te geldi.
+- V10 Gazebo (n_envs=1, ~83fps): birinci oda 150-250k, 5+ oda 450-700k, 6/6 oda 600-900k step beklentisi.
+- Total_timesteps=1.5M kısıtıyla 6/6 oda ulaşılabilir, ancak dar pencere; 500k milestone'da ilerleme yoksa ent_coef artışı devreye girmeli.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **Eğitimi başlat** — v10 config tamamlandı, ppo.yaml optimal, lokal makinede `./scripts/train.sh configs/ppo.yaml` çalıştırılmayı bekliyor (container'da Gazebo/ROS2 yok).
+2. **250k milestone kuralı:** entropy_loss > -3.5 VE std < 0.7 eş zamanlı olursa ent_coef 0.008→0.015'e çıkar. İlk oda 250k'ya kadar gelmezse frontier_bonus max değerini 0.4→0.6 artırmayı değerlendir.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- V10 eğitimi 16+ gündür başlamadı. Gazebo/ROS2 gerektirdiğinden bu container'da başlatılamaz.
+- ppo.yaml v10 için 18 fast_sim deney bulgusunu yansıtıyor (collision=25, lidar_history=2, ent_coef=0.008, total=1.5M, n_epochs=10, n_steps=2048). **Değişiklik GEREKMİYOR.**
+- Config'de %80+ emin olunan anomali tespit edilmedi → müdahale yapılmadı.
+
+### v10 Önerisi
+1. Lokal makinede başlat: `./scripts/train.sh configs/ppo.yaml` — tüm önkoşullar tamamlandı (lidar_history=2 ✓, collision_penalty=25 ✓, ppo.yaml v10 optimal ✓, total_timesteps=1.5M ✓).
+2. 250k adımda entropy+std takip et; reward 100k'da hâlâ negatifse fast_sim v4.2 bulgusuna dayanarak ent_coef 0.008→0.015 artır.
+
+### Müdahale
+**Yok** — ppo.yaml değiştirilmedi. CSV 16+ gündür frozen (v9 Gazebo crash kalıntısı). V10 config fast_sim zincirinin tüm kanıtlanmış bulgularını içeriyor; spekülatif değişiklik yapmak için yeterli canlı veri yok.
+---
