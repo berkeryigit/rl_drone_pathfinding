@@ -9043,3 +9043,52 @@ V10 eğitimi hâlâ başlatılmadı; bu gün 4. analiz seansı (07:04→08:04→
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. 18.4 günlük donmuş CSV, bugün 4 ardışık analiz seansı, 18 fast_sim deneyi sonrası config v10 optimumunda; canlı Gazebo verisi olmadan spekülatif değişiklik yapılmadı.
 ---
+
+## [2026-06-17 11:15 UTC]
+**Step:** 193248 (DONMUŞ — son gerçek ilerleme 2026-05-31 22:20) | **ep_rew_mean:** -173.85 | **entropy_loss:** -4.212 | **std:** 0.985
+
+### Durum
+V9 Gazebo eğitimi 2026-05-30 22:20'de step 193k'da tamamen dondu ve 18+ gündür sıfır ilerleme var; configs/ppo.yaml zaten v10 konfigürasyonuna güncellenmiş fakat v10 eğitimi hiç başlatılmamış.
+
+### Detay
+- **Tam CSV trendi (46 satır analizi):**
+  - **Faz 1 (11:02-12:32, step 142k→599k):** ep_rew_mean sabit -270 ila -290; ep_len_mean=1000 (maks. adım her seferinde dolmuş = drone ilerlememiş). entropy_loss: -3.89→-3.32 (entropi H DÜŞÜYOR, erken deterministikleşme). std: 0.888→0.746 (0.7 eşiğine yaklaşıyor). v9 lr=7.5e-5 sabit + ent_coef=0.0015 bu eğitimi çökertti.
+  - **Çöküş + yeniden başlatma ~13:00:** 80k checkpoint'ten devam, step sayacı 49k'ya düştü. Entropy yeniden sağlıklı seviyeye döndü (-4.25), std=1.0, ep_len artık 80-640 arası (drone hareket ediyor).
+  - **Faz 2 en iyi:** ep_rew_mean=-25 @ step 84k (13:52). Kısa süre sonra tekrar bozuldu ve -173'e indi.
+  - **Donma:** step 193248, ep_rew_mean=-173.85 → 22:20'den itibaren sabit, 22 satır boyunca aynı değer.
+  - **Müdahale döngüsü:** interventions.jsonl'de 25+ crash_recovery kaydı; monitor 80k→120k→140k→180k checkpoint'lerinden defalarca restart denedi, hiçbiri kalıcı düzelme sağlamadı.
+
+- **ep_rew_mean trendi:** Platoya girmedi — dondu. Pozitif değer hiç görülmedi. +15'lik oda sıçraması sıfır kez gerçekleşti.
+- **Entropy:** Faz 2'de -4.21 ila -4.27 (H≈4.21-4.27 nats) — sağlıklı, -4'ün altında kaldı, erken deterministikleşme tehlikesi yok (Faz 2 için). Faz 1'de ise gerçek tehlike yaşandı.
+- **std:** Faz 2'de 0.985-1.003 — 0.7 eşiğinin oldukça üzerinde, sağlıklı.
+- **FPS:** Faz 1'de 83-84 (kararlı), Faz 2'de 67-121 (çökme/yeniden başlatma döngüsü, kararsız).
+
+- **ppo.yaml durumu:** ZATEN V10 konfigürasyonunda:
+  - lr: 3e-4 linear → 1e-5 (v9'un 7.5e-5 sabitine karşı büyük iyileştirme)
+  - ent_coef: 0.008 (v9'un 0.0015'ine karşı 5.3x artış — Faz 1'deki entropi çöküşünü önler)
+  - n_steps: 2048, n_epochs: 10, clip: 0.2 (tüm değerler fast_sim doğrulanmış)
+  - n_envs: 1, total_timesteps: 1.5M
+  - Bu konfigürasyon 18 fast_sim deneyi sonucu optimize edilmiş, değiştirilmesi gerekmez.
+
+### Soru Yanıtları
+**a) Reward eğrisi:** Hiçbir zaman pozitife geçmedi. Faz 1'de -270 platosunda takıldı (drone max adıma geliyordu). Faz 2'de -25'e kadar düzeldi ancak tutarsız. Donma ile bitti. Kırılım başlamadan önce eğitim çöktü.
+
+**b) lr=7.5e-5 constant:** V9'un bu lr seçimi yanlıştı. Faz 1 verileri bunu kanıtlıyor: entropi çöktü, std 0.75'e düştü, reward iyileşmedi. V10'da 3e-4→1e-5 linear decay kullanılması doğru karar. Config değişikliği zaten yapılmış.
+
+**c) Entropy/std:** V9 Faz 2'de (yeniden başlatma sonrası) H≈4.2, std≈0.99 → keşif için yeterli. Ancak V9 Faz 1'de ciddi entropi çöküşü yaşandı. V10'un ent_coef=0.008'i bu riski minimize eder.
+
+**d) Oda geçişi için kalan adım:** V9'da hiç oda geçişi gerçekleşmedi (tüm reward negatif). V10 konfigürasyonu ve fast_sim deneyimine göre: ilk oda geçişi ~50-100k adım beklenir, tüm 6 odanın keşfi ~400-600k adımda. Fast_sim v3.0 peak=110.3 @ 610k bunu destekliyor.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **ACİL: V10 eğitimini başlat.** Config hazır, 18 gündür bekliyor. `./scripts/train.sh configs/ppo.yaml` — en yüksek öncelik.
+2. **150k noktasında kontrol:** ep_rew_mean < 0 VE oda < 1 ise → ent_coef 0.008→0.012 yükselt (v9 Faz 1 tekrarını önle). Eğer reward pozitife geçmişse müdahale etme.
+
+**f) Acil müdahale:** V10 eğitimi 18+ gündür başlatılmamış. Bu ortamda (remote execution container) Gazebo simülasyonu çalıştırılamadığından eğitim başlatılamıyor. Kullanıcının yerel makinede manuel başlatması gerekiyor.
+
+### v10 Önerisi
+1. **Yerel makinede hemen başlat:** `cd ~/Desktop/RLProje/rl_drone_pathfinding && ./scripts/train.sh configs/ppo.yaml` — config tamamen hazır, ek değişiklik yok.
+2. **150k erken kontrol:** ep_rew_mean hâlâ negatif + std < 0.8 görürsen ent_coef 0.008→0.012 yap; pozitife geçmişse elleme.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi (v10 konfigürasyonu zaten optimal). Remote container'da Gazebo simülasyonu çalıştırılamadığından eğitim başlatılamadı; bu adım kullanıcının yerel makinesinde yapılmalı.
+---
