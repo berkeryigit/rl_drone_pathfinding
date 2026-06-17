@@ -8896,3 +8896,53 @@ V9 Gazebo eğitimi step=193k'da kalıcı crash-freeze durumunda (17.2 gün). ppo
 ### Müdahale
 **Yok** — configs/ppo.yaml değiştirilmedi. 17.2 günlük frozen CSV + 5 uzman analiz seansı + 18 fast_sim deneyi sonrası config V10 optimumunda; spekülatif değişiklik için canlı Gazebo verisi mevcut değil. Sonraki karar noktası: V10 lokal başlatma → 500k step sonrası.
 ---
+
+## [2026-06-17 08:04 UTC]
+**Step:** 193,248 (CSV FROZEN — 2026-05-31 03:01'den beri, **18.2 gün**) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V10 eğitimi **başlatılmadı** — 18.2 günlük durma. CSV verisi tamamen donmuş (step=193k son satır, May 31 03:01'den bu yana identik). Bu oturum bugün 07:04 UTC analizinin 1 saatlik takibi; kritik yeni bulgu: **V10 lokal makinede hala başlatılmamış.** ppo.yaml v10 optimal config'inde, container'da Gazebo yok, config değişikliği yapılmadı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- V9 aktif değil (crash-freeze @193k). CSV'deki gerçek veri analizi (46 satır):
+  - **Run-1** (May30 11:02–12:32, 4 veri noktası): step 142k→599k (crash recovery looptan gelen stale ckpt değerleri), ep_rew -290→-270, ep_len=1000 (max clip ← drone köşede sıkışmış), entropy hızla bozuldu (-3.89→-3.32), std 0.888→0.746 (**kritik: 0.7 eşiğine yaklaştı**). Erken deterministikleşme = keşif başlamadan çöküş.
+  - **Run-2** (May30 13:02–22:00, recovery zinciri): Gerçek en iyi an: ep_rew=-25.3 @step 83k. Sonra -40→-173 döngüsü ve ep_len 95→637 (idle ceza birikimi, köşe kilidi). +15 oda sıçraması HİÇ gözlemlenmedi.
+  - **Sonuç:** Plato yok, kırılım yok — V9 oda keşfine ulaşamadan çöktü.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Artık geçersiz soru: ppo.yaml tamamen v10'a güncellenmiş (lr=3e-4→1e-5, lineer, 1.5M boyunca 30x decay). V9'un sabit lr=7.5e-5 + ent_coef=0.0015 kombinasyonunun başarısızlığı run-1'de açık (entropy -3.32'ye çöktü, keşif başlamadan dondu). V10 bu hatayı düzeltmiş.
+
+**c) Entropy/std keşif için yeterli mi?**
+- Frozen değerler crash kalıntısı; V10 için anlamlı değil.
+- **Riske işaret eden tarihsel veri:** V9 Run-1'de std sadece 4 veri noktasında 0.888→0.746 düştü (yaklaşık 1.5 saatte). Sabit lr + düşük ent_coef kombinasyonu bu hızı açıklıyor.
+- **V10 güvencesi:** ent_coef=0.008 (V9'dan 5.3x), lr 3e-4'ten başlıyor (yüksek başlangıç lr keşifi teşvik eder), 256x256 ağ (daha geniş temsil kapasitesi). Deterministikleşme riski ciddi ölçüde azalmış.
+- **İzleme eşiği:** entropy > -3.5 VE std < 0.70 eşzamanlı → ent_coef 0.008→0.012.
+
+**d) Oda geçişi için ne kadar step beklenir?**
+- V3.0 Gazebo referansı (identik hyperparams, peak=110.3 @ 610k):
+  - İlk oda (+15): ~150–300k step
+  - 3+ oda: ~500–700k step
+  - 5–6 oda: ~800k–1.2M step
+- **Hard cap:** total_timesteps=1.5M zorunlu (fast_sim v4.10@5M: collision %54; v4.13@8M: voxel 281→134 — daha uzun = güvenlik kolapsı).
+- Hareketli engeller V10'a kadar devre dışı → statik harita → oda keşfi V9'dan daha kolay beklenir.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **Lokal makinede başlat (TEK EKSİK ADIM):** `./scripts/train.sh configs/ppo.yaml` — env (collision=25, lidar_history=2, obs=72-d), config (18 deneyin özeti) tamamlanmış; sadece eğitim başlatılmamış. Her geçen gün deadline riskini artırıyor.
+2. **500k kuralı:** ep_rew_mean < 50 VE oda < 3 eşzamanlı → `ent_coef: 0.008 → 0.012` (fast_sim v4.2 kanıtı: salt room_bonus oda kırılımını tetiklemedi, entropi artışı gerekti).
+
+**f) Acil müdahale var mı?**
+- Config: ppo.yaml V10 optimal → değiştirme.
+- Env kodu: collision_penalty=25 ✓, lidar_history=2 ✓ (obs=72-d) → hazır.
+- Eğitim: **Bu container'da çalıştırılamaz** (Gazebo Harmonic + ROS2 Jazzy yok).
+- %80+ emin anomali: SIFIR — config müdahalesi yapılmadı.
+- **Kritik durum:** V10 lokal makinede 18.2 gündür başlatılmamış. Her saatlik analiz aynı donmuş CSV'yi okuyor. Lokal başlatma yapılana kadar bu log'un katkısı sınırlı.
+
+### v10 Önerisi
+1. **Lokal başlatma (acil):** `cd ~/Desktop/RLProje/rl_drone_pathfinding && ./scripts/train.sh configs/ppo.yaml`
+2. **500k checkpoint kuralı:** ep_rew < 50 VE oda < 3 → ent_coef 0.008→0.012 (eğitimi durdurmadan yaml güncellemesi + SB3 callback).
+
+### Müdahale
+**Yok** — configs/ppo.yaml değiştirilmedi. Canlı Gazebo verisi olmadan spekülatif müdahale yapılmadı. V10 lokal başlatılırken bu log güncellenecek.
+---
