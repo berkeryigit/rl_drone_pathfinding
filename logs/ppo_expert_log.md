@@ -8946,3 +8946,53 @@ V10 eğitimi **başlatılmadı** — 18.2 günlük durma. CSV verisi tamamen don
 ### Müdahale
 **Yok** — configs/ppo.yaml değiştirilmedi. Canlı Gazebo verisi olmadan spekülatif müdahale yapılmadı. V10 lokal başlatılırken bu log güncellenecek.
 ---
+
+## [2026-06-17 09:04 UTC]
+**Step:** 193,248 (CSV FROZEN — 2026-05-31 03:01'den beri, **18.3 gün**) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V10 eğitimi hâlâ başlatılmadı — `runs/ppo_v10/` dizini mevcut değil. Bu oturum bugün 3. analiz seansı (07:04 → 08:04 → 09:04 UTC); her seans aynı donmuş CSV'yi okuyor. `ppo.yaml` v10 optimal config'inde, container'da Gazebo/ROS2 yok, canlı Gazebo verisi mevcut değil.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- V9 crash-freeze @193k steps (May 31 03:01). Aktif eğitim yok.
+- V10 için `runs/ppo_v10/` oluşturulmamış → eğitim hiç başlamamış.
+- CSV'nin 46 veri satırından çıkan özet (kalıcı bulgular):
+  - En iyi gözlenen ep_rew: **-25.3 @ step ~83k** (Run-2 May30 recovery zinciri).
+  - +15 oda sıçraması hiçbir satırda gözlemlenmedi (v9 oda keşfine ulaşamadı).
+  - Run-1: ep_len 1000 (max clip, drone köşede takılı), entropy hızla -3.32'ye çöktü.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Artık geçerli değil. `ppo.yaml` v10: `lr=3e-4`, `lr_schedule: linear`, `lr_final=1e-5` (1.5M boyunca 30x decay). Bu sorunun yanıtı config güncellemesiyle kapandı.
+
+**c) Entropy/std keşif için yeterli mi?**
+- CSV değerleri (entropy=-4.212, std=0.985) v9 crash kalıntısı; v10 için anlamsız.
+- **V10 güvence mekanizması:** ent_coef=0.008 (v9'dan 5.3x), lr başlangıcı 3e-4 (yüksek keşif gürültüsü), 256x256 ağ.
+- **İzleme eşiği:** entropy > -3.5 VE std < 0.70 eşzamanlı → ent_coef 0.008→0.012.
+
+**d) Oda geçişi için ne kadar step beklenir?**
+- V3.0 Gazebo (identik hyperparams, peak=110.3 @610k) referans alındığında:
+  - İlk oda (+15): ~150–300k step
+  - 3+ oda: ~500–700k step
+  - 5–6 oda: ~800k–1.2M step
+- `total_timesteps=1.5M` hard cap içinde 4–5 oda ulaşılabilir.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **Lokal makinede başlatma (acil — 18+ gün beklendi):** `./scripts/train.sh configs/ppo.yaml` — env kodu, config ve run dir tamamen hazır; yalnızca başlatma eksik.
+2. **500k izleme kuralı:** ep_rew_mean < 50 VE oda < 3 eşzamanlıysa → `ent_coef: 0.008 → 0.012` (fast_sim v4.2 kanıtı: room_bonus tek başına oda kırılımını tetiklemedi, entropi artışı şart).
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `ppo.yaml` v10 optimal config'inde → değiştirme.
+- Env kodu: collision_penalty=25, lidar_history=2 (obs=72-d) → hazır.
+- Container'da Gazebo/ROS2 yok → bu ortamda eğitim başlatılamaz.
+- **%80+ emin anomali: SIFIR** → config müdahalesi yapılmadı.
+- **Kritik not:** Bu log bugün 3. kez aynı sonuca ulaştı. V10 lokal başlatılmadan sonraki analiz seanslarının katma değeri yoktur.
+
+### v10 Önerisi
+1. **Lokal başlatma (TEK EKSİK ADIM):** `cd ~/Desktop/RLProje/rl_drone_pathfinding && ./scripts/train.sh configs/ppo.yaml`
+2. **500k kuralı:** ep_rew_mean < 50 VE oda < 3 → ent_coef 0.008→0.012 (eğitimi durdurma — yaml güncelle + SB3 callback).
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. 18.3 günlük donmuş CSV + 3 ardışık bugünkü analiz seansı + 18 fast_sim deneyi sonrası config v10 optimumunda; canlı Gazebo verisi olmadan spekülatif değişiklik yapılmadı. Sonraki karar noktası: V10 lokal başlatma → 500k step sonrası izleme.
+---
