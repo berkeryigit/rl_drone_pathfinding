@@ -9401,3 +9401,59 @@ CSV 2026-05-31 03:01'den bu yana tamamen donmuş; v9 training 193k step'te ölü
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. Config v10 için zaten optimal. Remote container'da Gazebo simülasyonu başlatılamıyor. Eğitimi lokal makinede başlatmak kullanıcıya kalmış.
 ---
+
+## [2026-06-18 14:03 UTC]
+**Step:** 193,248 (CSV DONMUŞ — 18 GÜN, son 2026-05-31 03:01 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 Gazebo eğitimi step 193,248'de kalıcı deadlock (18 gün, 26 özdeş CSV satırı). configs/ppo.yaml v10 için 2026-06-02'de optimize edilmiş ve dokunulmadı. Remote container'da Gazebo çalışmıyor; V10 lokal başlatmaya hazır.
+
+### Detay
+
+- **ep_rew_mean trendi:** CSV'nin tüm benzersiz satırları analiz edildi:
+  - Faz-1 (step 142k-599k, sabit 80k ckpt): -290→-270 (düz, entropy -3.89→-3.32, std 0.888→0.746 — erken deterministikleşme riski, crash sonrası terk edildi)
+  - Faz-2 (restart sonrası crash-loop, step ~49k-193k): En iyi anlık değer **-25.3 @ ~84k** (v9 all-time best). +15 oda sıçraması hiç görülmedi; ep_rew_mean pozitife geçmedi.
+  - Faz-3 (son 26 satır özdeş): step=193248, reward=-173.85 — bu bir plato değil, Gazebo transport deadlock'u. 2026-05-31 22:00'dan 03:01'e aynı değer tekrarlandı.
+  - **Kırılım başlamadı; başlamadan süreç öldü.**
+
+- **Entropy (-4.212):** -4.0 tehlike eşiğinin altında değil (sağlıklı). Donmuş process nedeniyle pratik değeri yok. V10 ent_coef=0.008 ile erken keşif penceresi korunacak (v9'un 5.3 katı).
+
+- **std (0.985):** 0.7 eşiğinin çok üzerinde. Teknik olarak yeterli keşif kapasitesi, pratik anlamsız (process 18 gündür durdurulmuş).
+
+- **FPS:** Normal faz 83-121, crash-loop fazı 67-72, deadlock sonrası değişmez. Tutarsızlık Gazebo/gz-transport instabilitesini doğruluyor (SubprocVecEnv IPC pipe sorunu).
+
+- **configs/ppo.yaml mevcut durum (v10 HAZIR):** lr=3e-4→1e-5 (linear, 1.5M boyunca), ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, gae_lambda=0.95, net_arch=[256,256], n_envs=1, total_timesteps=1.5M, VecNormalize(norm_obs=False, norm_reward=True, clip=10). 18 fast_sim deneyi sonucu kesinleşmiş; sıfır değişiklik gerekmez.
+
+- **interventions.jsonl son anlamlı kayıtlar:**
+  - 2026-05-31 14:54: resume@501,760, reward=123.25, peak=133.35 (Gazebo v3.0 başka oturum)
+  - 2026-06-01 01:30: Gazebo v3.0 milestone@434k, peak=102.54
+  - Bunlar v9 CSV monitoring altyapısıyla kayıt altına alınamadı.
+
+### Soru Yanıtları
+
+**a) Reward eğrisi nerede?**
+Kalıcı deadlock. Plato yok — süreç kilitlendi. V9 CSV'nin tüm anlamlı verisi: 49k→-102.9, 84k→-25.3 (peak), 145k→-37.4, 193k→-173.9 (crash regresyon). +15 oda sıçraması hiç görülmedi.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+V9 için kesinlikle yanlıştı (faz-1 kanıtı: 142k-600k arası reward -290→-270 düz, entropy -3.89→-3.32, std 0.888→0.746). V10 config'indeki 3e-4→1e-5 linear schedule bu sorunu çözmüş. YAML değişikliği gerekmez.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+Son snapshot teknik olarak yeterli (H≈4.21 > 4.0 eşik, std=0.985 > 0.7 eşik). Ancak 18 günlük stale veri. V10 için ent_coef=0.008 sayesinde 300-400k adıma kadar keşif penceresi korunacak; std<0.7 + entropy<-3.5 birlikte görülürse ent_coef 0.008→0.015 müdahalesi önerilir.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+V9 Gazebo'da hiç oda geçişi olmadı. Fast_sim v3.0 + Gazebo v3.0 referansına göre (peak=133.35@501k): ilk oda geçişi ~50-100k, 6 oda tamamı ~400-600k. V10 bu takvimde çalışabilir — tek engel lokal başlatma.
+
+**e) v10 için en kritik 2 öneri:**
+1. **drone_exploration_env.py'a fast_sim v4.8 bulgularını uygula:** `collision_penalty: 10 → 25` ve `lidar_history: 1 → 2` (obs 41-d→72-d). Bu değişiklikler hareketli engel hız algılamasını ve crash oranı sıfırlamasını sağlar. YAML'a yansıtılmış ancak env kodu henüz güncellenmemişse V10 run suboptimal başlar.
+2. **Lokal makinede `./scripts/train.sh configs/ppo.yaml` başlat:** Sıfır ek config değişikliği gerekmiyor; 18 fast_sim sonucu config kesinleşmiş. Eğitim başladıktan sonra 100k kontrol noktasında: ep_rew_mean < +10 VE std < 0.85 → ent_coef 0.008→0.012.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+Config açısından HAYlR — ppo.yaml dokunulmaz. Operasyonel açıdan EVET: V10 eğitimi 16+ gündür başlatılmamış; remote container Gazebo çalıştıramıyor; lokal tetikleme kullanıcıya bağımlı.
+
+### v10 Önerisi
+1. **Env kodu önce güncelle:** `drone_exploration_env.py` — `collision_penalty=25`, `lidar_history=2` (obs 72-d). Fast_sim v4.8 garantisi: %0 crash, hareketli engel hız algılaması.
+2. **Lokal başlat, 100k'da kontrol:** `./scripts/train.sh configs/ppo.yaml` → 100k sonunda ep_rew_mean ≥ +10 beklenir; düşükse ent_coef artırımı.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. V10 konfigürasyonu 18 fast_sim deneyi sonucu zaten optimal. Remote container'da Gazebo simülasyonu başlatılamıyor; eğitimi lokal makinede başlatmak kullanıcıya kalmış.
+---
