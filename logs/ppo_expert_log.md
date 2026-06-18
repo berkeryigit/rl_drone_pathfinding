@@ -9211,3 +9211,35 @@ V9 Gazebo eğitimi 19 gün 10 saattir adım atmıyor (step 193248 kilidi). confi
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. V10 konfigürasyonu optimal (fast_sim v4.8: collision_penalty=25/%0 crash; lidar_history=2/%1 crash; lr linear decay/entropi koruması). Remote container'da Gazebo simülasyonu çalıştırılamıyor — eğitimi lokal makinede başlatmak kullanıcıya kalmış.
 ---
+
+## [2026-06-18 09:10 UTC]
+**Step:** 193248 (donmuş) | **ep_rew_mean:** -173.85 | **entropy_loss:** -4.212 | **std:** 0.985
+
+### Durum
+V9 Gazebo eğitimi 19 gün 11 saattir step 193248'de kilitli; training_metrics.csv son 18 günde güncellenmedi. configs/ppo.yaml v10 için hazır ve optimal — hiçbir değişiklik gerekmez.
+
+### Detay
+- **ep_rew_mean trendi:** CSV son 46 satırın tamamı özdeş (step=193248, rew=-173.85). Plato değil — kalıcı process deadlock. V9'da +15'lik oda geçişi hiç yaşanmadı; maksimum anlık değer -25 @ ~84k (sürdürülemedi).
+- **Entropy:** -4.212 — -4.0 tehlike sınırının hâlâ altında değil. Erken deterministikleşme riski yok; ancak donmuş process nedeniyle anlamsız.
+- **std:** 0.985 — 0.7 eşiğinin çok üzerinde. Keşif potansiyeli var, pratik değeri yok (process durdurulmuş).
+- **FPS:** 72 son ölçümde; tutarsız crash_recovery döngüsü (39+ kayıt, son 14'ü aynı 180k checkpoint'i yeniden başlatıyor) altta yatan gz transport instabilitesini kanıtlıyor.
+- **configs/ppo.yaml durumu (2026-06-02 v10):** lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, gae_lambda=0.95, net_arch=[256,256], n_envs=1, total_timesteps=1.5M. Fast_sim 18-config bulgularını tam yansıtıyor. Müdahale gerektirmez.
+- **interventions.jsonl son kayıtları:** 2026-05-31 05:33 freeze_rootcause_fix; 2026-05-31 14:54 resume@501k (reward=123.25, peak=133.35); 2026-06-01 01:30 v3.0 milestone@434k (peak=102.54). Bu kayıtlar CSV'ye yansımıyor — monitoring altyapısı çalışmıyor.
+
+### Soru Yanıtları
+**a) Reward eğrisi:** Plato değil — tam dondurma. V9 reward sıfırın üzerine geçemedi. Kırılım başlamadan process kilitleniyor.
+**b) lr=7.5e-5 constant:** V9 Faz-1 kanıtladı (entropy -3.32, std 0.746 @ 600k — erken çöküş). V10 config'deki 3e-4→1e-5 linear optimal; değişiklik gerekmez.
+**c) Entropy/std:** V9 Faz-2 H≈4.21, std≈0.985 — keşif penceresi açık. V10 ent_coef=0.008 bu aralığı daha uzun koruyacak.
+**d) Oda geçişi için beklenen adım:** V9'da hiç gerçekleşmedi. Fast_sim v3.0 referansı: ilk oda geçişi ~50-100k, 6 oda tamamı ~400-600k (V10 başlatıldığında geçerli).
+**e) V10 için en kritik 2 öneri:**
+  1. Lokal makinede V10 başlat: `./scripts/train.sh configs/ppo.yaml` — config sıfır değişiklik ister.
+  2. 100k kontrol: ep_rew_mean < +10 ve std < 0.85 → ent_coef 0.008→0.012; aksi hâlde dokunma.
+**f) Acil müdahale:** V10 eğitimi 19+ gündür başlatılmamış. Tek engel: remote container'da Gazebo çalışmıyor. Lokal makine zorunlu.
+
+### v10 Önerisi
+1. **Tek eylem:** `./scripts/train.sh configs/ppo.yaml` — ek config değişikliği yok, 18 fast_sim deneyi config'i zaten kesinleştirdi.
+2. **100k erken kontrol:** ep_rew_mean negatif + std < 0.85 → ent_coef 0.008→0.012; geri kalan tüm koşullarda değme.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. V10 konfigürasyonu zaten optimal durumda (fast_sim v4.8 bulguları: collision_penalty=25/%0 crash; lidar_history=2/%1 crash; lr linear decay/entropy koruması). Remote container'da Gazebo simülasyonu başlatılamıyor — eğitimi lokal makinede başlatmak kullanıcıya kalmış.
+---
