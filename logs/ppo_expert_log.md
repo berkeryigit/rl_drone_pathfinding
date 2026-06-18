@@ -9729,3 +9729,47 @@ V9 eğitimi 2026-05-31 03:01 UTC'den beri tamamen durmuş (step=193k'da crash-lo
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. 18 fast_sim deneyi mevcut v10 konfigürasyonunu kesinleştirdi; ek değişiklik regresyon riski taşır. Gazebo bu remote container'da mevcut değil.
 ---
+
+## [2026-06-18 20:03 UTC]
+**Step:** 193,248 (SON CSV KAYDI — 18+ GÜN STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 eğitimi 2026-05-31 03:01 UTC'den beri tamamen donmuş (step=193k crash-loop). `ppo.yaml` zaten v10 optimal konfigürasyonunda — config değişikliği gerekmez. Bu oturumda 3. analiz (18:10, 19:03, 20:03 UTC); durum değişmedi.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Eğitim YOK. 46 CSV satırının tam analizi:
+  - Faz 1 (satır 1-4, step 142k→599k, lr=7.5e-5 sabit): ep_len=1000 (her episode timeout), ep_rew_mean=-290→-270 DÜZ PLATO. +15'lik oda sıçraması HİÇ olmadı.
+  - Faz 2 (satır 5-32, step 49k→193k, 80k checkpoint'ten resume): ep_rew_mean=-25.3 @ step=84k (TÜM V9'UN PİKİ), ardından -29 ile -174 arası salınım. Oda keşfi sıfır.
+  - Faz 3 (satır 33-46): 24 özdeş satır (193248, -173.85) — watchdog crash-recovery döngüsü, gerçek ilerleme yok.
+- Sonuç: V9 boyunca ep_rew_mean hiç pozitife geçmedi; oda sıçraması (0 → +15) gözlemlenmedi.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru muydu?**
+- HAYIR. Faz 1 kanıtı: entropy -3.885→-3.324 (monoton düşüş = artan determinizm), std 0.888→0.746 (0.7 eşiğine yaklaşıyor). 599k step'te anlamlı öğrenme başlamadan politika çöküyor. Sabit lr'ın erken deterministikleşmeye katkısı açık.
+- ppo.yaml ZATEn düzeltilmiş: `learning_rate: 0.0003`, `lr_schedule: linear`, `lr_final: 1e-5`. Müdahale gereksiz.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Son CSV değerleri: entropy=-4.212 (eşik -4.0'ın altında ✓), std=0.985 (0.7 eşiğinin üstünde ✓). Fakat 18+ gün stale.
+- Faz 1 trendi tehlikeliydi: entropy -3.88→-3.32, std 0.888→0.746 — eğitim devam etseydi collapse gelirdi.
+- V10: ent_coef=0.008 (v9'un 5.3×'i) → erken fazda entropy daha stabil kalması beklenir.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9: Sıfır oda geçişi (tüm eğitim boyunca). V3.0 Gazebo referansı (aynı hyperparametreler): ilk oda ~150-250k, tüm 6 oda ~500-700k. V10'da `lidar_history=2` env güncellemesi yapılmadan +50-100k ek gecikme beklenmeli (fast_sim v4.8 bulgusu).
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py` güncellemesi zorunlu:** `lidar_history=1→2` (obs 41-d→72-d). Bu YAML değişikliği değil — env kod değişikliği. fast_sim 18 deney en güçlü bulgusu: lidar_history=2 → %0 collision. Bu olmadan v10 v9'un crash döngüsünü tekrar eder.
+2. **Lokal makinede fresh start:** `./scripts/train.sh configs/ppo.yaml` (remote container'da Gazebo yok). 200k milestone'da std<0.7 + entropy>-3.5 birlikte görülürse → ent_coef 0.008→0.012.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml` açısından: HAYIR. 18 fast_sim deneyi v10 konfigürasyonunu kesinleştirdi.
+- Operasyonel: Eğitim 18+ gündür durmuş. Remote container'da Gazebo/ROS2 yok. Lokal makine başlatması zorunlu.
+- Watchdog sorunu: 30+ tekrar crash_recovery (aynı 80k checkpoint) = stale-log eşiği çok hassas. Düzeltme: "step ilerlemesi YOK VE process dead" — iki koşul birlikte.
+
+### v10 Önerisi
+1. **`drone_exploration_env.py`:** `collision_penalty=25` + `lidar_history=1→2` (obs 41→72-d). Bu olmadan v10 v9 crash döngüsünü tekrar eder.
+2. **Lokal makinede fresh start:** `./scripts/train.sh configs/ppo.yaml` → 200k milestone izle. İlk oda geçişi 250k içinde gelmezse frontier_bonus 0.4→0.6 yükselt.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. 18 fast_sim deneyi mevcut v10 konfigürasyonunu kesinleştirdi; ek değişiklik regresyon riski taşır. Gazebo bu remote container'da mevcut değil.
+---
