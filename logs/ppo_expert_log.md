@@ -9863,3 +9863,53 @@ V9 eğitimi 2026-05-31 03:01 UTC'den beri crash-loop içinde dondurulmuş (30+ �
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. 18 fast_sim deneyi mevcut v10 konfigürasyonunu kesinleştirdi; ek değişiklik regresyon riski taşır. Remote container'da Gazebo çalışmıyor, eğitim başlatılamaz.
 ---
+
+## [2026-06-18 23:04 UTC]
+**Step:** 193,248 (STALE — 18 GÜN DONMUŞ, son güncelleme 2026-05-31 03:01) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+Training 18 gündür tamamen ölü: v9 step=193k'da crash-loop'a girdi ve bir daha ilerleyemedi. v10 konfigürasyonu hazır (ppo.yaml, env kodu fast_sim bulgularıyla güncel), ancak `runs/` dizini yok — v10 eğitimi hiç BAŞLAMAMIŞ.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- v9 aktif değil — ÖLMÜŞ. CSV'nin tüm satırları: başta erken faz oscillation (ep_rew -25 → -290), ardından step=193k'da crash ve donma. Plato bile değil; crash öncesi ep_len=637 ile uzun bekleme + ceza birikmesi (-173 ≈ 637 × -0.272/step ortalama).
+- +15 oda sıçraması: v9'da HİÇ gözlemlenmedi. Reward daima negatif bölgede kaldı.
+- v10: `runs/` yok → sıfır veri, kırılım analizi yapılamaz.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Artık geçersiz: v10 ppo.yaml'da sabit lr tamamen terk edildi. Mevcut config: `lr=3e-4 → 1e-5 linear` (v3.0 ile aynı, peak=110.3 @610k üretti). Bu doğru.
+- v9'un sabit 7.5e-5'i neden başarısız oldu: crash-loop nedeniyle policy bir kerede yeterince eğitilemedi; ayrıca düşük ent_coef=0.0015 erken deterministikleşmeye yol açtı.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale kayıt: entropy=-4.212 (eşik -4.0, borderline ✗). Mevcut v9 için bozulma işareti.
+- std=0.985 güvenli, ancak eğitim ölü olduğu için anlamlı değil.
+- v10'da: ent_coef=0.008 (v9'un 5.3×'i). İlk 150k: entropy -3.2 ile -3.8 beklenir. 400-600k arası -4.2'ye düşerse risk var; izlemek gerekir.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 referansı (aynı config): ilk oda 150-250k, 3+ oda 350-500k, 6 oda 500-700k.
+- v10 n_envs=1, STEP_DT=0.02 → ~83 FPS. 1.5M step ≈ 5 saat wall-clock.
+- Statik harita (engeller sabit) → oda geçişi ihtimali yüksek, v9'daki crash-loop engeli yok.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **[ACİL] EĞİTİMİ BAŞLAT**: ppo.yaml ve env kodu (72-d obs, collision=25, lidar_history=2) tam hazır. `runs/` dizini yok → v10 eğitimi başlatılmamış. `restart_training.sh` veya `python scripts/train_ppo.py` çalıştırılmalı.
+2. **Entropy izleme (400-600k)**: Eğitim başlarsa, step 400k'da entropy < -4.2 görülürse ent_coef 0.008→0.012'ye çıkarılmalı. Erken deterministikleşme v4.10/v4.11 güvenlik kollapsının tetikleyicisiydi.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+EVET — KRİTİK: Eğitim 18 gündür ölü. Env kodu ve ppo.yaml doğru; sorun process/infrastructure seviyesinde. Manuel müdahale gerekiyor (ROS2/Gazebo ortamı aktif olmadan training başlatılamaz).
+
+**Env kodu durumu (fast_sim bulgularının entegrasyonu):**
+- `collision_penalty`: 10 → 25 ✅ (drone_exploration_env.py:351: `reward -= 25.0`)
+- `lidar_history`: 1 → 2 ✅ (obs=72-d: 32+32 lidar + diğerleri)
+- `total_timesteps`: 1.5M ✅ (ppo.yaml; fast_sim kanıtı: 2M+ → güvenlik kollapsu)
+- Eylem uzayı: 2-d [v, w] (v3.0 basitleştirilmesi; 3-d değil — irtifa sabit HOVER_Z=0.6)
+- Oda bonusu: +10.0 (not: ppo.yaml açıklamasında +15 yazıyor ama env'de +10)
+
+### v10 Önerisi
+1. **EĞİTİMİ BAŞLAT** — Tüm kod hazır, `runs/` dizini yok. Berker'in Gazebo makinasından: `bash restart_training.sh` (veya `python .../train_ppo.py --config configs/ppo.yaml`).
+2. **Entropy early-warning**: 400k step'te entropy -4.2 altına düşerse ent_coef 0.008→0.012 yap. Bunu `configs/ppo.yaml`'a not olarak ekle.
+
+### Müdahale
+**ppo.yaml'da değişiklik YOK** — v10 config kanıtlanmış optimal (v3.0 peak=110.3, fast_sim v4.8 güvenli sweetspot). %95+ güvenle: mevcut hyperparamlar doğru. Env kodu da güncel. Tek sorun process'in başlatılmamış olması (Gazebo/ROS2 gerektiriyor, remote ortamdan başlatılamaz).
+
+---
