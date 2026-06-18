@@ -9457,3 +9457,56 @@ Config açısından HAYlR — ppo.yaml dokunulmaz. Operasyonel açıdan EVET: V1
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. V10 konfigürasyonu 18 fast_sim deneyi sonucu zaten optimal. Remote container'da Gazebo simülasyonu başlatılamıyor; eğitimi lokal makinede başlatmak kullanıcıya kalmış.
 ---
+
+## [2026-06-18 15:03 UTC]
+**Step:** 193,248 (CSV DONMUŞ — 18 GÜN, son gerçek kayıt: 2026-05-31 03:01 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 Gazebo eğitimi adım 193,248'de kalıcı deadlock durumunda (18+ gün); CSV son 26 satırı özdeş. `configs/ppo.yaml` 2026-06-02'de V10 için optimal hale getirildi ve değiştirilmedi. Remote container'da Gazebo çalışmıyor; V10 lokal başlatmaya hazır.
+
+### Detay
+
+- **ep_rew_mean trendi:**
+  - Faz-1 (142k–599k step, ckpt=80k sabit): -290.7 → -270.0 — tamamen düz, ilerliyor ancak reward sinyali yok. +15 oda sıçraması hiç görülmedi.
+  - Faz-2 (restart, 49k–193k): En iyi anlık değer **-25.3 @ ~84k** (V9 all-time best). Ardından regresyon: -173.85 @193k. Plato değil — Gazebo transport deadlock.
+  - Son 26 CSV satırı (2026-05-31 22:00 – 03:01): adım=193248, ödül=-173.85, **değişmez** — donmuş process.
+  - **Sonuç:** Kırılım başlamadı; V9 başlamadan öldü.
+
+- **Entropy (entropy_loss=-4.212):** Sağlıklı keşif bölgesinde (-4.0 tehlike eşiğinin altında, yani entropi yüksek). Faz-1'de -3.88→-3.32'ye kadar yükselmişti (deterministikleşme tehlikesi), ancak o süreç crash ile sonlandı. Mevcut snapshot 18 günlük donmuş veri — pratik anlamı yok.
+
+- **std (0.985):** 0.7 eşiğinin çok üzerinde. Keşif kapasitesi teknik olarak yeterli, ancak 18 günlük stale ölçüm.
+
+- **FPS:** Normal fazda 83-121, crash-loop sırasında 67-72, deadlock sonrası değişmez. Tutarsızlık SubprocVecEnv IPC pipe sorununun göstergesi.
+
+- **configs/ppo.yaml (V10 HAZIR):** `lr=3e-4→1e-5` (linear, 1.5M), `ent_coef=0.008`, `n_steps=2048`, `n_epochs=10`, `clip_range=0.2`, `gae_lambda=0.95`, `net_arch=[256,256]`, `n_envs=1`, `total_timesteps=1.5M`, `VecNormalize(norm_obs=False, norm_reward=True, clip=10)`. 18 fast_sim deneyi sonucu kesinleşmiş — sıfır değişiklik gerekmez.
+
+- **interventions.jsonl:** Anlamlı son kayıtlar — 2026-05-31@501k: peak=133.35 (Gazebo v3.0, başka oturum); 2026-06-01@434k: peak=102.54. V9'a ait crash recovery döngüsü aynı 80k checkpoint'ini tekrarlıyor (loop hatası).
+
+### Soru Yanıtları
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+V9 kalıcı deadlock. Plato değil — Gazebo transport kilidi. En iyi: -25.3@84k (pozitif hiç olmadı). +15 oda sıçraması görülmedi. Eğitim lokal olarak başlatılmadan analiz edilecek yeni veri yok.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+V9 başlangıç config'indeki 7.5e-5 sabit lr yanlış seçimdi (faz-1 kanıtı: 600k step sonunda -270 düz). Ancak bu değer artık ppo.yaml'da yok — V10 config'i 3e-4→1e-5 linear schedule içeriyor. Müdahale gereksiz.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+18 günlük stale snapshot üzerinden değerlendirme: H≈4.21 → keşif yeterli, std=0.985 → yeterli. V10 ent_coef=0.008 ile ilk 400k step keşif penceresi güvence altında. Eşik: std<0.7 + entropy_loss>-3.5 birlikte görülürse ent_coef 0.008→0.015 müdahalesi.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+V9'da hiç oda geçişi yaşanmadı. V10 referansı (Gazebo v3.0, peak=133.35@501k): ilk oda ~50-100k, tüm 6 oda ~400-600k. fast_sim üst sınırı: 1.5M (2M+ sonrası güvenlik kollapsu kanıtlandı — v4.10/v4.13). lidar_history=2 uygulanmadan bu takvim 50-100k gecikebilir.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **drone_exploration_env.py güncellenmeli (YAML dışı):** `collision_penalty: 10→25` ve `lidar_history: 1→2` (obs 41-d→72-d). Fast_sim v4.8: bu iki değişiklikle çarpışma %80→%0, hareketli engel hız algılaması aktif. Env kodu güncellenmezse V10, V9 ile aynı hataları tekrarlar.
+2. **1.5M step sonrası checkpoint sweep:** Son modeli alma; fast_sim 5 bağımsız deneyle 1.5M optimal üst sınır olduğunu kanıtladı. En yüksek ep_rew_mean'li checkpoint saklanmalı.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+configs/ppo.yaml açısından: HAYIR. Operasyonel açıdan: V10 eğitimi 18+ gündür başlatılmamış. Remote container Gazebo çalıştıramıyor. Lokal tetikleme kullanıcıya bağımlı. Eğitim başlamadan analiz edilecek yeni veri üretilmeyecek.
+
+### v10 Önerisi
+1. **Önce env kodu:** `drone_exploration_env.py` — `collision_penalty=25`, `lidar_history=2` (obs 72-d). Fast_sim garantisi: %0 crash, hareketli engel algılama.
+2. **Lokal başlat + 100k kontrolü:** `./scripts/train.sh configs/ppo.yaml` → 100k'da ep_rew_mean ≥ +10 beklenir; std<0.85 ise ent_coef 0.008→0.012 artır.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. Config V10 için 18 fast_sim deneyi ile kesinleşmiş; ek değişiklik yanlış olur. Remote container'da Gazebo yok; eğitimi lokal makinede başlatmak kullanıcıya kalmış.
+---
