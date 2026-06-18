@@ -9243,3 +9243,42 @@ V9 Gazebo eğitimi 19 gün 11 saattir step 193248'de kilitli; training_metrics.c
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. V10 konfigürasyonu zaten optimal durumda (fast_sim v4.8 bulguları: collision_penalty=25/%0 crash; lidar_history=2/%1 crash; lr linear decay/entropy koruması). Remote container'da Gazebo simülasyonu başlatılamıyor — eğitimi lokal makinede başlatmak kullanıcıya kalmış.
 ---
+
+## [2026-06-18 10:03 UTC]
+**Step:** 193248 (DONMUŞ — son gerçek ilerleme 2026-05-30 22:20 UTC) | **ep_rew_mean:** -173.85 | **entropy_loss:** -4.212 | **std:** 0.985
+
+### Durum
+V9 Gazebo eğitimi 19 gün 12 saattir step 193248'de kilitli; training_metrics.csv son 18+ gündür güncellenmedi. configs/ppo.yaml v10 için tamamen hazır (2026-06-02 itibariyle, 18 fast_sim deneyi sonucu kesinleşmiş). Gazebo remote container'da çalışmadığından V10 eğitimi hâlâ başlatılamadı.
+
+### Detay
+- **ep_rew_mean trendi:** CSV'nin son 26 satırının tamamı özdeş (step=193248, reward=-173.85, ckpt=ppo_drone_180000_steps.zip, 2026-05-30 22:20—2026-05-31 03:02). Plato değil — kalıcı process freeze/deadlock. +15'lik oda sıçraması V9'da hiç gerçekleşmedi; en iyi anlık değer -25.3 @ ~84k step (sürdürülemedi, Faz-2).
+- **Faz-1 lr=7.5e-5 constant etkisi:** step 142k→600k arası entropy -3.89→-3.32 (H≈3.3), std 0.89→0.75 — erken deterministikleşme işareti. 600k'da std=0.746 tehlike eşiğine yakın. Bu Faz'da drone öğrenemedi (reward -270 civarında sabit kaldı).
+- **Faz-2 sonuçları:** Crash/restart sonrası step ~49k'dan yeniden başladı; entropy -4.25, std ~0.99 — keşif kapasitesi geri döndü. En iyi değer -25 @ 84k. Ancak gz transport instabilitesi (39 crash_recovery kaydı) ilerlemeyi engelledi.
+- **Entropy (son):** -4.212 (H≈4.21 nats) — -4.0 tehlike sınırının altında değil. Erken deterministikleşme riski yok. Donmuş veriden dolayı pratik anlamsız.
+- **std (son):** 0.985 — 0.7 eşiğinin çok üzerinde. Keşif penceresi teknik olarak açık, pratik değeri yok.
+- **FPS:** 72 (Faz-2 ortalama); Faz-1'de 83-84 stabil. Crash-loop döngüsünde tutarsız.
+- **interventions.jsonl önemli notlar:** 2026-05-31 14:54 → resume@501760, reward=123.25, peak=133.35; 2026-06-01 01:30 → v3.0 Gazebo milestone@434k, peak=102.54. Bu başarılı çalışmalar CSV'ye yansımadı (monitoring süreci dağınık çalışmış).
+- **configs/ppo.yaml v10 durumu:** lr=3e-4→1e-5 (linear, 1.5M adımda), ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, gae_lambda=0.95, net_arch=[256,256], n_envs=1, total_timesteps=1.5M, VecNormalize(norm_obs=False, norm_reward=True, clip=10). Fast_sim bulgular: collision_penalty=25 (v4.8→%0 crash), lidar_history=2 (obs 72-d). Hiçbir değişiklik gerekmez.
+
+### Soru Yanıtları
+**a) Reward eğrisi nerede?** Plato yok — tam dondurma. V9 reward sıfırın üzerine hiç geçemedi. interventions.jsonl göre V3.0 Gazebo run'ında peak=133.35@501k elde edilmiş ancak CSV'ye yansımadı. Kırılım başlamadan sürekli freeze.
+
+**b) lr=7.5e-5 constant doğru mu?** Hayır — V9 Faz-1 kanıtladı. Entropy -3.32, std=0.746 @600k: sabit düşük lr erken deterministikleşme tetikledi ve reward -270'de takıldı. V10 config'deki 3e-4→1e-5 linear doğru; 10x yüksek lr ile başlayıp kademeli azaltma hem erken öğrenmeyi hem son kalibrasyon aşamasını kapsıyor.
+
+**c) Entropy/std keşif için yeterli mi?** Donmuş V9 son değerleri (H≈4.21, std=0.985) teknik olarak yeterli. V10'un ent_coef=0.008 (V9 0.0015'in 5.3 katı) bu pencereyi 300-400k adım boyunca koruyacak.
+
+**d) Oda geçişi için kalan adım?** V9'da hiç yaşanmadı. Fast_sim v3.0 ve Gazebo v3.0 referansına göre: ilk oda geçişi ~50-100k, 6 odanın tamamı ~400-600k (V10 başlatıldığında geçerli). Config mevcut haliyle bu takvimi destekler.
+
+**e) V10 için en kritik 2 öneri:**
+1. **Lokal makinede V10'u başlat:** `cd ~/Desktop/RLProje/rl_drone_pathfinding && ./scripts/train.sh configs/ppo.yaml` — config değişikliği sıfır, 18 fast_sim sonucu kesinleşmiş.
+2. **100k erken kontrol:** ep_rew_mean < +10 VE std < 0.85 → ent_coef 0.008→0.012; reward pozitife geçmişse ve std > 0.85 ise elleme.
+
+**f) Acil müdahale gerektiren durum:** Evet — V10 eğitimi 19+ gündür başlatılmamış. Remote container'da Gazebo çalışmıyor. Kullanıcının yerel makinesinde manuel tetikleme zorunlu. Config hiçbir değişiklik gerektirmiyor.
+
+### v10 Önerisi
+1. **Tek eylem:** `./scripts/train.sh configs/ppo.yaml` — sıfır ek config değişikliği.
+2. **100k kontrol noktası:** ep_rew_mean negatif + std < 0.85 → ent_coef 0.008→0.012; aksi hâlde dokunma.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. V10 konfigürasyonu fast_sim v4.8 bulgularıyla kesinleşmiş optimal durumda (collision_penalty=25/%0 crash; lidar_history=2/%1 crash; lr linear decay/entropi koruması). Remote container'da Gazebo çalışmıyor — eğitimi lokal makinede başlatmak kullanıcıya kalmış.
+---
