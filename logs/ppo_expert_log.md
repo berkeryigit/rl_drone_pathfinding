@@ -9135,3 +9135,47 @@ V9 Gazebo eğitimi 2026-05-30 22:20'de step 193k'da dondu, bugün itibarıyla 19
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. 18 fast_sim deneyi sonrası v10 konfigürasyonu optimize. Remote container'da Gazebo simülasyonu çalıştırılamıyor; eğitimi yerel makinede başlatmak kullanıcıya kalmış.
 ---
+
+## [2026-06-18 07:10 UTC]
+**Step:** 193248 (DONMUŞ — son gerçek ilerleme 2026-05-30 22:20) | **ep_rew_mean:** -173.85 | **entropy_loss:** -4.212 | **std:** 0.985
+
+### Durum
+V9 Gazebo eğitimi tam 19 gün 9 saattir adım atmıyor (step 193248 kilidi). configs/ppo.yaml 2 Haziran'da v10 konfigürasyonuna alınmış; v10 eğitimi hâlâ lokal makinede başlatılmamış.
+
+### Detay
+- **ep_rew_mean trendi:** CSV'nin son 25 satırının tamamı özdeş: step=193248, reward=-173.85, ckpt=ppo_drone_180000_steps.zip. Plato değil; süreç deadlock'ta.
+- **+15'lik oda sıçraması:** Hiç görülmedi. V9 boyunca ep_rew_mean sıfırın üzerine asla geçmedi. En iyi anlık değer: -25 @ ~84k step (Faz 2 kısa toparlanması).
+- **Entropy (son değer):** -4.212 → H≈4.21 nats. -4.0 tehlike sınırının altına hiç düşmedi (Faz 2). Faz 1'de ise gerçek kriz yaşandı (-3.32'ye kadar indi), ancak o dönem kapandı.
+- **std:** 0.985 — 0.7 eşiğinin çok üzerinde. Keşif kapasitesi teknik olarak mevcut, ancak process donuk olduğu için anlamsız.
+- **FPS:** 72 (Faz 2 restart sonrası 67-72; Faz 1'de 83-111). Tutarsız → birden fazla crash/restart döngüsü yaşandı.
+- **interventions.jsonl:** 39 kayıt; 37'si crash_recovery. Son anlamlı milestone: 2026-06-01 v3.0 fast_sim @434k, reward=99.84. V9 Gazebo eğitimiyle ilgili son kayıt 03:01 (2026-05-31) — yani 19 gündür hiç intervention girmemiş.
+- **ppo.yaml durumu (v10, hazır):**
+  - lr: 3e-4 → 1e-5 linear (v9'un 7.5e-5 sabitinin 4x'i; Faz 1 entropi çöküşünü önler)
+  - ent_coef: 0.008 (v9'un 0.0015'inin 5.3x'i — kritik fark)
+  - n_steps: 2048, n_epochs: 10, clip_range: 0.2, gae_lambda: 0.95
+  - net_arch: [256,256] pi+vf (daha derin)
+  - n_envs: 1 (SubprocVecEnv/IPC deadlock eliminasyonu)
+  - total_timesteps: 1.5M, VecNormalize: norm_obs=false, norm_reward=true
+
+### Soru Yanıtları
+**a) Reward eğrisi:** Plato değil, dondurma. V9 hiçbir zaman pozitife geçemedi; +15 oda bonusu sıfır. En iyi: -25 @ 84k (kısa anlık, sürdürülemedi). Kırılım başlamadan önce tüm eğitim dondu.
+
+**b) lr=7.5e-5 constant:** Yanlıştı — Faz 1 verileri kanıtlıyor (entropi -3.32, std 0.746, reward -270 plato). V10'daki 3e-4→1e-5 linear schedule doğru ve config'de zaten mevcut. Değişiklik gerekmez.
+
+**c) Entropy/std değerleri:** V9 Faz 2'de H≈4.21 ve std≈0.985 keşif için yeterli; ancak process donuk olduğu için pratikte anlamsız. V10 ent_coef=0.008 bu sağlıklı entropi aralığını daha uzun süre koruyacak.
+
+**d) Oda geçişi için kalan adım:** V9'da hiç oda geçişi olmadı. Fast_sim v3.0 referansına göre (peak=110.3 @ 610k): V10 başlatılırsa ilk oda ~50-100k, tüm 6 oda ~400-600k. Henüz başlatılmadığı için bu tahminin önemi yok.
+
+**e) v10 için en kritik 2 öneri:**
+1. **Lokal makinede V10'u başlat** — `./scripts/train.sh configs/ppo.yaml` — config tamamen hazır, 19 gündür bekliyor. Bu tek engel.
+2. **100k erken kontrol:** ep_rew_mean < 10 VE std < 0.85 ise ent_coef 0.008→0.012; reward pozitifse elleme. Faz 1 tekrarının tek güvencesi bu erken kontrol.
+
+**f) Acil müdahale gerektiren durum:** Evet — V10 eğitimi 19 gündür başlatılmamış. Remote container'da Gazebo çalışmıyor. Kullanıcının yerel makinesinde `train.sh` tetiklemesi zorunlu. Config değişikliği yapılmadı (zaten optimal).
+
+### v10 Önerisi
+1. **Tek eylem:** Lokal makinede `cd ~/Desktop/RLProje/rl_drone_pathfinding && ./scripts/train.sh configs/ppo.yaml` — sıfır ek değişiklik.
+2. **100k kontrol noktası:** ep_rew_mean hâlâ negatif + std < 0.85 → ent_coef 0.008→0.012; aksi hâlde dokunma.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. Config 18 fast_sim deneyi sonrası kesinleşmiş v10 optimal konfigürasyonu taşıyor; spekülatif değişiklik yapılmadı. Remote container'da Gazebo simülasyonu çalıştırılamıyor — eğitimi lokal makinede başlatmak kullanıcıya kalmış.
+---
