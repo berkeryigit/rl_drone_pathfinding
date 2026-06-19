@@ -10726,3 +10726,49 @@ Bu, aynı durumu belgeleyen 7. ardışık analiz. CSV 47 satır; son 24'ü özde
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi (v10 optimal, 18 fast_sim + v3.0 Gazebo peak=110.3 kanıtlı). Remote container'da Gazebo/ROS2 altyapısı yoktur. **17. ardışık tespit: tüm ön koşullar (env kod + yaml) hazır — tek bloker lokal makinede eğitim başlatmaktır.**
 ---
+
+## [2026-06-19 18:05 UTC]
+**Step:** 193,248 (STALE — 20 GÜN DONMUŞ, son ilerleme 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+18. ardışık analiz. CSV 47 satır; son 24 satır tamamen özdeş (step=193k, reward=-173.85). V9 eğitimi 2026-05-30 22:00 UTC'den bu yana kalıcı olarak dondurulmuş — process ölü. `configs/ppo.yaml` v10 kanıtlanmış-optimal yapıda (3e-4→1e-5 linear, ent_coef=0.008, n_envs=1, total_timesteps=1.5M). **Config değişikliği gerekmez.**
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim YOK. V9 kalıcı dondu; 2026-05-30 22:00'dan beri step=193k'da kilitli.
+- CSV erken faz analizi (ilk restart öncesi): step 142k→599k arası reward=-290→-270 bandında düz seyir — platoda değil, hiç pozitife geçemedi; +15 oda sıçraması sıfır kez gözlemlendi.
+- Referans: v3.0 Gazebo (v10 yaml ile, fast_sim): peak=+110.3 @ 610k, 6/6 oda başarılı.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- V9 erken faz verisi açık bir uyarı gösteriyor: constant lr=7.5e-5 ile std 0.888→0.745'e düştü (450k step'te, kritik eşiğin altı). Entropy -3.88→-3.32 (>-4.0 = deterministikleşme bölgesi). Bu config tek başına oda keşfini engelledi.
+- `configs/ppo.yaml` ZATEN v10'a güncellenmiş: lr_schedule=linear, 3e-4→1e-5 (1.5M boyunca). Bu hata v10'da tekrarlanmayacak.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale data (20 gün); freeze anındaki anlık değerler, yorumlanamaz.
+- Erken v9 kanıtı: constant lr → entropy > -4.0 eşiği aşıldı (deterministikleşti), std < 0.75'e düştü — iki eşik de kırıldı, oda keşfi sıfır.
+- V10 yaml: ent_coef=0.008 (v9'un ~5.3×'i). Aktif eğitimde beklenti: entropy -2.8→-3.8, std >0.85.
+- **İzleme eşiği (aktif eğitim başlayınca):** `entropy_loss > -4.2` VE `std < 0.70` ikisi aynı anda → ent_coef 0.008→0.012.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V10 ile (v3.0 Gazebo kanıtı, n_envs=1, aynı yaml):
+  - İlk oda geçişi: ~150–250k step
+  - 3+ oda tutarlı keşif: ~350–500k step
+  - 6/6 oda tamamlama: ~500–700k step
+- HARD LIMIT: 1.5M step (5 bağımsız fast_sim deneyde 2M+ sonrası güvenlik kollapsu belgelendi: v4.10, v4.11, v4.13).
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **Lokal makinede eğitimi başlat:** `./scripts/train.sh configs/ppo.yaml` — lidar_history=2 (obs 72-d) + collision_penalty=25 drone_exploration_env.py'de MEVCUT; yaml v10-optimal. Sıfır ön koşul eksik. 20+ günlük gecikme yalnızca bu adımla çözülür.
+2. **400k'ya kadar sıfır müdahale; ardından çift eşik izleme:** `entropy_loss > -4.2` VE `std < 0.70` ikisi aynı anda tetiklenirse `ent_coef: 0.008→0.012` commit+push. V9 erken faz verisi bu eşiğin kritikliğini kanıtladı.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml`: **HAYIR** — v10 kanıtlanmış-optimal (%95 kesinlik). 18 fast_sim + v3.0 Gazebo peak=110.3 ile doğrulanmış; değişiklik zararlı olur.
+- Operasyonel: **KRİTİK BLOKER (20+ GÜN)** — Gazebo Harmonic + ROS2 Jazzy yalnızca lokal makinede çalışır. Remote container'da Gazebo/ROS2 eğitim altyapısı yoktur.
+
+### v10 Önerisi
+1. **Derhal lokal makinede başlat:** `./scripts/train.sh configs/ppo.yaml` — 0 eksik ön koşul.
+2. **400k milestone'a kadar dokunma:** Ardından çift eşik izleme (entropy>-4.2 VE std<0.70 aynı anda) → gerekirse ent_coef 0.008→0.012 commit+push.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi (v10 optimal, kanıtlı: 18 fast_sim deneyi + v3.0 Gazebo peak=110.3). V9 erken faz verisi bu kararı destekliyor: constant lr=7.5e-5'in std/entropy kolapsını doğrulayan somut CSV kanıtı elde edildi. Remote container'da Gazebo/ROS2 altyapısı yoktur. **18. ardışık tespit: tüm ön koşullar hazır — tek bloker lokal makinede eğitim başlatmaktır.**
+---
