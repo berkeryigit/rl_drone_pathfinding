@@ -10273,3 +10273,47 @@ Bu, aynı durumu belgeleyen 7. ardışık analiz. CSV 47 satır; son 24'ü özde
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. V10 konfigürasyonu kanıtlanmış-optimal (fast_sim 18 config + v3.0 Gazebo, peak=110.3). Remote container'da eğitim altyapısı yoktur; bu tespit 7. kez tekrarlandı. Tek aksiyon lokal makinede başlatmaktır.
 ---
+
+## [2026-06-19 08:04 UTC]
+**Step:** 193,248 (STALE — 20 GÜN DONMUŞ, son gerçek veri 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+8. ardışık analiz, durum değişmedi. CSV son 24 satırı özdeş (step=193k, reward=-173.85). V9 eğitimi 20 gündür ölü; ppo.yaml v10 konfigürasyonuna zaten taşınmış. Gazebo/ROS2 bu container'da yok, config müdahalesi anlamsız.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim yok. V9 hiçbir zaman pozitife geçmedi. +15 oda sıçraması: sıfır kez gözlemlendi.
+- Son geçerli Gazebo koşusu v3.0: 610k'da kasıtlı durduruldu, peak=110.3 @ ~430k. fast_sim peak=133.35.
+- V10 başlamadan kırılım/plato analizi yapılamaz.
+
+**b) lr=7.5e-5 constant seçimi doğru muydu?**
+- HAYIR — terk edildi, doğru karar. Sabit düşük lr + yetersiz reward sinyali std'yi 0.888→0.746'ya bastırdı, oda keşfi sıfır kaldı.
+- `ppo.yaml` zaten v10: `lr=3e-4→1e-5 linear`, v3.0 Gazebo (peak=110.3) ile kanıtlanmış aynı schedule.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale değerler: entropy=-4.212 (eşik -4.0, sınırda ✓), std=0.985 (eşik 0.7, güvenli ✓).
+- V10 ent_coef=0.008 (v9'un 5.3×'i) → ilk 200k'da entropy -3.2~-3.8 beklenir. 400-600k arasında std<0.70 + entropy<-4.2 kombinasyonu izlenmeli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V10 referans (v3.0 Gazebo, aynı hyperparamlar, n_envs=1):
+  - İlk oda: 150-250k step
+  - 3+ oda tutarlı: 350-500k step
+  - 6/6 oda: 500-700k step
+- KURAL: total_timesteps=1.5M aşılmayacak (v4.10-v4.13, 5 deney: 2M+ sonrası güvenlik kollapsu).
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **lidar_history=2 önce, train sonra:** `drone_exploration_env.py` obs 41-d→72-d. fast_sim v2: çarpışma %80→%1. Bu değişiklik olmadan v10 açılmayacak.
+2. **400-600k entropy checkpoint:** `train/entropy_loss` < -4.2 + `std` < 0.70 aynı anda → `ent_coef: 0.008→0.012`. Tek kriter yeterli değil.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- Config: **HAYIR** — v10 konfigürasyonu 18 fast_sim + v3.0 kanıtlı, değiştirilmeyecek.
+- Operasyonel: **EVET (20 GÜN BLOKER)** — Lokal makinede `./scripts/train.sh configs/ppo.yaml` çalıştırılması gerekiyor. Container'dan başlatılamaz.
+
+### v10 Önerisi
+1. **Lokal makinede eğitim başlat:** `drone_exploration_env.py` lidar_history=2 güncellemesi → ardından `./scripts/train.sh configs/ppo.yaml`.
+2. **Eğitim sırasında 400k milestone'da entropy + std birlikte izle.** Erken müdahale yapma.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. V10 config kesinleşmiş-optimal (fast_sim 18 config + v3.0 Gazebo, peak=110.3). Remote container'da Gazebo/ROS2 yoktur. 8. ardışık tespit: tek bloker lokal makinede eğitim başlatmak.
+---
