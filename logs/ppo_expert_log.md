@@ -10366,3 +10366,44 @@ Bu, aynı durumu belgeleyen 7. ardışık analiz. CSV 47 satır; son 24'ü özde
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. V10 konfigürasyonu kanıtlanmış-optimal (fast_sim 18 config + v3.0 Gazebo peak=110.3). Remote container'da Gazebo/ROS2 yoktur. 9. ardışık tespit: tek aksiyon lokal makinede eğitim başlatmaktır.
 ---
+
+## [2026-06-19 10:02 UTC]
+**Step:** 193,248 (STALE — 20 GÜN DONMUŞ, son gerçek veri 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+10. ardışık analiz. CSV 47 satır; son 24'ü özdeş (step=193k, reward=-173.85). V9 eğitimi 20 gündür ölü. **YENİ TESPİT:** `drone_exploration_env.py` incelendi — kritik env değişikliklerinin İKİSİ de zaten uygulanmış: `lidar_history=2` (obs 72-d, satır 196-200) ve `collision_penalty=25` (satır 350). Önceki analizlerin "önce env değişikliğini uygula" uyarısı artık geçersiz. Tek bloker: lokal makinede Gazebo/ROS2 ile eğitim başlatmak.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif Gazebo eğitimi yok. CSV stale, analiz yapılamaz.
+- V9 hiçbir zaman pozitife geçmedi, oda sıçraması (≥+15) hiç gözlemlenmedi.
+- Referans (v3.0 Gazebo, v10 ile aynı hyperparamlar, n_envs=1): peak=110.3 @ ~430k step, 610k'da kasıtlı durduruldu.
+- fast_sim zinciri (18 config) tükendi: v4.8 champion (%0 çarpışma/5 oda/117 voxel).
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru muydu?**
+- HAYIR — kanıtla terk edildi. Sabit düşük LR + zayıf reward sinyali std'yi 4 kayıtta 0.888→0.746'ya bastırdı, sıfır oda keşfi. `ppo.yaml` zaten v10: `lr=3e-4→1e-5 linear` (1.5M boyunca), v3.0 Gazebo peak=110.3 ile kanıtlanmış.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale değerler yorumlanamaz.
+- V10 projeksiyonu (ent_coef=0.008, v9'un 5.3×'i): 0-200k arası entropy -3.2→-3.8 beklenir. İzleme penceresi: 400-600k — std<0.70 VE entropy<-4.2 ikisi birlikte → ent_coef 0.008→0.012.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V10 projeksiyonu (v3.0 Gazebo, aynı config): ilk oda 150-250k, 3+ oda 350-500k, 6/6 oda 500-700k.
+- HARD LIMIT: 1.5M (2M+ sonrası güvenlik kollapsu; v4.10-v4.13, 5 bağımsız deney).
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **Eğitimi HEMEN başlat:** `lidar_history=2` ve `collision_penalty=25` drone_exploration_env.py'de ZATEN MEVCUT (obs 72-d, line 200; penalty=25, line 350). Tüm ön koşullar karşılandı. Tek aksiyon: `./scripts/train.sh configs/ppo.yaml` lokal makinede.
+2. **400k milestone'a kadar müdahale etme:** 400-600k arası std+entropy çift eşik izleme. Tek eşik tetiklenince erken müdahale etme; sadece ikisi birlikte.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml` açısından: **HAYIR** — v10 optimal (18 fast_sim + v3.0 Gazebo kanıtlı). Değişiklik yapılmayacak.
+- Operasyonel: **KRİTİK** — 20 günlük bloker. Tüm ön koşullar (env değişiklikleri + ppo.yaml) hazır; lokal makinede `./scripts/train.sh configs/ppo.yaml` çalıştırılması yeterli.
+
+### v10 Önerisi
+1. **Hemen başlat:** `./scripts/train.sh configs/ppo.yaml` — env kod değişiklikleri beklemiyor, hepsi uygulandı.
+2. **400-600k çift eşik izleme:** `entropy_loss < -4.2` VE `std < 0.70` aynı anda görüldüğünde `ent_coef: 0.008 → 0.012` commit+push et.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. V10 konfigürasyonu kesinleşmiş-optimal (fast_sim 18 config + v3.0 Gazebo peak=110.3). Remote container'da Gazebo/ROS2 yoktur. **10. ardışık tespit, kritik güncelleme: lidar_history=2 ve collision_penalty=25 drone_exploration_env.py'de MEVCUT — tüm ön koşullar tamamlandı, tek bloker lokal eğitim başlatma.**
+---
