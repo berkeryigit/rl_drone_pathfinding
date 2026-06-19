@@ -10128,3 +10128,54 @@ CSV 47 satır, son 24 satır özdeş — step=193,248 değeri 20 gündür deği�
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. 18 fast_sim deneyi v10 konfigürasyonunu kesinleştirdi; remote container'da Gazebo/ROS2 yoktur. Bu, 20 günlük durgunluğun 5. tutarlı tespiti — eğitim ancak lokal makinede başlatılabilir.
 ---
+
+## [2026-06-19 05:10 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 19 GÜN STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV 2026-05-31 03:01'den bu yana tamamen donmuş; 19 gün, 46 satırda son 15'i özdeş watchdog döngüsü. v9 step=193k'da crash-loop'a girdi ve bir daha ilerlemedi. ppo.yaml zaten v10 optimal parametrelerini taşıyor, herhangi bir YAML müdahalesi gerekmez. Eğitim bu container'da çalışamıyor (Gazebo Harmonic + ROS2 Jazzy yok).
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- v9 aktif değil. CSV tam tarihsel seyir (46 satır):
+  - step~84k → ep_rew_mean=-25.3 (tek pozitife yakın nokta)
+  - step~193k → -173.85 (son gerçek ölçüm, 2026-05-30 22:00 UTC)
+  - Sonraki 15 satır: aynı değerler, sadece watchdog crash_recovery döngüsü
+- Plato değil: kararsız erken-faz oscillation + crash-loop. +15 oda sıçraması hiç gözlemlenmedi.
+- v10 `runs/` dizini yok → güncel kırılım/plato analizi mümkün değil.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Artık geçersiz: ppo.yaml `learning_rate: 0.0003` + `lr_schedule: linear` + `lr_final: 1e-5`.
+- v9 sabit 7.5e-5 yaklaşımı terk edildi — doğru karar.
+- v3.0 aynı linear 3e-4→1e-5 ile peak=110.3@610k üretti (kanıtlanmış).
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut değerler 19 günlük stale: entropy=-4.212 (-4.0 eşiğinde sınır ✓), std=0.985 (0.7 eşiğinin çok üstünde ✓).
+- Bu değerler v9 crash öncesi anlık — v10 için yorumlama sınırlı.
+- v10 ent_coef=0.008 (v9 0.0015'in 5.3×'i): early training'de entropy -3.2 ile -3.8 aralığı beklenir. 400-600k step deterministikleşme izleme penceresi.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 Gazebo referansı (aynı hyperparamlar, n_envs=1, 6 oda):
+  - İlk oda: 150-250k step
+  - 3+ oda tutarlı: 350-500k step
+  - 6 oda: 500-700k step
+- v10 risk: lidar_history=1 henüz uygulanmadı → duvar temasları → erken terminate → +50-100k gecikme.
+- 1.5M total_timesteps sınırı: yeterli (fast_sim v4.10/v4.13 5 bağımsız deneyle kanıtladı, 2M+ sonrası güvenlik kollapsu).
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **lidar_history=2 (env kod değişikliği — YAML dışı):** `drone_exploration_env.py`'de obs stack 40-d→72-d. fast_sim v2: çarpışma %80→%1. Bu olmadan v10 duvar yakınında suboptimal, erken terminate reward sinyali bozar. Bu değişiklik olmadan v10 başlatmak israf.
+2. **200k checkpoint izle, tek koşulla erken ayarlama:** std<0.70 VE entropy>-3.5 ikisi birden görülürse ent_coef 0.008→0.015 (keşif artırma). Yalnızca bu iki kriter aynı anda tetiklendiğinde müdahale — aksi takdirde 1.5M'a kadar dokunma.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- Hayır. ppo.yaml v10 optimal ✓ (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M, collision_penalty=25 env'e yansıtıldı ✓).
+- Watchdog crash-recovery döngüsü durup durmuş (son kayıt 03:01 May 31) — container'da Gazebo olmadığı için beklenen.
+- Tek bloker: eğitimi lokal makinede `./scripts/train.sh configs/ppo.yaml` ile başlatmak.
+
+### v10 Önerisi
+1. **Önce lidar_history=2:** `drone_exploration_env.py` obs stack mantığını güncelle (40→72-d). Bu tek env kodu değişikliği çarpışma oranını dramatik düşürür; fast_sim kanıtı kesin.
+2. **200k milestone sonrası tek koşullı ayarlama:** std<0.70 + entropy>-3.5 birlikte → ent_coef 0.008→0.015. Tek kriter yoksa dokunma. 1.5M sonrası en iyi checkpoint sweep yap, son adıma kadar gitme.
+
+### Müdahale
+**Yok** — ppo.yaml değişikliğine gerek yok. Mevcut v10 config kanıtlanmış optimal parametreler taşıyor (fast_sim 18 config + v3.0 Gazebo doğrulaması). Eğitim bu container'da çalışmıyor; lokal makinede başlatılmalı. lidar_history=2 env kod değişikliği öncelikli bekleyen görev.
+---
