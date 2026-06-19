@@ -10913,3 +10913,51 @@ V9 eğitimi 2026-05-30 22:00 UTC'de tamamen durdu; CSV son 24 satırı özdeş (
 ### Müdahale
 Yok — `configs/ppo.yaml` değiştirilmedi. V10-optimal config önceki oturumlarda kanıtlanmış ve mevcut. 21. ardışık tespit: tek ve kesin bloker lokal makinede eğitimi başlatmaktır.
 ---
+
+## [2026-06-19 22:05 UTC]
+**Step:** 193,248 (STALE — 20 GÜN DONMUŞ, son ilerleme 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+22. ardışık analiz. CSV 47 satır; son 24 satır tamamen özdeş (step=193k, reward=-173.85, checkpoint=ppo_drone_180000_steps.zip). V9 eğitimi kalıcı durdurulmuş — process ölü. `configs/ppo.yaml` v10-optimal yapıda: herhangi bir config değişikliği **zararlı** olur.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim TAMAMEN DURMUŞ. 20 günlük tam dondurma; gerçek ilerleme sıfır.
+- V9 tam kronoloji (47 CSV satırı):
+  - Phase-1 (4 satır, sürekli eğitim): step 142k→599k, ep_rew -290→-270 (ep_len=1000 = max episode uzunluğuna çarpıyor, drone duvardan çıkamıyor), FPS=83-84 stabil.
+  - Crash/restart döngüsü (19 satır): step 80k→193k bandında salınım, en iyi ep_rew=-25@~84k.
+  - Dondurulmuş blok (24 özdeş satır): 22:00'dan itibaren hiç değişim yok.
+- **+15 oda bonusu 47 kaydın tamamında SIFIR kez gözlemlendi.**
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- HAYIR — Phase-1 kanıtı kesin: entropy -3.886→-3.324 (tüm süre -4.0 üstünde = erken deterministikleşme bölgesi); std 0.888→0.746 (0.70 tehlike sınırına yakın). 457k step boyunca sıfır oda keşfi.
+- Bu hata `configs/ppo.yaml` v10'da **zaten düzeltilmiş**: `lr_schedule: linear, 3e-4→1e-5 (1.5M boyunca)` + `ent_coef: 0.008` (~5.3× v9 değeri). V8 (+113@1.6M, lineer schedule) ve v3.0 Gazebo (+110.3@610k, aynı yaml) bu kararı doğruluyor.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Phase-1 aktif eğitim verisi: entropy_loss -3.886→-3.324 — tüm süre -4.0 EŞİĞİNİN ÜSTÜNDE (= H düşük = erken deterministikleşme). std 0.888→0.746. Keşif **yetersizdi**.
+- Son stale değerler (entropy=-4.212, std=0.985): 20 günlük donmuş data, anlık yorum yapılamaz.
+- V10 beklentisi (ent_coef=0.008, lineer lr): entropy_loss -2.8→-3.8 bandı, std >0.85. Aktif eğitim başlayınca izleme eşiği: `entropy_loss > -4.2` VE `std < 0.70` EŞ ZAMANLI → ent_coef 0.008→0.012.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V10 yaml + v3.0 Gazebo kanıtı (n_envs=1, aynı config, peak=+110.3 @610k):
+  - İlk oda geçişi: ~150–250k step
+  - 3+ oda tutarlı: ~350–500k step
+  - 6/6 oda tamamlama: ~500–700k step
+- HARD LIMIT: 1.5M step (fast_sim v4.10, v4.11, v4.13: 2M+ sonrası güvenlik kollapsu %100 gözlemlendi).
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **Lokal makinede eğitimi başlat:** `./scripts/train.sh configs/ppo.yaml` — env kodu (lidar_history=2→72-d obs, collision_penalty=25) + yaml v10-optimal. Sıfır eksik ön koşul. 20 günlük gecikmeyi kıran tek adım.
+2. **1.0M step güvenlik kontrol noktası:** FPS<50 VEYA ep_len_mean<200 → 1.0M'de eğitimi durdur, o checkpoint'i deploy et (güvenlik kollapsu önleme). Fast_sim v4.10/v4.11 verisi: 2M+ sonrası %100 kollaps.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml`: **HAYIR** — v10 optimal (%95+ kesinlik). 18 fast_sim + v3.0 Gazebo peak=110.3 doğrulanmış; herhangi bir değişiklik zararlı olur.
+- Operasyonel: **KRİTİK BLOKER (20 GÜN)** — Gazebo Harmonic + ROS2 Jazzy yalnızca lokal makinede çalışır. Remote container'da sim altyapısı yoktur. Bu bloker config yaml ile çözülemez.
+
+### v10 Önerisi
+1. **Derhal lokal makinede başlat:** `./scripts/train.sh configs/ppo.yaml` — tüm ön koşullar hazır, sıfır eksik bileşen.
+2. **1.0M step güvenlik eşiği:** FPS<50 veya ep_len_mean<200 → o checkpoint'i deploy et.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. V10-optimal config: lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, n_envs=1, total_timesteps=1.5M — 18 fast_sim + v3.0 Gazebo peak=110.3 ile kanıtlanmış optimal. Remote container'da Gazebo/ROS2 altyapısı yoktur. **22. ardışık tespit: tek ve kesin bloker lokal makinede eğitimi başlatmaktır.**
+---
