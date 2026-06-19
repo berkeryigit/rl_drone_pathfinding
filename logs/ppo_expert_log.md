@@ -9913,3 +9913,47 @@ EVET — KRİTİK: Eğitim 18 gündür ölü. Env kodu ve ppo.yaml doğru; sorun
 **ppo.yaml'da değişiklik YOK** — v10 config kanıtlanmış optimal (v3.0 peak=110.3, fast_sim v4.8 güvenli sweetspot). %95+ güvenle: mevcut hyperparamlar doğru. Env kodu da güncel. Tek sorun process'in başlatılmamış olması (Gazebo/ROS2 gerektiriyor, remote ortamdan başlatılamaz).
 
 ---
+
+## [2026-06-19 00:04 UTC]
+**Step:** 193,248 (STALE — 19 GÜN DONMUŞ, son gerçek güncelleme 2026-05-31 03:01 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+V9 eğitimi tamamen ölü; CSV 2026-05-31 03:01'den beri dondurulmuş (19 gün, 24+ özdeş satır). V10 konfigürasyonu (`ppo.yaml` v10 ayarlarıyla güncel, fast_sim 18 deney kesinleşmiş) hazır; ancak `runs/ppo_v10/` dizini mevcut değil — v10 eğitimi HİÇ BAŞLATILMAMIL. Remote container'da Gazebo/ROS2 ortamı yoktur.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- **Eğitim YOK.** CSV'nin tüm 46 satırı analiz edildi:
+  - Faz-1 (satır 1-4, 142k→599k, lr=7.5e-5 sabit): ep_rew_mean -290→-270 DÜZ PLATO. ep_len=1000 sürekli timeout. Entropy -3.885→-3.324 (monoton düşüş), std 0.888→0.746 (0.7 sınırına tehlikeli yakınlaşma → erken deterministikleşme). +15 oda sıçraması: sıfır.
+  - Faz-2 (satır 5-32, 80k ckpt resume): v9 all-time peak = **-25.3 @ ~84k step**. Ardından -29 ile -174 arası salınım. Entropy stabil (-4.21~-4.26), std>0.98. Fakat oda geçişi: sıfır.
+  - Faz-3 (satır 33-46): 24 özdeş satır (step=193,248), watchdog crash-recovery döngüsü, sıfır ilerleme.
+- **V9 net sonucu:** Hiç pozitif reward görülmedi. Oda keşfi gerçekleşmedi.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru muydu?**
+- **HAYIR (v9 için).** Faz-1 kanıtı: 599k adımda öğrenme başlamadan entropy -3.32'ye düştü, std 0.746'ya geriledi. Sabit düşük lr erken deterministikleşmeye yol açtı; yeni voxel/oda incentive olmadan policy hızla kararlılaştı.
+- `ppo.yaml` **zaten düzeltilmiş (v10):** `learning_rate: 0.0003`, `lr_schedule: linear`, `lr_final: 1e-5`. Bu v3.0 Gazebo konfigürasyonuyla (peak=+110.3 @610k) aynı. Ek müdahale gereksiz.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Son CSV değerleri 19 gün stale — aktif eğitim yok; bu değerlerin analitik anlamı sıfır.
+- V10 konfigürasyonu: ent_coef=0.008 (v9'un 5.3×'i). Eğitim başlarsa entropy başlangıçta -3.2~-3.8 beklenir (yeterli keşif). Risk: 400-600k'da entropy<-4.2 → izleme gerekir.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9: Sıfır oda, terk edildi.
+- V3.0 Gazebo referansı (v10 ile aynı hyperparametreler): ilk oda 150-250k, 3+ oda 350-500k, 6/6 oda 500-700k.
+- Fast_sim v4.8 (collision=25, 1.5M, n_envs=1): %0 çarpışma, 5/6 oda → v10'un ulaşılabilir hedefi.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **EĞİTİMİ BAŞLAT (lokal makine):** `bash restart_training.sh` veya `python .../train_ppo.py --config configs/ppo.yaml`. Tüm kod ve config hazır. `runs/ppo_v10/` dizini yokluğu tek sorun.
+2. **Entropy izleme (400-600k milestone):** step 400k'da entropy<-4.2 görülürse `ent_coef` 0.008→0.012'ye yükselt. Bu, v4.10/v4.11'in güvenlik kollapsının erken sinyaliydi.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml açısından: HAYIR.** 18 fast_sim deneyi v10 konfigürasyonunu kesinleştirdi; herhangi bir değişiklik regresyon riski taşır.
+- **Operasyonel: EVET (lokal makine gerektirir).** Eğitim 19 gündür ölü. Gazebo/ROS2 remote container'da çalışmıyor.
+
+### v10 Önerisi
+1. **EĞİTİMİ BAŞLAT** — ppo.yaml + env kodu (collision=25, 72-d obs, 1.5M, n_envs=1) tam hazır. Berker'in lokal makinesinden: `bash restart_training.sh`.
+2. **400k entropy eşiği:** Eğitim başlarsa, step 400k'da entropy<-4.2 görülürse `ent_coef: 0.008 → 0.012` (ppo.yaml'da güncelle ve push).
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. Mevcut v10 konfigürasyonu 18 fast_sim deneyi tarafından kesinleştirilmiş; remote container'dan eğitim başlatılamaz (Gazebo/ROS2 yok).
+---
