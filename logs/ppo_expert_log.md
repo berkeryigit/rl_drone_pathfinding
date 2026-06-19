@@ -10228,3 +10228,48 @@ CSV'de 47 satır; son 24 satır (2026-05-30 22:20'den itibaren) tamamen özdeş 
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. Mevcut v10 konfigürasyonu 18 fast_sim + v3.0 Gazebo doğrulamasıyla kesinleşmiş-optimal. Remote container'da Gazebo/ROS2 yok; eğitim başlatılamaz. Bu, 19 günlük durgunluğun 6. tutarlı tespiti. Tek bloker: lokal makinede `./scripts/train.sh configs/ppo.yaml` + öncesinde lidar_history=2 env güncellemesi.
 ---
+
+## [2026-06-19 07:02 UTC]
+**Step:** 193,248 (STALE — 20 GÜN DONMUŞ, son gerçek veri 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+Bu, aynı durumu belgeleyen 7. ardışık analiz. CSV 47 satır; son 24'ü özdeş. V9 training step=193k'da kalıcı crash-recovery loop'una girdi, 20 gündür ilerleme yok. `ppo.yaml` zaten v10 optimal parametrelerini taşıyor. Gazebo/ROS2 bu container'da mevcut değil — hiçbir config müdahalesi bu durumu değiştirmez.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim yok; plato/kırılım analizi anlamsız.
+- V9 tam tarihsel performans: step 142k-599k arasında ep_rew_mean -290→-270 (tüm episodlar timeout=1000 step); ardından crash_recovery loop → peak -25.3 @ ~84k (tek anlık pozitife yakın değer, sürdürülemedi); son kayıt 193k @ -173.85.
+- +15 oda sıçraması: **HİÇ GÖRÜLMEDİ.** V9 boyunca sıfır oda keşfi.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru muydu?**
+- HAYIR. CSV bunu doğruluyor: ep_len=1000 (sürekli timeout) + std 0.888→0.746 hızlı düşüşü. Sabit düşük lr yeterli reward sinyali olmaksızın exploration'ı erken öldürdü.
+- `ppo.yaml` zaten v10'a taşındı: `lr=3e-4→1e-5 linear` (v3.0 Gazebo peak=110.3@610k ile kanıtlanmış aynı schedule).
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale değerler (20 gün): entropy=-4.212 (sınır seviyesinde), std=0.985 (sağlıklı).
+- V10 ent_coef=0.008 (v9 0.0015'in 5.3×'i) → erken eğitimde entropy -3.2~-3.8 beklenir. İzleme penceresi: 400-600k adımda entropy < -4.2 ise ent_coef 0.008→0.012.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9 oda geçişi: sıfır. Terk edildi.
+- V10 tahmini (v3.0 Gazebo referansı, aynı hyperparamlar, n_envs=1):
+  - İlk oda (6 odadan): 150-250k step
+  - 3+ oda tutarlı: 350-500k step
+  - 6/6 oda: 500-700k step
+- KESİN KISIT: total_timesteps=1.5M (v4.10/v4.13: 2M+ sonrası güvenlik kollapsu, 5 bağımsız deney).
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **lidar_history=2 (env kod, YAML dışı):** `drone_exploration_env.py` obs stack 40-d→72-d. fast_sim v2: çarpışma %80→%1. Bu olmadan v10 erken terminate riski yüksek.
+2. **400k entropy izlemesi:** `train/entropy_loss` < -4.2 → `ent_coef: 0.008→0.012` push et. Daha erken veya tek kriter tetiklenince müdahale etme.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml` açısından: **HAYIR** — v10 config 18 fast_sim + v3.0 doğrulamasıyla kesinleşmiş.
+- Operasyonel: **EVET (KRİTİK)** — Eğitim 20 gündür ölü. Tek bloker: lokal makinede Gazebo Harmonic + ROS2 Jazzy ortamında `./scripts/train.sh configs/ppo.yaml` çalıştırmak. 7. ardışık analizde aynı tespit.
+
+### v10 Önerisi
+1. **EĞİTİMİ BAŞLAT** — lokal makinede `./scripts/train.sh configs/ppo.yaml`. Config tamamen hazır; sadece Gazebo/ROS2 ortamı gerekiyor.
+2. **lidar_history=2 env güncellemesi önce:** `drone_exploration_env.py`'yi güncelle, sonra train.sh. Bu sırayı değiştirme.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. V10 konfigürasyonu kanıtlanmış-optimal (fast_sim 18 config + v3.0 Gazebo, peak=110.3). Remote container'da eğitim altyapısı yoktur; bu tespit 7. kez tekrarlandı. Tek aksiyon lokal makinede başlatmaktır.
+---
