@@ -11081,3 +11081,50 @@ V9 eğitimi 2026-05-30 22:00'da Gazebo sim deadlock ile 193k step'te dondu; arad
 ### Müdahale
 **Yok** — `configs/ppo.yaml` v10-optimal, değiştirilmedi. **25. ardışık remote tespit: tek ve kesin bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
 ---
+
+## [2026-06-20 02:03 UTC]
+**Step:** 193,248 (FROZEN — 20 GÜN, son ilerleme 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+26. ardışık analiz. CSV toplam 47 satır, son 16 satır tamamen özdeş (step=193k, reward=-173.85). V9 eğitimi kalıcı durduruldu, `configs/ppo.yaml` v10-optimal yapıda (2026-06-02'den beri), `runs/ppo_v10/` dizini mevcut değil — eğitim lokal makinede başlatılmayı bekliyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- V9 aktif değil, 20 gündür dondurulmuş. Tam v9 kronolojisi:
+  - Phase-1 (142k→599k, 4 kayıt): ep_rew -290→-270, ep_len=1000 (süre limitinde), FPS=83-84 stabil.
+  - Crash-loop dönemi (19 kayıt): step 80k→193k arası salınım; en iyi ep_rew=-25 @~84k (tek pozitife yakın anlık parlama).
+  - Dondurulmuş blok (24 özdeş kayıt): 2026-05-30 22:00'dan beri sıfır ilerleme.
+- **+15 oda bonusu: 47 kaydın tamamında SIFIR kez.** V9 tek bir oda sınırını bile geçemedi. Kırılım yok, plato değil — Gazebo freeze ile kalıcı durdurma.
+
+**b) lr=7.5e-5 constant seçimi doğru mu?**
+- V9 için YANLIŞ seçimdi. Phase-1 kanıtı: entropy_loss -3.88→-3.32 (tüm süre -4.0 eşiğinin ÜSTÜNDE = erken deterministikleşme bölgesi), std 0.88→0.746 (0.7 tehlike sınırına yakın). 457k step boyunca sıfır oda keşfi.
+- Bu hata v10'da **zaten düzeltildi**: `lr_schedule: linear, 3e-4→1e-5` + `ent_coef: 0.008` (v9'un 5.3×'i). V8 (+113@1.6M, lineer schedule) + v3.0 Gazebo (+110.3@610k, aynı yaml) bu kararı doğruluyor.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Phase-1 aktif eğitim: entropy -3.88→-3.32, std 0.88→0.746. Keşif erken sönümlendi — 7.5e-5 sabit lr + düşük ent_coef=0.0015 kombinasyonu drone'u yeni alan bulmaktan alıkoydu.
+- Crash-loop dönemi daha sağlıklıydı (entropy -4.22→-4.26, std ~0.99) ama yetersiz step birikimi.
+- V10 beklentisi (ent_coef=0.008, lineer lr): entropy_loss -2.8→-3.8 bandı, std >0.85. Uyarı eşiği: entropy_loss > -4.2 VE std < 0.70 eş zamanlı.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V10 yaml + v3.0 Gazebo referansıyla (n_envs=1, peak=+110.3 @610k):
+  - İlk oda geçişi: ~150–250k step
+  - 3+ oda tutarlı: ~350–500k step
+  - 6/6 oda tamamlama: ~500–700k step
+- **Hard limit: 1.5M step** (fast_sim v4.10/v4.11/v4.13: 2M+ sonrası güvenlik kollapsu %100 gözlemlendi).
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **Lokal makinede eğitimi başlat** — `./scripts/train.sh configs/ppo.yaml`. Tüm ön koşullar hazır: v10 optimal config, env kodu güncel (lidar_history=2→72-d obs, collision_penalty=25). 20 günlük gecikmeyi kıran tek adım.
+2. **İlk 50k step entropy izlemesi** — v9'da Phase-1 erken deterministikleşmesi 457k step'i heba etti; v10'da entropy > -3.5 @100k VEYA std < 0.75 @200k görülürse ent_coef 0.008→0.012'ye çık.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml`: **HAYIR** — v10 optimal (%95+ kesinlik). 18 fast_sim + v3.0 Gazebo peak=110.3 doğrulanmış; herhangi bir değişiklik zararlı olur.
+- Operasyonel: **KRİTİK BLOKER (20 GÜN)** — Remote container'da Gazebo Harmonic + ROS2 Jazzy altyapısı yoktur, eğitim yalnızca lokal makinede çalışır.
+
+### v10 Önerisi
+1. **Lokal makinede hemen başlat:** `./scripts/train.sh configs/ppo.yaml` — config hazır, sıfır ek değişiklik.
+2. **İlk 100k step entropy/std izleme:** Erken deterministikleşme (v9'un yanılgısı) tekrarlanmaması için entropy > -3.5 @100k → ent_coef 0.008→0.012.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. V10-optimal: lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, n_envs=1, total_timesteps=1.5M — 18 fast_sim + v3.0 Gazebo peak=110.3 ile kanıtlanmış optimal. **26. ardışık tespit: tek ve kesin bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` çalıştırmaktır.**
+---
