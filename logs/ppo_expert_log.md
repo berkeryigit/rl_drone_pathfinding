@@ -12019,3 +12019,43 @@ V9 eğitimi 2026-05-30 22:00'da Gazebo sim deadlock ile 193k step'te dondu; arad
 ### Müdahale
 **Yok** — `configs/ppo.yaml` v10-optimal (değiştirilmedi). **45. ardışık tespit: tek ve kesin bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
 ---
+
+## [2026-06-20 23:03 UTC]
+**Step:** 193,248 (FROZEN — 21 GÜN, son ilerleme 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+46. ardışık analiz. V9 Gazebo eğitimi 21+ gündür step=193,248'de donmuş; CSV'nin son 16 satırı özdeş (process tamamen ölü). `configs/ppo.yaml` 2026-06-02'den beri v10-optimal. V10 Gazebo eğitimi hâlâ başlatılmadı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- V9 son kayıt (193k step, 2026-05-30 22:00 UTC): ep_rew_mean=-173.85, ep_len=637. Bu noktadan sonra 16 özdeş satır — process ölü, watchdog loop aynı değerleri tekrar yazıyor.
+- 46 veri satırında ep_rew_mean hiç pozitif olmadı. +15 oda bonusu sıfır kez tetiklendi. Kırılım hiç başlamadı.
+- En iyi anlık değer: ep_rew_mean=-37 (@~130k step, kısa iyileşme penceresi) — tek ümit verici nokta, ardından kötüleşme.
+- FPS: 83-84 (erken) → 72 (son) — resource baskısı artarak çökme sinyali verdi.
+
+**b) lr=7.5e-5 constant seçimi doğru muydu?**
+- V9 orijinal config'i; ppo.yaml 2026-06-02'de düzeltildi: lineer 3e-4→1e-5, ent_coef=0.0015→0.008. Soru artık geçersiz.
+
+**c) Entropy/std keşif için yeterli mi?**
+- entropy=-4.212 (alarm eşiği -4.0'ın altında — sınır ötesi deterministikleşme). std=0.985 (OK, 0.70 tehlike eşiğinin üzerinde). V9 erken fazında std=0.746'ya inmiş olmak tek güvenlik uyarısıydı.
+- V10 beklentisi (ent_coef=0.008): entropy_loss -2.5→-3.8 ilk 150k boyunca korunur.
+
+**d) Oda geçişi için ne kadar step beklenir?**
+- V10 başlamadı. fast_sim v4.8 + v3.0 Gazebo (aynı hyperpar, peak=110.3 @610k) referansıyla: ilk oda ~150-250k, 3+ oda ~300-500k, 5-6 oda ~500-800k. Güvenlik sınırı: 1.5M.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py`: `collision_penalty=25`** — fast_sim tek yapısal değişkeni: 25→%0 çarpışma, 22→%37, 30→%8. Sweet spot dar.
+2. **Lokal: `./scripts/train.sh configs/ppo.yaml`** — ppo.yaml v10-optimal, yegâne bloker budur.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml`: HAYIR — v10-optimal, dokunulmamalı.
+- Operasyonel: KRİTİK (21 GÜN) — V10 Gazebo eğitimi başlatılmadı. `runs/ppo_v10/` dizini mevcut değil.
+
+### v10 Önerisi
+1. **`collision_penalty=25` (`drone_exploration_env.py`)** — fast_sim'in en kesin bulgusu, dar sweet spot (±3 bile fark eder).
+2. **`./scripts/train.sh configs/ppo.yaml` lokal** — 46 analiz sonucu değişmeyen tek ve aşılamaz bloker.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` v10-optimal (değiştirilmedi). **46. ardışık tespit: tek ve kesin bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
+---
