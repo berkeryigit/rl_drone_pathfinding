@@ -11674,3 +11674,49 @@ V9 eğitimi 2026-05-30 22:00'da Gazebo sim deadlock ile 193k step'te dondu; arad
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. Config v10-optimal: lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, n_envs=1, total_timesteps=1.5M, net_arch=[256,256]. **38. ardışık tespit: tek ve kesin bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
 ---
+
+## [2026-06-20 15:03 UTC]
+**Step:** 193,248 (FROZEN — 21 GÜN, son ilerleme 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+39. ardışık analiz. V9 eğitimi 21 gündür tamamen donmuş; CSV'nin son 23 satırı (2026-05-30 22:00'den bu yana) step=193,248 ve ep_rew_mean=-173.85 ile özdeş. `configs/ppo.yaml` 2026-06-02'den beri v10-optimal (lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, net_arch=[256,256]). Config değişikliği gerekmiyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim yok. V9'un tam seyri (47 CSV satırı):
+  - Erken faz (11:02–12:32, 80k ckpt): ep_len=1000 (max timeout), ep_rew_mean≈-270 to -290; entropy -3.89→-3.32 hızla düştü, std 0.888→0.746 — sabit lr=7.5e-5 + ent_coef=0.0015 kombinasyonu deterministikleşmeye sürükledi.
+  - Crash/restart döngüleri: ep_len kısaldı (945→161 step), ep_rew_mean -83 ile -37 arası salındı (peak ~-25 anlık), hiç pozitif value yok.
+  - Final dondurma: 193k'da Gazebo/transport sorunu ile kalıcı freeze. +15 oda bonusu 46 kayıt boyunca SIFIR kez tetiklendi.
+- Kırılım başlamadı, plato da değil — eğitim yok.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Hayır, ve V9 bunu kanıtladı: entropy_loss -3.89→-3.32 (305k step içinde %14 daralma), std 0.888→0.746 (0.7 eşiğine 0.046 uzaklık). Sabit düşük lr + düşük ent_coef erken deterministikleşmeyi tetikledi.
+- V10 yaml'da bu hata zaten düzeltildi: 3e-4 lineer → 1e-5, ent_coef=0.008 (5.3× artış). v3.0 Gazebo (+110.3@610k) ve fast_sim v4.8 (%0 çarpışma) bu seçimi doğrulayan kanıt.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut değerler (entropy=-4.212, std=0.985) 21 günlük stale; aktif eğitimi yansıtmıyor.
+- V10 beklentisi başlangıçta: ent_coef=0.008 ile entropy_loss -2.5→-3.8 bandı, std>0.90 ilk 150k'da. Tehlike eşiği: entropy_loss>-4.0 VE std<0.70 eş zamanlı → ent_coef 0.008→0.012 acil müdahalesi.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V10 config (n_envs=1, lineer lr, ent_coef=0.008) + v3.0 Gazebo referansı:
+  - İlk oda (+15 bonus): ~150–250k step
+  - 3+ oda tutarlı: ~350–500k step
+  - 6/6 oda zirve: ~500–700k step
+  - Güvenlik limiti: 1.5M (fast_sim v4.10/v4.11 → 2M+ güvenlik kollapsu kanıtladı)
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **Lokal makinede başlat (BLOKER):** `cd ~/Desktop/RLProje/rl_drone_pathfinding && ./scripts/train.sh configs/ppo.yaml` — config v10-optimal, env kodu güncel (lidar_history=2→72-d obs, collision_penalty=25). Remote container'da Gazebo Harmonic + ROS2 Jazzy yok; bu tek aşılmaz engeldir.
+2. **V10 başlar başlamaz izle:** @100k entropy_loss>-3.5 VEYA @150k std<0.75 → ent_coef 0.008→0.012 müdahalesi (V9 deterministikleşme hatasının tekrarı önlemi).
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml`: **HAYIR** — zaten v10-optimal, değişiklik zararlı olur.
+- Operasyonel: **KRİTİK BLOKER (21 GÜN)** — v10 eğitimi lokal makinede başlatılmayı bekliyor.
+
+### v10 Önerisi
+1. **Derhal lokal başlat:** `./scripts/train.sh configs/ppo.yaml` — sıfır eksik ön koşul, config hazır.
+2. **Entropy/std erken uyarı:** entropy_loss>-3.5 @100k VEYA std<0.75 @150k → ent_coef 0.008→0.012.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. Config v10-optimal: lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, n_envs=1, total_timesteps=1.5M, net_arch=[256,256]. **39. ardışık tespit: tek ve kesin bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
+---
