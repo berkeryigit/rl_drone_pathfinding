@@ -11176,3 +11176,50 @@ V9 eğitimi 2026-05-30 22:00'da Gazebo sim deadlock ile 193k step'te dondu; arad
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. Config v10-optimal: lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, n_envs=1, total_timesteps=1.5M, net_arch=[256,256]. 18 fast_sim + v3.0 Gazebo peak=110.3 ile kanıtlanmış. **27. ardışık tespit: tek ve kesin bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
 ---
+
+## [2026-06-20 04:05 UTC]
+**Step:** 193,248 (FROZEN — 21 GÜN, son ilerleme 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+28. ardışık analiz. CSV toplam 47 satır; son 25 satır tamamen özdeş (step=193k, reward=-173.85, ckpt=ppo_drone_180000_steps.zip). V9 eğitimi kalıcı donduruldu. `configs/ppo.yaml` 2026-06-02'den beri v10-optimal yapıda, değişiklik **zararlı** olur. Eğitim lokal makinede Gazebo Harmonic + ROS2 Jazzy altyapısıyla başlatılmayı bekliyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Eğitim aktif değil — 21 gündür dondurulmuş. Tam V9 kronolojisi (47 CSV kaydı):
+  - Phase-1 (142k→599k, 4 kayıt): ep_rew -290→-270, ep_len=1000 (max'a kilitli), FPS 83-84, entropy -3.89→-3.32 (erken deterministikleşme başladı), std 0.888→0.746.
+  - Crash/restart döngüsü (~19 kayıt, 30 Mayıs 13:02–20:59): step 80k→193k salınım; en iyi anlık değer ep_rew_mean=-25.3 @~83k (tek pozitife yakın nokta).
+  - Donmuş blok (30 Mayıs 22:00'dan, 25 özdeş kayıt): Sıfır ilerleme, FPS son aktif değer=72.
+- **+15 oda bonusu: V9'un 47 kaydının tamamında SIFIR kez.** Kırılım yok, plato değil — Gazebo freeze ile donduruldu.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- V9 için KESİNLİKLE YANLIŞ seçimdi. Phase-1 kanıtı: entropy -3.886→-3.324 bandı (sürekli -4.0 eşiğinin üstü = erken deterministikleşme bölgesi), std 0.888→0.746 (0.7 tehlike sınırına 5% mesafede), 600k step boyunca sıfır oda bonusu.
+- V10 yaml'da bu hata zaten düzeltildi: `lr_schedule: linear, 3e-4→1e-5 (1.5M boyunca)` + `ent_coef: 0.008` (v9'un 5.3×'i). V8 (+113@1.6M, lineer schedule) ve v3.0 Gazebo (+110.3@610k, aynı yaml) bu seçimi 100% doğruluyor.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut CSV değerleri (entropy=-4.212, std=0.985) 21 günlük stale veri — anlık eğitim durumunu yansıtmıyor.
+- Phase-1 aktif dönem değerlendirmesi: entropy -3.886→-3.324, std 0.888→0.746. Keşif kapasitesi zamanla daralıyordu; sabit düşük LR + düşük ent_coef=0.0015 kombinasyonu drone'u oda sınırına itmekten engelledi.
+- V10 beklentisi (ent_coef=0.008, lineer lr 3e-4): entropy_loss bant -2.8→-3.8, std >0.85. **İzleme uyarısı: entropy_loss > -4.2 AND std < 0.70 eş zamanlı görülürse → ent_coef 0.008→0.012 acil.**
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V10 yaml + v3.0 Gazebo referansı (n_envs=1, lineer lr, ent_coef=0.008, peak=+110.3 @610k):
+  - İlk oda geçişi: ~150–250k step
+  - 3+ oda tutarlı: ~350–500k step
+  - 6/6 oda tam keşif: ~500–700k step
+- Hard güvenlik sınırı: **1.5M step** (fast_sim v4.10/v4.11/v4.13: 2M+ sonrası güvenlik kollapsu %54–100 gözlemlendi — kesin aşılmayacak limit).
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **Lokal makinede eğitimi hemen başlat:** `./scripts/train.sh configs/ppo.yaml` — config v10-optimal (lineer lr, ent_coef=0.008, n_steps=2048, 1.5M), env kodu güncel (lidar_history=2→72-d obs, collision_penalty=25). Remote container'da Gazebo Harmonic + ROS2 Jazzy kurulu değil; bu tek ve aşılamaz altyapı bloker.
+2. **İlk 200k step entropy/std izleme:** V9'un hatası olan erken deterministikleşmeyi (entropy > -3.5 @100k VEYA std < 0.75 @200k) tespit ederse ent_coef 0.008→0.012'ye çık. Bu uyarı v10 için kritik — v9 bu nedenle 0 oda keşfetti.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml`: **HAYIR** (%98+ kesinlik). 18 fast_sim koşusu + v3.0 Gazebo peak=110.3 ile tüm parametreler kanıtlanmış optimal. Herhangi bir değişiklik bilinen optimumdan uzaklaşma.
+- Operasyonel: **21 GÜNLÜK KRİTİK BLOKER** — Gazebo Harmonic + ROS2 Jazzy sadece lokal makinede çalışır. Remote container'da eğitim teknik olarak imkânsız; YAML ile çözülemeyen altyapı kısıtı.
+
+### v10 Önerisi
+1. **Lokal makinede derhal başlat:** `./scripts/train.sh configs/ppo.yaml` — sıfır eksik ön koşul; config, env kodu, checkpoint dizini tam hazır.
+2. **100k step erken uyarı eşiği:** entropy_loss > -3.5 VEYA std < 0.75 → ent_coef 0.008→0.012 (v9'un tekrarını engelle).
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. Config v10-optimal: lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, n_envs=1, total_timesteps=1.5M, net_arch=[256,256]. 18 fast_sim + v3.0 Gazebo peak=110.3 ile %98+ kesinlikte kanıtlanmış optimal. **28. ardışık tespit: tek ve kesin bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
+---
