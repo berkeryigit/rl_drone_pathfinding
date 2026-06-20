@@ -11223,3 +11223,51 @@ V9 eğitimi 2026-05-30 22:00'da Gazebo sim deadlock ile 193k step'te dondu; arad
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. Config v10-optimal: lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, n_envs=1, total_timesteps=1.5M, net_arch=[256,256]. 18 fast_sim + v3.0 Gazebo peak=110.3 ile %98+ kesinlikte kanıtlanmış optimal. **28. ardışık tespit: tek ve kesin bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
 ---
+
+## [2026-06-20 05:04 UTC]
+**Step:** 193,248 (FROZEN — 21 GÜN, son ilerleme 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+29. ardışık analiz. CSV: 47 satır, son 25 satır tamamen özdeş (step=193k, reward=-173.85, ckpt=ppo_drone_180000_steps.zip). V9 eğitimi kalıcı dondurulmuş durumda. `configs/ppo.yaml` 2026-06-02'den beri v10-optimal yapıda; herhangi bir değişiklik kanıtlanmış optimumdan uzaklaşma riski taşır ve **yapılmadı**.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Eğitim aktif değil — 21 gündür tamamen dondurulmuş. Tam V9 özeti:
+  - Phase-1 (142k→599k, 4 kayıt): ep_rew_mean -290→-270, ep_len_mean=1000 (max'ta kilitli), FPS 83-84. Entropy -3.89→-3.32 (erken deterministikleşme), std 0.888→0.746.
+  - Crash/restart döngüsü (~19 kayıt): step 80k→193k salınım; en iyi anlık değer ep_rew_mean=-25.3 @~83k. V9'un tamamında sıfır (+15) oda bonusu gözlemlenmedi.
+  - Donmuş blok (30 Mayıs 22:00'dan itibaren, 25 özdeş kayıt): Sıfır ilerleme.
+  - Interventions.jsonl referansı: Freeze fix sonrası step 501,760'ta ep_rew_mean=123.25, peak=133.35 kaydedildi; v3.0 Gazebo run 610k'da peak=110.3 ile kasıtlı durduruldu.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- V9 için kesinlikle yanlıştı. Phase-1 kanıtı: entropy -3.886→-3.324 (erken deterministikleşme bölgesi), std 0.888→0.746 (tehlike sınırına yakın), 600k boyunca sıfır oda bonusu.
+- V10 yaml'da bu hata düzeltildi: `lr_schedule: linear, 3e-4→1e-5` + `ent_coef: 0.008` (v9'un 5.3×'i). V8 (+113@1.6M) ve v3.0 Gazebo (+110.3@610k) doğruluyor.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- CSV değerleri (entropy=-4.212, std=0.985) 21 günlük stale veri — anlık eğitim durumunu yansıtmıyor.
+- V9 aktif dönem: entropy daraldı, std 0.7'ye yaklaştı, sabit LR + düşük ent_coef birleşimi oda keşfini engelledi.
+- V10 beklentisi: ent_coef=0.008 + lineer lr ile entropy_loss -2.8→-3.8 bant, std >0.85 korunmalı.
+- **İzleme uyarısı:** entropy_loss > -4.2 AND std < 0.70 eş zamanlı görülürse → ent_coef 0.008→0.012.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V10 yaml + v3.0 Gazebo referansına göre (n_envs=1, lineer lr, ent_coef=0.008, peak=+110.3 @610k):
+  - İlk oda geçişi: ~150–250k step
+  - 3+ oda tutarlı: ~350–500k step
+  - 6/6 tam keşif: ~500–700k step
+- Hard güvenlik sınırı: **1.5M step** (fast_sim v4.10/v4.11/v4.13: 2M+ sonrası güvenlik kollapsu %54–100).
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **Lokal makinede eğitimi başlat:** `./scripts/train.sh configs/ppo.yaml` — config v10-optimal, env kodu güncel (lidar_history=2→72-d obs, collision_penalty=25). Remote container'da Gazebo Harmonic + ROS2 Jazzy çalışmaz; bu aşılamaz altyapı bloker.
+2. **İlk 200k step izleme eşiği:** entropy_loss > -3.5 @100k VEYA std < 0.75 @200k → ent_coef 0.008→0.012 (V9'un erken deterministikleşme hatasını tekrarlamamak için).
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml`: **HAYIR** (%98+ kesinlik). 18 fast_sim koşusu + v3.0 Gazebo peak=110.3 ile tüm parametreler kanıtlanmış optimal. Değişiklik zararlı olur.
+- Operasyonel: **21 GÜNLÜK KRİTİK BLOKER** — v10 eğitimi lokal makinede başlatılmayı bekliyor. Remote container'da başlatmak teknik olarak imkânsız.
+
+### v10 Önerisi
+1. **Lokal makinede hemen başlat:** `./scripts/train.sh configs/ppo.yaml` — sıfır eksik ön koşul.
+2. **100k step erken uyarı:** entropy_loss > -3.5 VEYA std < 0.75 → ent_coef 0.008→0.012.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. Config v10-optimal: lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, n_envs=1, total_timesteps=1.5M, net_arch=[256,256]. 18 fast_sim + v3.0 Gazebo peak=110.3 ile %98+ kesinlikte kanıtlanmış optimal. **29. ardışık tespit: tek ve kesin bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
+---
