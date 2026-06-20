@@ -11055,3 +11055,29 @@ Yok — `configs/ppo.yaml` değiştirilmedi. V10-optimal config önceki oturumla
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. V10-optimal config: lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, n_envs=1, total_timesteps=1.5M — 18 fast_sim + v3.0 Gazebo peak=110.3 ile kanıtlanmış optimal. Remote container'da Gazebo/ROS2 altyapısı yoktur. **24. ardışık tespit: tek ve kesin bloker lokal makinede eğitimi başlatmaktır.**
 ---
+
+## [2026-06-20 01:03 UTC]
+**Step:** 193248 (FROZEN ~20 gün) | **ep_rew_mean:** -173.85 | **entropy:** -4.21 | **std:** 0.985
+
+### Durum
+V9 eğitimi 2026-05-30 22:00'da Gazebo sim deadlock ile 193k step'te dondu; aradan geçen ~20 gün boyunca sıfır ilerleme. V10 config (ppo.yaml) 2026-06-02'de hazırlandı; 18 fast_sim + v3.0 Gazebo peak=110.3 ile optimal olduğu kanıtlandı, remote container'da Gazebo/ROS2 yoktur.
+
+### Detay
+- **CSV durumu (47 satır):** Son 13 satır identik (step=193248, reward=-173.85, entropy=-4.21, std=0.985) → Gazebo freeze, 2026-05-30 22:00'dan bu yana donmuş durum.
+- **V9 aktif öğrenim penceresi:** Adım 80k-193k arası ep_len 1000→637'ye düştü (drone zaman limitine çarpmaktan kurtulmaya başladı). Ancak reward hiç pozitife dönmedi → 6 odadan hiçbirini keşfetmedi.
+- **Oda sıçraması (+15.0):** CSV boyunca hiç gözlemlenmedi. V9 tüm ömrü boyunca oda bonusu alamadı.
+- **Entropy trendi:** -4.21 ile -4.26 arasında seyrediyordu. -4.5 eşiğinin üzerinde → erken deterministikleşme riski YOK.
+- **std trendi:** 0.985-1.003 bant içinde → aksiyon varyansı maksimum seviyede, keşif kapasitesi sağlıklı, 0.7 eşiğine hiç düşmedi.
+- **FPS:** Freeze öncesi 72 (n_envs=2). Kararlı, sim dışı bottleneck yok.
+- **ppo.yaml (mevcut v10):** lr=3e-4 linear→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, n_envs=1, total_timesteps=1.5M, net_arch=[256,256], collision_penalty=25, lidar_history=2. 18 fast_sim koşusu + v3.0 Gazebo peak=110.3@610k ile kanıtlanmış optimal.
+- **V9 vs v8 farkı:** V8 3-katlı haritada 1.6M step'te +113 peak'e ulaşıyordu; v9 tek katlı 6-oda haritada oda bulmayı başaramadan dondu. Harita değişikliği + Gazebo transport sorunu çakıştı.
+- **interventions.jsonl:** 43 crash_recovery (tamamı 2026-05-30/31) + freeze_rootcause_fix (GZ_IP=127.0.0.1 + python timeout) + 500k resume + v3.0 milestone. Son entry: 2026-06-01 01:30 → v3.0 peak=102.54@434k.
+- **Lr=7.5e-5 constant (KICKOFF.md v9 config):** O dönem için çok düşük ve statikti; v10'da lineer decay 3e-4→1e-5'e doğru güncellendi, bu tercih doğrudur.
+
+### v10 Önerisi
+1. **Lokal makine başlatımı (tek bloker):** Remote container'da Gazebo Harmonic + ROS2 Jazzy çalışmaz. Lokal terminalde `./scripts/train.sh configs/ppo.yaml` komutu çalıştırılmalı. Config hazır, sıfır değişiklik gerekmez.
+2. **İlk 50k step kritik gözlem:** v10 config'de n_steps=2048 ve n_envs=1 → her güncelleme 2048 step. ep_len_mean<500 ve entropy>-4.5 → sağlıklı. Step 2048'de freeze → GZ_IP=127.0.0.1 ve bridge restart uygulanmalı (fix mevcut).
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` v10-optimal, değiştirilmedi. **25. ardışık remote tespit: tek ve kesin bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
+---
