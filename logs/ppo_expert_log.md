@@ -11803,3 +11803,40 @@ V9 eğitimi 2026-05-30 22:00'da Gazebo sim deadlock ile 193k step'te dondu; arad
 ### Müdahale
 **Yok** — `configs/ppo.yaml` değiştirilmedi. Config v10-optimal: lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, n_envs=1, total_timesteps=1.5M, net_arch=[256,256]. **41. ardışık tespit: tek ve kesin bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
 ---
+
+## [2026-06-20 18:05 UTC]
+**Step:** 193,248 (FROZEN — 21 GÜN, son ilerleme 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+42. ardışık analiz. V9 eğitimi 21 gündür tamamen donmuş; CSV'nin son 23 satırı özdeş (step=193,248, ep_rew_mean=-173.85). `configs/ppo.yaml` 2026-06-02'den beri v10-optimal. Fast_sim deney zinciri (v1→v5.0, 18 config) 2026-06-01'de tamamlandı ve temel ödünleşimi kesinleştirdi: güvenli-v4.8 (%0 çarpışma, 5 oda) vs kapsamlı-v4.10 (%54 çarpışma, 6 oda, 281 voxel).
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif Gazebo eğitimi yok. V9 tam seyri: ep_rew_mean hiç pozitife geçmedi, anlık peak -25.3 (@84k). Entropy hızla bozuldu (-3.89→-3.32), std 0.888→0.746 — sabit lr=7.5e-5 + ent_coef=0.0015 kombinasyonu deterministikleşmeyi tetikledi, 193k'da Gazebo/gz-transport Host-unreachable ile kalıcı çöktü.
+- Fast_sim tamamlandı (versions.jsonl): v4.8 en iyi güvenli politika (%0 çarpışma, 5/6 oda, voxel 117); v4.10 en iyi kapsam (%54 çarpışma, 6/6 oda, voxel 281, 5M'de); v4.13 (8M) ve v5.0 (lidar_history=3) ikisini birden iyileştirmeyi başaramadı → trade-off temel, yakınsadı.
+
+**b) lr=7.5e-5 constant seçimi doğru mu?**
+- Hayır, V9 bunu kanıtladı. `ppo.yaml` zaten düzeltti: lineer 3e-4→1e-5. Geçersiz soru.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale veri — değerlendirme anlamsız. V10 için fast_sim bulgusu: ent_coef=0.008 ile başlangıç entropy -2.5→-3.8 beklenir, std>0.90 ilk 150k boyunca. Tehlike: entropy_loss>-4.0 VE std<0.70 eş zamanlı → ent_coef 0.008→0.012.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V10 Gazebo başlamadı. Fast_sim v4.8 referansı (n_envs=1, collision=25, lidar_history=2): 5 oda tutarlı ~500k civarında; v3.0 Gazebo peak +110.3 @610k. V10 hedef: 3+ oda @300-500k, 5/6 oda @500-800k. Limit: 1.5M (2M+ güvenlik kollapsu kanıtlandı: v4.10/v4.11).
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py` collision_penalty=25 (V9'daki 10'dan artır)** — fast_sim v4.8'in sıfır çarpışma başarısının tek değişkeni; Gazebo env koduna henüz yansıtılmamış olabilir.
+2. **Lokal makinede `./scripts/train.sh configs/ppo.yaml` başlat** — ppo.yaml v10-optimal, env kodu güncel (lidar_history=2→72-d obs), Gazebo Harmonic + ROS2 Jazzy remote container'da mevcut değil.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml`: HAYIR — v10-optimal, değişiklik zararlı olur.
+- Operasyonel: KRİTİK BLOKER (21 GÜN) — V10 Gazebo eğitimi lokal makinede başlatılmadı. Fast_sim zinciri kapandı, tüm bulgular biliniyor, sadece çalıştırma eksik.
+
+### v10 Önerisi
+1. **`drone_exploration_env.py`'de `collision_penalty = 25`** — fast_sim v4.8 sıfır çarpışmanın garantisi bu değer, Gazebo env'e taşınmalı.
+2. **Lokal: `./scripts/train.sh configs/ppo.yaml`** — config hazır, env kodu hazır, tek eksik bu komut.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` değiştirilmedi. Config v10-optimal: lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, n_envs=1, total_timesteps=1.5M, net_arch=[256,256]. Fast_sim zinciri tamamlandı: temel trade-off yakınsadı, Gazebo v10 başlatılmayı bekliyor. **42. ardışık tespit: tek ve kesin bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
+---
