@@ -1,3 +1,46 @@
+## [2026-06-20 22:10 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 20 GÜN STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV 2026-05-31 03:01'den beri tamamen donmuş; v9 step=193k'da crash-loop'a girdi ve hiç ilerlemedi. **Aktif eğitim yok.** `runs/` dizini mevcut değil → v10 bu container'da hiç başlamadı. ppo.yaml zaten v10 optimal durumunda (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, collision_penalty=25). **Müdahale: Yok.**
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim yok. CSV'de 31 unique satır, geri kalan 15 watchdog crash-loop tekrarı.
+- v9 içi trend: step~84k → **-25.3 (tüm v9'un en iyi değeri)** → ardından crash-restart döngüsüyle regresyon → son değer step~193k: -173.8.
+- +15 oda sıçraması hiç gözlemlenmedi; ep_rew_mean sürekli negatif bölgede kaldı. Plato değil — erken kararsız faz + crash.
+- v10 `runs/` dizini yok → güncel plato/kırılım değerlendirmesi mümkün değil.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Soru geçersiz: ppo.yaml **zaten v10'a geçirilmiş** — `learning_rate: 0.0003`, `lr_schedule: linear`, `lr_final: 1e-05`. v9'un sabit 7.5e-5'i terk edildi, doğru karar. v3.0 aynı schedule ile peak=110.3 üretti (610k step).
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut stale değerler: entropy=-4.212 (-4.0 eşiğinin üstünde ✓), std=0.985 (0.7 eşiğinin çok üstünde ✓).
+- Ancak 20 günlük crash-loop anından kalma — v10 yorumu için geçersiz.
+- v10 config: ent_coef=0.008 (v9'un 5.3×'i) → early training'de entropy -3.2/-3.8 arası beklenir (sağlıklı keşif). Deterministikleşme riski: 400-600k step arası izlenmeli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 referans (aynı hyperparameler, n_envs=1, 6 oda, Gazebo): ilk oda 150-250k, 3+ oda 350-500k, tüm 6 oda 500-700k.
+- v10 risk: `lidar_history=1` (env'de henüz 2'ye çıkarılmadı) → erken terminate → oda geçişini +50-100k geciktirebilir.
+- Hareketli engeller şimdilik devre dışı → statik harita avantajı → tahmin makul.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **Lokal makinede `./scripts/train.sh configs/ppo.yaml` ile v10 başlat:** Container'da Gazebo/ROS2 yok. ppo.yaml hazır. Bu tek bloker.
+2. **`lidar_history=2` (env kod değişikliği — YAML dışı):** `drone_exploration_env.py` obs stack'i 40-d→72-d'ye çıkar. fast_sim kanıtı: çarpışma %80→%1. Bu olmadan v10 duvar temasları nedeniyle erken terminate edecek, oda geçişini geciktirecek.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- ppo.yaml değişikliği YOK — config optimal. Dört bağımsız oturumda (12-13-20 Haziran) teyit edildi.
+- **Kritik durum:** 20 günden beri sıfır eğitim ilerlemesi. v10 lokal makinede başlatılmadan analiz döngüsü boşa dönüyor. `runs/` yok → 20 gün veri boşluğu.
+
+### v10 Önerisi
+1. **Lokal makinede hemen v10 başlat:** `./scripts/train.sh configs/ppo.yaml` — ppo.yaml tam hazır (v10, lr linear, 1.5M step, ent_coef=0.008).
+2. **200k milestone'da kontrol:** std<0.7 ve entropy>-3.5 birlikte görülürse ent_coef 0.008→0.015. İlk oda 250k'ya kadar gelmezse frontier_bonus 0.4→0.6. Bu eşikler aşılmadan config dokunma.
+
+### Müdahale
+Yok — ppo.yaml değişikliğine gerek yok. Mevcut v10 config (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M) kanıtlanmış optimal parametreler taşıyor.
+---
+
 ## [2026-06-13 20:10 UTC]
 **Step:** 193,248 (CSV SON KAYIT — 14 GÜN STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
 
