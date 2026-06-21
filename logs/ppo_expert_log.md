@@ -12499,3 +12499,48 @@ V9 eğitimi 2026-05-30 22:00'da Gazebo sim deadlock ile 193k step'te dondu; arad
 ### Müdahale
 **Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10-optimal; değiştirilmedi ve değiştirilmeyecek. **56. ardışık tespit: tek ve aşılamaz bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
 ---
+
+## [2026-06-21 10:10 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 21 GÜN STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+CSV 2026-05-31 03:01'den beri tamamen donmuş; v9 training step=193k crash-loop'unda takılı kaldı ve 21 gündür sıfır ilerleme. Bu container'da Gazebo/ROS2 yok — v10 hiç başlamadı. `ppo.yaml` zaten v10-optimal (lr linear 3e-4→1e-5, ent_coef=0.008, collision_penalty=25). **Config değişikliğine gerek yok. Tek bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` çalıştırmak.**
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim yok. CSV 47 satır: son 16'sı identik (step=193,248, reward=-173.85, ckpt=ppo_drone_180000_steps.zip). Gerçek unique veri yalnızca 31 satır.
+- v9 içi gerçek trend: step~84k → **-25.3 (v9 tüm zamanlar en iyisi)** → 108-193k regresyon + crash-loop → son değer -173.85.
+- +15 oda sıçraması (oda geçiş sinyali): v9'da **hiç gözlemlenmedi.** ep_rew_mean hiç pozitife geçmedi. Plato değil — erken instabilite + crash-loop.
+- v10 `runs/` dizini yok → güncel plato/kırılım değerlendirmesi yapılamıyor.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Artık geçersiz soru: `ppo.yaml` zaten v10'a geçirilmiş (`lr=3e-4`, `lr_schedule: linear`, `lr_final=1e-5`, 1.5M boyunca). v9 sabit 7.5e-5 terk edildi — doğru karar.
+- v3.0 Gazebo aynı schedule ile peak=110.3 üretti (610k step). Kanıtlanmış optimal.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale v9 değerleri: entropy=-4.212 (-4.0 eşiğine yakın ama hâlâ altında ✓), std=0.985 (0.7 eşiğinin çok üstünde ✓). Deterministikleşme yok.
+- Bu değerler 21 günlük crash-loop anına ait; v10 yorumu için geçersiz.
+- v10 config ent_coef=0.008 (v9'un ~5×'i) → early training entropy -3.2 ile -3.8 beklenir. Deterministikleşme risk penceresi: 400-600k step.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 referans (aynı hyperparameler, n_envs=1, 6 oda, Gazebo): ilk oda 150-250k, 3+ oda 350-500k, tüm 6 oda 500-700k.
+- `lidar_history=1` riski: env'de henüz 2'ye çıkarılmamışsa → drone erken terminate → oda geçişi +50-100k gecikebilir.
+- Hareketli engeller devre dışı (SubprocVecEnv deadlock nedeniyle) → statik harita avantajı → tahmin tutarlı.
+- total_timesteps=1.5M ile 500-700k'da 6 oda hedefi ulaşılabilir. 2M+ YOK — fast_sim v4.10/v4.11/v4.13 5 bağımsız deneyle kanıtladı: 2M+ sonrası safety collapse.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **Lokal makinede hemen v10 başlat:** `./scripts/train.sh configs/ppo.yaml` — ppo.yaml tam hazır. Container'da Gazebo/ROS2 olmadığından bu tek ve aşılamaz bloker. 21 günlük veri boşluğu bu yüzden.
+2. **`lidar_history=2` (env kod değişikliği — YAML dışı):** `drone_exploration_env.py` obs stack 41-d→72-d. fast_sim v2 kanıtı: çarpışma %80→%1. Bu yapılmadan v10 duvar temaslı erken terminate ile oda geçişini kaçırabilir.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- Config değişikliği: **YOK.** ppo.yaml dört bağımsız oturumda (12-13-20-21 Haziran) optimal olarak teyit edildi. 57. ardışık analizde aynı sonuç: değiştirme.
+- **Kritik durum (değişmeyen):** 21 gündür sıfır eğitim ilerlemesi. v10 lokal makinede başlatılmadan analiz döngüsü anlamsız. `runs/ppo_v10/` dizini oluşmadı → 0 veri.
+
+### v10 Önerisi
+1. **Lokal makinede `./scripts/train.sh configs/ppo.yaml`** — tek eylem, tek bloker.
+2. **200k milestone izleme eşikleri:** std < 0.7 VE entropy > -3.5 birlikte görülürse ent_coef 0.008→0.015; ilk oda 250k'ya kadar gelmezse frontier_bonus 0.4→0.6. Bu eşikler aşılmadan config dokunma.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10-optimal; değiştirilmedi ve değiştirilmeyecek. **57. ardışık tespit: tek ve aşılamaz bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
+---
