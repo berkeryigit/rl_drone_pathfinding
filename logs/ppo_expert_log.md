@@ -12801,3 +12801,30 @@ CSV 2026-05-31 03:01'den beri tamamen donmuş; v9 training step=193k crash-loop'
 ### Müdahale
 **Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10-optimal; değiştirilmedi ve değiştirilmeyecek. **63. ardışık tespit: tek ve aşılamaz bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
 ---
+
+## [2026-06-21 17:15 UTC]
+**Step:** 193248 (son CSV değeri; eğitim 3 haftadır durmuş) | **ep_rew_mean:** -173.85 (frozen) | **entropy:** -4.212 (frozen) | **std:** 0.985 (frozen)
+
+### Durum
+Eğitim 31 Mayıs 03:01'den bu yana tamamen durmuş; `runs/` dizini mevcut değil, `training_metrics.csv` 21 gündür güncellenmemiş. `configs/ppo.yaml` 2026-06-02'den beri v10-optimal değerlere sahip ve değiştirilmedi.
+
+### Detay
+- **training_metrics.csv analizi (46 satır, 30-31 Mayıs):** Üç faz görünüyor.
+  - Faz 1 (11:02–12:32): n_envs=4 era, step 142k→599k, ep_rew_mean -270 ile -290 arası, ep_len=1000 (max episode → crash yok ama reward da yok). Entropy -3.88→-3.32 hızlı düşüş = ent_coef=0.0015 ile erken keşif kolapsı kanıtı.
+  - Faz 2 (13:02–20:55): Crash-recovery sonrası restart loop (step 49k–145k arası kararsız). En iyi değer: ep_rew_mean=-25.3 @84k. Entropy ~-4.25 sabit, std ~0.997 (yeni politika). Hiç +15 oda sıçraması görülmedi, ep_rew_mean hiç pozitife geçmedi.
+  - Faz 3 (22:00–03:01): GZ transport deadlock, step 193k'da donma. 14 ardışık aynı satır.
+- **ep_rew_mean trendi:** Düzleşme yok, plato yok — erken instabilite ardından kalıcı çöküş. Oda sıçraması (+15) hiç kaydedilmedi.
+- **Entropy:** -4.21 ile -4.26 arası (Faz 2/3). -4.0'ın altında ama tam deterministikleşme yok. Faz 1'deki -3.32'ye düşüş ent_coef=0.0015'in yetersizliğini teyit ediyor.
+- **std:** 0.985–1.002 arası. 0.7 eşiğinin üzerinde, aksiyondaki varyans korunuyor. Keşif collapsı policy tarafında değil, reward sinyal ve ortam stabilite tarafında.
+- **FPS:** Faz 1'de 83-84 (sağlıklı), crash-recovery döneminde 61-121 (restart artefaktı). Tutarsızlık ortam yeniden başlatma maliyetinden kaynaklanıyor.
+- **interventions.jsonl son kayıtlar:** 31 Mayıs 05:33 GZ transport fix → 14:54 500k resume (700k hedefi) → 01 Haziran 01:30 milestone 434k peak=102.54. Ardından fast_sim v4.1→v5.0 (18 config) tamamlandı; kesin yakınsama "kısıt-içi tükendi."
+- **fast_sim özeti (versions.jsonl):** v4.8=güvenli anchor (%0 çarpışma, 117 voxel, 5+ oda), v4.10=kapsam ucu (%54 çarpışma, 281 voxel, 6 oda). Curriculum, lr-fine-tune, lidar_history artışı, 8M eğitim hepsi denendi — trade-off kırılamadı. v4.8 optimal safety-performance noktası.
+- **configs/ppo.yaml:** v10 hazır (lr=3e-4→1e-5 linear, n_steps=2048, n_epochs=10, clip=0.2, ent_coef=0.008, n_envs=1, total_timesteps=1.5M, norm_obs=false, version=v10). 19 gündür optimal, değiştirilmemeli.
+
+### v10 Önerisi
+1. **`drone_exploration_env.py` içinde `collision_penalty=25` olduğunu doğrula** (fast_sim v4.8 kesin bulgusu: 22→%37 çarpışma, 25→%0; ±3 sapma katastrofik). Bu env kodu değişikliği configs/ppo.yaml dışında.
+2. **Lokal ortamda `./scripts/train.sh configs/ppo.yaml` komutunu çalıştır** — tek eksik adım bu. Remote container'da Gazebo Harmonic + ROS2 Jazzy yoktur, `runs/` dizini de bulunmamaktadır. Config 19 gündür hazır ve doğrulanmış.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10-optimal; değiştirilmedi. **64. ardışık tespit: tek ve aşılamaz bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
+---
