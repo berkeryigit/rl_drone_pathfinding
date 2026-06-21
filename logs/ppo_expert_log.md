@@ -12974,3 +12974,50 @@ Yok — ppo.yaml değişikliğine gerek yok. Mevcut v10 config (lr linear 3e-4�
 ### Müdahale
 **Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10-optimal; değiştirilmedi ve değiştirilmeyecek. **68. ardışık tespit: tek ve aşılamaz bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
 ---
+
+## [2026-06-21 22:05 UTC]
+**Step:** 193,248 (FROZEN — 22 GÜN 3 SAAT, son gerçek ilerleme 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 (frozen/stale) | **entropy:** -4.212 (frozen/stale) | **std:** 0.985 (frozen/stale)
+
+### Durum
+69. ardışık analiz. V9 Gazebo eğitimi 2026-05-30 22:00 UTC'den beri step=193,248'de donmuş — GZ transport deadlock (SubprocVecEnv pipe break). `configs/ppo.yaml` 2026-06-02'den beri v10-optimal, fast_sim 18-config sweep + 5 bağımsız doğrulama ile kanıtlanmış. Remote container'da Gazebo Harmonic + ROS2 Jazzy yok; tek çözüm lokal makine.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim YOK. CSV 22 gün 3 saattir donmuş; training_metrics.csv 31 unique satır + 15 identik watchdog tekrarı.
+- v9 içi trajectory: 64k: -324 → 84k: -25.3 (v9 en iyisi, kısa spike) → 108k-193k: crash-loop regreasyonu, -173.8 ile freeze.
+- +15 oda sıçraması v9'da HİÇ kaydedilmedi. Plato değil: GZ transport deadlock → erken process ölümü.
+- v10 `runs/` dizini mevcut değil → güncel kırılım/plato değerlendirmesi imkansız.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Soru artık geçersiz: `ppo.yaml` tamamen v10 konfigürasyonunda — `learning_rate: 0.0003`, `lr_schedule: linear`, `lr_final: 1e-5`. Gazebo v3.0 bu schedule ile peak=110.3 üretti (610k step). Kanıtlanmış, değiştirme.
+- v9'un problemi lr değildi: GZ transport deadlock + SubprocVecEnv pipe-break → step asla ilerleyemedi.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale değerler (22+ gün önce): entropy_loss=-4.212 (H≈4.21 nats), std=0.985. Her ikisi de eşik üzerinde (entropy eşik: H>3.5, std eşik: >0.7). V9 ent_coef=0.0015 yetersizdi (faz 1'de H -3.32'ye düşmüştü).
+- v10: ent_coef=0.008 (5.3× artış) → early training H beklenti -3.2→-3.8 nats; deterministikleşme riski 400-600k step arasında izlenmeli.
+- Mevcut değerler v10 için baz alınmamalı — tamamen farklı model ağırlıkları.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v9 kurtarılamaz (process dead, GZ deadlock kronik). v10 referansı (Gazebo v3.0, aynı hyperparametreler, 6 oda):
+  - İlk oda: 150-250k step
+  - 3+ oda: 350-500k step
+  - Tüm 6 oda: 500-700k step
+- `lidar_history=1` (env kodunda henüz 2'ye çıkarılmadı) → duvar terminasyonları +50-100k geciktirebilir; 500k milestone'da kontrol et.
+- Hareketli engeller devre dışı (n_envs=1 workaround) → statik harita avantajı, oda keşfini hızlandırır.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`collision_penalty=25` doğrulaması** (`drone_exploration_env.py`): fast_sim 18-config kesin bulgusu — 25: %0 çarpışma (v4.8 şampiyon), 22: %37 çarpışma kollaps, 30: %8 aşırı-tedirginlik. ±3 sapma katastrofik.
+2. **200k milestone eşiği**: std<0.7 VE entropy_loss>-3.5 birlikte gözlemlenirse → ent_coef 0.008→0.015 (deterministikleşme önleme). İlk oda 250k'ya gelmezse → frontier_bonus 0.4→0.6. Bu eşikler öncesi config değiştirme.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml`: HAYIR — v10-optimal (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, net_arch=[256,256], n_envs=1, collision_penalty=25, 1.5M step). 69. ardışık teyit.
+- **Operasyonel Kritik (22+ GÜN):** V10 eğitimi lokal makinede hiç başlatılmadı. Remote container'da Gazebo Harmonic + ROS2 Jazzy yoktur. Çözüm: lokal terminalde `./scripts/train.sh configs/ppo.yaml`.
+
+### v10 Önerisi
+1. **`drone_exploration_env.py`'da `collision_penalty=25` teyit et** — fast_sim 18-config sweep kesin kanıtı; tatli nokta dar, ±3 sapma güvenlik kollapsu.
+2. **Lokal `./scripts/train.sh configs/ppo.yaml`** — ppo.yaml 19 gündür optimal ve 5 kez bağımsız doğrulandı; 22+ gündür sıfır eğitim ilerlemesi, tek bloker lokal terminal.
+
+### Müdahale
+Yok — `configs/ppo.yaml` değişikliğe gerek yok. Fast_sim 18-config sweep + Gazebo v3.0 doğrulaması ile kanıtlanmış v10 optimal konfigürasyonu korunuyor. **69. ardışık tespit: aşılamaz bloker lokal makine.**
+---
