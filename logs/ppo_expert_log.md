@@ -12869,3 +12869,25 @@ Eğitim 31 Mayıs 03:01'den bu yana tamamen durmuş; `runs/` dizini mevcut deği
 ### Müdahale
 **Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10-optimal; değiştirilmedi ve değiştirilmeyecek. **65. ardışık tespit: tek ve aşılamaz bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
 ---
+
+## [2026-06-21 19:02 UTC]
+**Step:** 193,248 (FROZEN — 22 GÜN 17 SAAT, son gerçek ilerleme 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 (frozen) | **entropy:** -4.212 (frozen) | **std:** 0.985 (frozen)
+
+### Durum
+66. ardışık analiz. V9 Gazebo eğitimi kalıcı olarak ölü (step=193,248, 22+ gün hareketsiz). `training_metrics.csv` 47 satır, son 15 satır identik (GZ transport deadlock). `configs/ppo.yaml` 2026-06-02'den beri v10-optimal. Remote container'da Gazebo Harmonic + ROS2 Jazzy mevcut değil.
+
+### Detay
+- **a) Reward eğrisi:** Asla pozitife geçmedi. En iyi: -25.3 @84k (crash-recovery restart artefaktı). +15 oda sıçraması hiç kaydedilmedi. Faz 3 (22:00 sonrası): GZ transport deadlock, 15 identik satır, step 193k'da kalıcı freeze.
+- **b) lr=7.5e-5 constant:** v9'da yanlıştı. Oda keşfi başlamadan policy pozitife geçemedi. v10 düzeltmesi (`configs/ppo.yaml`) lineer 3e-4→1e-5 schedule — doğru, değiştirilmeyecek. v8 lineer decay @peak +113'ü kanıtladı, v10 aynı yaklaşım.
+- **c) Entropy/std:** Donmuş değerler yorumlanamaz. Faz 1'de entropy -3.32'ye düşmüş (ent_coef=0.0015 → erken keşif kolapsı). v10'da ent_coef=0.008 (5.3× artış, fast_sim v4.8 kanıtı).
+- **d) Oda geçişi için step:** v9 kurtarılamaz. v10 referansı (Gazebo v3.0): ilk oda 150-250k, 6 oda 500-700k. 1.5M total_timesteps yeterli; 2M+ sonrası güvenlik kolapsı (fast_sim 5 bağımsız deney).
+- **e) v10 en kritik öneri:** (1) `drone_exploration_env.py`: `collision_penalty=25` doğrula (fast_sim v4.8: 25→%0 çarpışma, 22→%37 çarpışma). (2) Lokal `./scripts/train.sh configs/ppo.yaml`.
+- **f) Acil müdahale:** `configs/ppo.yaml` değiştirilmeyecek (66. ardışık teyit). Operasyonel kritik: v10 lokal makinede başlatılmadı, 22+ gün.
+
+### v10 Önerisi
+1. **`collision_penalty=25` (`drone_exploration_env.py`)** — fast_sim 18-config sweep kesin bulgusu; ±3 sapma katastrofik.
+2. **Lokal `./scripts/train.sh configs/ppo.yaml`** — config 19 gündür hazır ve doğrulanmış; tek eksik adım bu.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10-optimal; değiştirilmedi. **66. ardışık tespit: tek ve aşılamaz bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
+---
