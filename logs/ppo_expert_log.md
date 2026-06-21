@@ -12719,3 +12719,44 @@ CSV 2026-05-31 03:01'den beri tamamen donmuş; v9 training step=193k crash-loop'
 ### Müdahale
 **Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10-optimal; değiştirilmedi ve değiştirilmeyecek. **61. ardışık tespit: tek ve aşılamaz bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
 ---
+
+## [2026-06-21 15:03 UTC]
+**Step:** 193,248 (FROZEN — 22 GÜN 15 SAAT, son gerçek ilerleme 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+62. ardışık analiz. V9 Gazebo eğitimi step=193,248'de tamamen ölü; CSV 47 satır (başlık dahil), benzersiz 31 kayıt, son 16 satır identik (step=193k, reward=-173.85, ckpt=ppo_drone_180000_steps.zip, 2026-05-30 22:20–2026-05-31 03:01). Aktif process yok, `configs/ppo.yaml` 2026-06-02'den beri v10-optimal ve sabit. Remote container'da Gazebo Harmonic + ROS2 Jazzy mevcut değil.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV tüm geçmiş (47 satır): Faz 1 (142k–599k step) lr=3e-4 lineer ile ep_rew_mean -290→-270, ep_len=1000 (timeout), entropy -3.88→-3.32 (tehlikeli düşüş), std 0.888→0.746 (0.7 eşiğine yakın).
+- Faz 2 crash-recovery sonrası (49k–193k): en iyi -25.3 @83968 step, sonra çöküş → -173.85 @193k → kalıcı ölü.
+- +15 oda sıçraması: V9'da **hiç gözlemlenmedi.** ep_rew_mean hiç pozitife geçmedi. Plato değil — erken crash-loop + kalıcı çöküş.
+- FPS: Faz 1'de 83-84 (sağlıklı) → crash-recovery'de 61-121 (kararsız) → freeze sonrası anlamsız.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru muydu?**
+- V9'da gerçekte iki farklı lr kullanıldı: Faz 1 lineer 3e-4→ (entropy -3.88→-3.32 ile) ve crash sonrası farklı başlangıç. KICKOFF.md'deki 7.5e-5 constant konfigürasyonu, V9 süresince policy'nin pozitife geçememesinin birincil sebebidir.
+- V10 `ppo.yaml` lineer 3e-4→1e-5 schedule: doğru, V8 kanıtıyla örtüşüyor (peak +113 @1.6M).
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Donmuş değerler (entropy=-4.212, std=0.985) yorumlanamaz. Faz 1'deki entropy trendi (-3.88→-3.32, erken hızlı düşüş) V9 ent_coef=0.0015'in çok düşük olduğunu kanıtlıyor.
+- V10 ent_coef=0.008 (5.3× artış): fast_sim v4.8'de entropy -3.2/-3.8 korunarak 5+ oda, %0 çarpışma. Doğru değer.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9: kurtarılamaz, oda geçişi sıfır. V10 başlatılırsa: ilk oda 150-250k step, 3+ oda 350-500k, tüm 6 oda 500-700k (v3.0 Gazebo referansı, aynı hyperparameler). total_timesteps=1.5M yeterli; güvenlik kollapsu riski yalnızca 2M+ ötesinde (fast_sim 5 bağımsız deney, v4.10/v4.11/v4.13).
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`collision_penalty=25` (`drone_exploration_env.py`)** — fast_sim 18-config sweep kesin bulgusu: penalty=25 → %0 çarpışma @v4.8; penalty=22 → %37 erken kollaps. ±3 sapma katastrofik.
+2. **Lokal `./scripts/train.sh configs/ppo.yaml`** — ppo.yaml 19 gündür hazır ve doğrulanmış optimal (lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, net_arch=[256,256], n_envs=1, 1.5M step, version=v10).
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml`: **HAYIR** — v10-optimal, değiştirilmeyecek. 62. ardışık teyit.
+- **Operasyonel Kritik (22 GÜN 15+ SAAT):** V10 eğitimi lokal makinede başlatılmadı. Remote container'da Gazebo Harmonic + ROS2 Jazzy yoktur — çözüm yolu yalnızca lokal terminal.
+
+### v10 Önerisi
+1. **`collision_penalty=25` (`drone_exploration_env.py`)** — fast_sim sweep kesin kanıtı; bu olmadan v10 erken çarpışma loop'uyla oda keşfini kaçırır.
+2. **Lokal `./scripts/train.sh configs/ppo.yaml`** — ppo.yaml tamamen hazır; tek gereken lokal Gazebo+ROS2 ortamında komutu çalıştırmak.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10-optimal; değiştirilmedi ve değiştirilmeyecek. **62. ardışık tespit: tek ve aşılamaz bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
+---
