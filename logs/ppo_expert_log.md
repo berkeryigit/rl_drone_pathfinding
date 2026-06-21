@@ -12180,3 +12180,49 @@ V9 eğitimi 2026-05-30 22:00'da Gazebo sim deadlock ile 193k step'te dondu; arad
 ### Müdahale
 **Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10-optimal; lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, net_arch=[256,256], n_envs=1, total_timesteps=1.5M. **49. ardışık tespit: tek ve kesin bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
 ---
+
+## [2026-06-21 03:10 UTC]
+**Step:** 193,248 (FROZEN — 22+ GÜN, son ilerleme 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+50. ardışık analiz. V9 Gazebo eğitimi 22+ gündür step=193,248'de tamamen durmuş durumda. CSV son 25 satırı özdeş (process ölü, watchdog sadece loop atıyor). `configs/ppo.yaml` 2026-06-02'de v10-optimal yapılandı, değiştirilmedi ve değiştirilmeyecek. V10 Gazebo eğitimi remote container'da başlatılamamakta — lokal makine gerekiyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- V9 toplam 46 veri noktası. Erken fazda (11:00-12:30 UTC, step ~142k-599k) ep_rew_mean -270 ile -290 arasında seyretti — ep_len_mean=1000 (timeout), drone duvardan kaçmayı öğrenmemiş.
+- Crash-restart döngüsü sonrası (14:00-22:00 UTC): step 80k checkpoint'ten yeniden başlandı; ep_rew_mean -37'ye kadar çıktı (@130k), ardından -173'e geriledi.
+- 2026-05-30 22:00'dan itibaren 25 özdeş satır: eğitim bitti, kırılım başlamadı, hiçbir zaman başlamadı.
+- +15 oda bonusu: 46 kayıtta **sıfır kez** tetiklendi.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru muydu?**
+- V9 orijinal config sabit 7.5e-5 kullandı. Referans: v8 lineer 3e-4→3e-5 ile peak +113 @1.6M step elde etti. Sabit düşük lr, erken fazda gradient öğrenimini kısıtladı ve crash döngüsü zaten öğrenmeyi engelledi.
+- `configs/ppo.yaml` 2026-06-02'de lineer 3e-4→1e-5 schedule'a geçildi — bu sorun çözüldü.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- entropy=-4.212: alarm eşiği (-4.0) altında → aşırı deterministikleşme. V9 ent_coef=0.0015 yetersizdi; polisi erken katılaştırdı, keşif engellendi.
+- std=0.985: 0.70 tehlike eşiğinin üstünde → makul. Ancak ent_coef yetersizliği yüzünden entropy baskılandı.
+- V10 ent_coef=0.008 (5.3x artış) ile entropy -2.5→-3.8 aralığında tutulması beklenir.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V10 başlamadı, `runs/ppo_v10/` yok. fast_sim v4.8 + v3.0 Gazebo kanıtı (özdeş ppo.yaml, peak=110.3 @610k):
+  - İlk oda keşfi: ~150-250k step
+  - 3+ oda: ~300-500k step
+  - 5-6 oda: ~500-800k step
+  - Güvenli üst sınır: 1.5M step (2M+ sonrası güvenlik kollapsu, fast_sim v4.10/v4.11 kanıtı)
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py`: `collision_penalty=25`** — fast_sim'in 18 config boyunca en güvenilir bulgusu. 25→%0 çarpışma (v4.8), 22→%37 çarpışma (v4.9), 30→%8 çarpışma (v4.5). Sweet spot çok dar; ±3 bile katastrofik sapma yaratıyor.
+2. **Lokal makinede `./scripts/train.sh configs/ppo.yaml`** — ppo.yaml hazır (lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, net_arch=[256,256], n_envs=1, 1.5M). Gazebo Harmonic + ROS2 Jazzy remote container'da desteklenmiyor.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml`: HAYIR — v10-optimal; lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, net_arch=[256,256], n_envs=1, total_timesteps=1.5M. Dokunulmayacak.
+- Operasyonel: KRİTİK (22 GÜN) — V10 Gazebo eğitimi başlatılmadı. 50 ardışık analizde sabit: lokal makinede `./scripts/train.sh configs/ppo.yaml` tek çözüm.
+
+### v10 Önerisi
+1. **`collision_penalty=25` (`drone_exploration_env.py`)** — fast_sim v4.8/v4.9 karşılaştırması (18 deney), en tekrarlanabilir ve kritik bulgu.
+2. **`./scripts/train.sh configs/ppo.yaml` (lokal)** — ppo.yaml 19 gündür hazır; tek bloker Gazebo Harmonic + ROS2 Jazzy gerektiren lokal çalıştırma.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10-optimal; lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, net_arch=[256,256], n_envs=1, total_timesteps=1.5M. **50. ardışık tespit: tek ve aşılamaz bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
+---
