@@ -203,45 +203,107 @@ def graph_loss(dfs, out_path: Path):
 # 4) Hiperparametre duyarliligi
 # --------------------------------------------------------------------------- #
 def graph_hp(hp_root: Path, out_path: Path):
-    """runs_hp/<param>/<value>/seed_<s>/training_log.csv yapisindan okur."""
+    """runs_hp/<param>/<value>/seed_<s>/training_log.csv yapisindan okur.
+
+    Iki panel: (sol) final episode getirisi, (sag) keşfedilen oda — her ikisi
+    de hiperparametre degerine karsi, seed'ler uzerinden mean +/- std.
+    """
     if not hp_root.exists():
         _placeholder(out_path, "4) Hiperparametre Duyarliligi",
                      f"{hp_root} yok -> sweep.sh calistirin (>=2 param x >=3 deger)")
         return
-    fig, ax = plt.subplots(figsize=(11, 6))
-    colors = plt.cm.tab10.colors
-    plotted = 0
-    for ci, param_dir in enumerate(sorted(p for p in hp_root.iterdir() if p.is_dir())):
-        xs, ys, es = [], [], []
+
+    # param -> liste[(value, ret_mean, ret_std, room_mean, room_std)]
+    data: dict[str, list] = {}
+    for param_dir in sorted(p for p in hp_root.iterdir() if p.is_dir()):
+        rows = []
         for value_dir in sorted(param_dir.iterdir(), key=lambda p: _num(p.name)):
             if not value_dir.is_dir():
                 continue
-            finals = []
+            rets, rooms = [], []
             for seed_dir in value_dir.glob("seed_*"):
                 log = seed_dir / "training_log.csv"
                 if log.exists():
                     df = pd.read_csv(log)
                     if len(df):
-                        finals.append(df["ep_return"].tail(max(5, len(df) // 10)).mean())
-            if finals:
-                xs.append(_num(value_dir.name))
-                ys.append(float(np.mean(finals)))
-                es.append(float(np.std(finals)))
-        if xs:
-            order = np.argsort(xs)
-            xs = np.array(xs)[order]; ys = np.array(ys)[order]; es = np.array(es)[order]
-            ax.errorbar(xs, ys, yerr=es, marker="o", capsize=4, linewidth=2,
-                        color=colors[ci % len(colors)], label=param_dir.name)
-            plotted += 1
-    if plotted == 0:
+                        tail = df.tail(max(5, len(df) // 10))
+                        rets.append(tail["ep_return"].mean())
+                        if "visited_rooms" in df.columns:
+                            rooms.append(tail["visited_rooms"].mean())
+            if rets:
+                rows.append((_num(value_dir.name),
+                             float(np.mean(rets)), float(np.std(rets)),
+                             float(np.mean(rooms)) if rooms else np.nan,
+                             float(np.std(rooms)) if rooms else 0.0))
+        if rows:
+            data[param_dir.name] = rows
+    if not data:
         _placeholder(out_path, "4) Hiperparametre Duyarliligi", f"{hp_root} icinde gecerli kosu yok")
         return
-    ax.set_title("4) Hiperparametre Duyarliligi (final episode getirisi)", fontsize=12, fontweight="bold")
-    ax.set_xlabel("Hiperparametre degeri")
-    ax.set_ylabel("Final episode getirisi (mean +/- std)")
-    ax.grid(alpha=0.25)
-    ax.legend(loc="best", fontsize=9, title="Kesif-somuru: dusuk lr/ent => somuru, yuksek => kesif")
+
+    # Her parametre KENDI satirinda (farkli deger olcekleri cakismasin);
+    # sutunlar: [getiri, oda]. Her satir kendi x-olcegini (gerekirse log) kullanir.
+    params = sorted(data.keys())
+    n = len(params)
+    fig, axes = plt.subplots(n, 2, figsize=(15, 4.6 * n), squeeze=False)
+    fig.suptitle("4) Hiperparametre Duyarlılığı (eğitim sonu, seed ortalaması ± std)",
+                 fontsize=14, fontweight="bold")
+    c_ret, c_room = "#0288d1", "#2e7d32"
+
+    for ri, param in enumerate(params):
+        rows = sorted(data[param], key=lambda r: r[0])
+        xs  = np.array([r[0] for r in rows])
+        ret = np.array([r[1] for r in rows]); ret_s = np.array([r[2] for r in rows])
+        rm  = np.array([r[3] for r in rows]); rm_s  = np.array([r[4] for r in rows])
+        # bu parametrenin kendi araligi genis mi? -> log eksen
+        rng = xs.max() / max(xs.min(), 1e-12)
+        use_log = rng >= 8
+
+        axL, axR = axes[ri]
+        # --- getiri ---
+        axL.errorbar(xs, ret, yerr=ret_s, marker="o", markersize=9, capsize=5,
+                     linewidth=2.2, color=c_ret)
+        for x, y in zip(xs, ret):
+            axL.annotate(f"{y:.0f}", (x, y), textcoords="offset points",
+                         xytext=(0, 11), ha="center", fontsize=10, fontweight="bold", color=c_ret)
+        best = int(np.argmax(ret))
+        axL.scatter([xs[best]], [ret[best]], s=200, facecolors="none",
+                    edgecolors="red", linewidths=2.2, zorder=5,
+                    label=f"en iyi: {param}={_fmt_val(xs[best])}")
+        axL.set_title(f"{param} → Final Episode Getirisi", fontsize=12, fontweight="bold")
+        axL.set_ylabel("Episode getirisi (mean ± std)", fontsize=10)
+        axL.legend(loc="best", fontsize=9)
+
+        # --- oda ---
+        if not np.isnan(rm).all():
+            axR.errorbar(xs, rm, yerr=rm_s, marker="s", markersize=9, capsize=5,
+                         linewidth=2.2, color=c_room)
+            for x, y in zip(xs, rm):
+                axR.annotate(f"{y:.2f}", (x, y), textcoords="offset points",
+                             xytext=(0, 11), ha="center", fontsize=10, fontweight="bold", color=c_room)
+            axR.axhline(6, color="green", linestyle="--", linewidth=1.2, alpha=0.5, label="hedef (6)")
+            axR.set_ylim(0, 6.5)
+            axR.legend(loc="best", fontsize=9)
+        axR.set_title(f"{param} → Keşfedilen Oda", fontsize=12, fontweight="bold")
+        axR.set_ylabel("Oda (6 üzerinden, mean ± std)", fontsize=10)
+
+        for ax in (axL, axR):
+            if use_log:
+                ax.set_xscale("log")
+            ax.set_xticks(xs)
+            ax.set_xticklabels([_fmt_val(v) for v in xs], fontsize=9)
+            ax.set_xlabel(f"{param} değeri" + (" (log eksen)" if use_log else ""), fontsize=10)
+            ax.grid(alpha=0.3, which="both")
+
+    plt.tight_layout(rect=[0, 0, 1, 0.97])
     _save(fig, out_path)
+
+
+def _fmt_val(v: float) -> str:
+    """Hiperparametre degerini okunabilir bicimde yaz: 0.0003 -> 3e-04, 0.1 -> 0.1."""
+    if v != 0 and (abs(v) < 1e-2 or abs(v) >= 1e4):
+        return f"{v:.0e}"
+    return f"{v:g}"
 
 
 def _num(name: str) -> float:
@@ -254,36 +316,68 @@ def _num(name: str) -> float:
 
 
 # --------------------------------------------------------------------------- #
-# 5) Baseline karsilastirma
+# 5) Baseline karsilastirma — cok metrikli (getiri + oda + kapsama)
 # --------------------------------------------------------------------------- #
 def graph_baseline(eval_csv: Path, baseline_csv: Path, out_path: Path):
-    groups: dict[str, np.ndarray] = {}
+    # Her politika icin tum metrik kolonlarini topla
+    frames: dict[str, pd.DataFrame] = {}
     if baseline_csv.exists():
         b = pd.read_csv(baseline_csv)
         for name, g in b.groupby("policy"):
-            groups[str(name)] = g["ep_return"].to_numpy(dtype=float)
+            frames[str(name)] = g
     if eval_csv.exists():
-        e = pd.read_csv(eval_csv)
-        groups["agent (SAC)"] = e["ep_return"].to_numpy(dtype=float)
-    if not groups:
+        frames["agent (SAC)"] = pd.read_csv(eval_csv)
+    if not frames:
         _placeholder(out_path, "5) Baseline Karsilastirma",
                      "baseline/eval csv yok -> baseline.py ve evaluate.py calistirin")
         return
-    order = [k for k in ("random", "heuristic", "agent (SAC)") if k in groups]
-    order += [k for k in groups if k not in order]
-    means = [groups[k].mean() for k in order]
-    stds = [groups[k].std() for k in order]
-    colors = ["#9e9e9e", "#ff9800", "#0288d1"][:len(order)] + ["#607d8b"] * len(order)
-    fig, ax = plt.subplots(figsize=(9, 6))
-    ax.bar(order, means, yerr=stds, capsize=6, color=colors[:len(order)], edgecolor="white")
-    for i, (m, s) in enumerate(zip(means, stds)):
-        ax.text(i, m + (max(stds) * 0.1 if max(stds) else 1), f"{m:.0f}", ha="center", fontsize=10)
-    ax.set_title("5) Baseline Karsilastirma (deterministik eval, ortalama getiri)",
-                 fontsize=12, fontweight="bold")
-    ax.set_xlabel("Politika")
-    ax.set_ylabel("Episode getirisi (mean +/- std)")
-    ax.grid(alpha=0.25, axis="y")
-    ax.legend(["+/- std (episode)"], loc="best", fontsize=9)
+
+    order = [k for k in ("random", "heuristic", "agent (SAC)") if k in frames]
+    order += [k for k in frames if k not in order]
+    bar_colors = {"random": "#9e9e9e", "heuristic": "#ff9800", "agent (SAC)": "#0288d1"}
+    colors = [bar_colors.get(k, "#607d8b") for k in order]
+
+    # 4 metrik: getiri, ziyaret edilen oda, kapsama %, basari orani
+    metrics = [
+        ("ep_return",     "Ortalama Episode Getirisi", "Getiri (toplam ödül)", False, "{:.0f}"),
+        ("visited_rooms", "Keşfedilen Oda Sayısı",     "Oda (6 üzerinden)",     6.0,   "{:.2f}"),
+        ("coverage_pct",  "Alan Kapsama (Coverage)",   "Kapsama (%)",          100.0,  "{:.1f}"),
+        ("success",       "Tam-Keşif Başarı Oranı",    "Başarı (%)",           100.0,  "{:.0f}"),
+    ]
+
+    fig, axes = plt.subplots(2, 2, figsize=(12, 9))
+    fig.suptitle("5) Baseline Karşılaştırması — Rastgele / Heuristik / SAC (deterministik eval)",
+                 fontsize=14, fontweight="bold")
+
+    for ax, (col, title, ylabel, target, fmt) in zip(axes.flat, metrics):
+        means, stds, labels = [], [], []
+        for k in order:
+            if col not in frames[k].columns:
+                continue
+            vals = frames[k][col].to_numpy(dtype=float)
+            if col == "success":
+                vals = vals * 100.0   # orani yuzdeye cevir
+            means.append(vals.mean())
+            stds.append(vals.std())
+            labels.append(k.replace("agent (SAC)", "SAC"))
+        x = np.arange(len(labels))
+        ax.bar(x, means, yerr=stds, capsize=5,
+               color=[bar_colors.get(o, "#607d8b") for o in order[:len(labels)]],
+               edgecolor="white")
+        for i, (m, s) in enumerate(zip(means, stds)):
+            ax.text(i, m + (max(stds) * 0.12 if max(stds) else 0.5),
+                    fmt.format(m), ha="center", fontsize=10, fontweight="bold")
+        if target:
+            ax.axhline(target, color="green", linestyle="--", linewidth=1.2,
+                       alpha=0.5, label="hedef")
+            ax.legend(loc="upper left", fontsize=8)
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, fontsize=10)
+        ax.set_title(title, fontsize=11, fontweight="bold")
+        ax.set_ylabel(ylabel, fontsize=9)
+        ax.grid(alpha=0.25, axis="y")
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
     _save(fig, out_path)
 
 

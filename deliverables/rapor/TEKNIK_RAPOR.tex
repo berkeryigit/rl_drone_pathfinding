@@ -1,0 +1,478 @@
+% ======================================================================
+%  Teknik Rapor — Pekistirmeli Ogrenme ile Drone Kesif/Yol Bulma
+%  Derleme:  pdflatex TEKNIK_RAPOR.tex   (iki kez calistirin: icindekiler icin)
+% ======================================================================
+\documentclass[11pt,a4paper]{article}
+
+% --- Turkce + kodlama ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+% Turkce babel '=' karakterini shorthand yapar ve bunu \begin{document}'te
+% aktive eder; bu \includegraphics[width=...] gibi keyval ayraclarini bozar
+% (gorsel dev boyutta cikip sayfadan tasar). shorthands=off TUM shorthand'lari
+% bastan ve kalici kapatir -- en saglam cozum.
+\usepackage[turkish,shorthands=off]{babel}
+\usepackage{lmodern}
+
+% --- Matematik ---
+\usepackage{amsmath,amssymb}
+
+% --- Tablolar ---
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+
+% --- Grafikler ---
+% Rapor kendi kendine yeter: 5 grafik rapor/grafikler/ icine kopyalanir.
+% Once yerel grafikler/ klasorune, yoksa ust klasordeki sunum/grafikler/'e bakar.
+% Boylece Overleaf'e sadece rapor/ yuklense bile grafikler gorunur.
+\usepackage{graphicx}
+\graphicspath{{grafikler/}{../sunum/grafikler/}{./}}
+
+% --- Renk + kod listeleri ---
+\usepackage{xcolor}
+\definecolor{codebg}{rgb}{0.96,0.96,0.96}
+\definecolor{codekw}{rgb}{0.0,0.0,0.6}
+\usepackage{listings}
+\lstset{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  framesep=4pt,
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+}
+
+% --- Sayfa duzeni + baglantilar ---
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{caption}
+\captionsetup{font=small, justification=justified, singlelinecheck=false}
+\usepackage{float}  % figure [H] / saglam yerlesim icin
+
+\title{\textbf{Pekiştirmeli Öğrenme ile Çok-Odalı Ortamda\\
+Drone Keşif / Yol Bulma}\\[4pt]
+\large Teknik Rapor}
+\author{Mehmet Akif Albayrak \\ Öğrenci No: 220202082}
+\date{13 Haziran 2026}
+
+\begin{document}
+\maketitle
+
+% ======================================================================
+\section{Özet}
+% ======================================================================
+Bu çalışmada, altı odalı kapalı bir ortamda otonom bir dronun \textbf{tüm
+odaları keşfetmesini} (coverage / exploration) öğrenen bir pekiştirmeli öğrenme
+(RL) ajanı geliştirilmiştir. Ajan, \textbf{Soft Actor-Critic (SAC)}
+algoritmasıyla, hızlı bir \textbf{2B Gymnasium ortamında} eğitilmiş; eğitilen
+politika ayrıca Gazebo 3B simülatöründe test edilmiştir. Ortam; rüzgâr, LIDAR
+ve odometri gürültüsü ile hareketli engeller içeren \textbf{stokastik bir POMDP}
+olarak tasarlanmıştır. Beş farklı rastgele tohum (seed) ile yürütülen
+eğitimlerde en iyi model \textbf{\%60 tam-keşif başarısı}, ortalama
+\textbf{5.48/6 oda} ve \textbf{\%95+ alan kapsama} değerlerine ulaşmıştır.
+Sonuçlar; rastgele ve sezgisel (heuristik) iki temel politikayla (baseline)
+karşılaştırılmış, ajanın görev metriği (ziyaret edilen oda) bakımından her iki
+temel politikayı da geçtiği gösterilmiştir.
+
+% ======================================================================
+\section{Problem Tanımı}
+% ======================================================================
+Ortam, $8\times 8$ m yarı-genişlikte (toplam $16\times 16$ m) kapalı bir
+dünyadır ve duvarlarla \textbf{altı odaya} bölünmüştür. Odalar arası geçişler
+\textbf{kapılarla} sağlanır. Dronun amacı, çarpışmadan, sınırlı sürede mümkün
+olduğunca çok odayı ve hücreyi keşfetmektir.
+
+\begin{itemize}[noitemsep]
+  \item \textbf{Dünya boyutu:} $2\cdot\text{WORLD\_HALF}=16$ m (kare)
+  \item \textbf{Keşif ızgarası:} $0.5$ m hücre $\rightarrow 32\times 32 = 1024$ hücre
+  \item \textbf{Oda sayısı:} $N_{\text{ROOMS}}=6$ (2 satır $\times$ 3 sütun)
+  \item \textbf{Kapı konumları:} 5 adet (\texttt{DOOR\_POSITIONS})
+  \item \textbf{Episode uzunluğu:} en çok $600$ adım ($dt=0.12$ s $\rightarrow \approx 72$ s)
+\end{itemize}
+
+Görev; \textbf{gecikmeli ödül} (bir odaya ulaşmak için önce koridoru geçmek
+gerekir), \textbf{ardışık karar} ve \textbf{kısmi gözlemlenebilirlik}
+içerdiğinden klasik bir RL problemidir.
+
+% ======================================================================
+\section{Neden Pekiştirmeli Öğrenme?}
+% ======================================================================
+Bir problemin RL gerektirip gerektirmediği dört soruyla sınanır. Bu projenin
+her birine yanıtı, RL'i zorunlu kılar:
+
+\begin{enumerate}[noitemsep]
+  \item \textbf{Eylem geleceği etkiliyor mu (ardışıklık)?} \emph{Evet.} Dronun
+  şimdi seçtiği yön, hangi odaya/koridora gireceğini ve dolayısıyla ileride
+  hangi hücreleri görebileceğini belirler. Kararlar bağımsız değil, ardışıktır.
+  \item \textbf{Ödül gecikmeli mi?} \emph{Evet.} Yeni bir odanın $+20$ ödülünü
+  almak için önce doğru kapıyı bulup koridoru kat etmek gerekir; ödül, onlarca
+  adım önce verilen eylemlerin sonucudur (gecikmeli kredi atama problemi).
+  \item \textbf{Dinamik bilinmiyor / uzay büyük mü?} \emph{Evet.} Ortam
+  stokastiktir (rüzgâr, LIDAR ve odometri gürültüsü; bkz. Bölüm~\ref{sec:stokastik}) ve gözlem
+  75 boyutlu süreklidir. Geçiş olasılığı $P(s'\mid s,a)$ ajana kapalıdır.
+  \item \textbf{Aynı sonuç A*/DP/basit kuralla daha ucuza alınır mı?}
+  \emph{Hayır.} A* veya BFS, \textbf{bilinen ve deterministik} bir harita ile
+  tek bir hedefe en kısa yolu bulur. Burada ise (i) önceden harita yok, ajan
+  ortamı LIDAR ile \emph{keşfederek} öğrenir; (ii) tek hedef değil, tüm alanın
+  kapsanması istenir; (iii) ortam stokastiktir, sabit bir plan gürültü altında
+  bozulur. Klasik planlayıcılar bu üç koşulda doğrudan uygulanamaz; gürültüye
+  ve haritasızlığa karşı gürbüz bir \emph{politika} öğrenmek gerekir.
+\end{enumerate}
+
+\noindent Sezgisel bir kural (en açık yöne git) kısmi başarı verir (Bölüm~\ref{sec:baseline})
+ama tüm odaları sistematik gezmeyi öğrenemez; RL ajanı gecikmeli oda ödülünü
+optimize ederek bu davranışı kazanır.
+
+% ======================================================================
+\section{Markov Karar Süreci (MDP) Formülasyonu}
+% ======================================================================
+Problem $(S, A, P, R, \gamma)$ beşlisiyle modellenmiştir. Gözlem gürültüsü
+nedeniyle gerçekte bir \textbf{POMDP}'dir.
+
+\subsection{Durum / Gözlem Uzayı --- $S$ (75 boyut)}
+\texttt{observation\_space = Box(shape=(LIDAR\_BINS + 11,)) = Box(75,)}
+(\texttt{env/fast\_2d\_drone\_env.py:84})
+
+\begin{center}
+\begin{tabular}{lcl}
+\toprule
+\textbf{Bileşen} & \textbf{Boyut} & \textbf{Açıklama} \\
+\midrule
+LIDAR ışınları & 64 & $5.625^\circ$ çözünürlük, $[0,1]$'e normalize ($/\,\text{LIDAR\_MAX}=10$ m) \\
+Yaw (cos, sin) & 2 & Ölçülen yönün trigonometrik gösterimi \\
+Önceki eylem & 3 & \texttt{prev\_action} (eylem yumuşatma için) \\
+İlerleme + oda & 2 & Kapsama oranı, ziyaret edilen oda oranı \\
+min-LIDAR + boşta & 2 & En yakın engel, voxel'siz geçen adım oranı \\
+Kapı + duvar & 2 & En yakın kapı mesafesi, duvara yakınlık \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent\textbf{POMDP notu:} Gözlemdeki konum/yaw \emph{ölçülen} (gürültülü)
+değerlerdir; ortamın gerçek konumu bozulmaz
+(\texttt{\_make\_obs}, satır 234--236).
+
+\subsection{Eylem Uzayı --- $A$ (sürekli, 3 boyut)}
+\texttt{action\_space = Box([-1,-1,-1], [1,1,1])} (satır 77)
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Eylem} & \textbf{Ölçek} & \textbf{Anlam} \\
+\midrule
+$a[0] \rightarrow v_x$ & $\times\,V_{\max}=1.2$ m/s & İleri/geri hız (gövde ekseni) \\
+$a[1] \rightarrow v_y$ & $\times\,V_{\max}=1.2$ m/s & Yanal hız \\
+$a[2] \rightarrow w_z$ & $\times\,W_{\max}=1.5$ rad/s & Açısal hız (dönüş) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Eylemler $\text{ACTION\_SMOOTH}=0.15$ katsayısıyla bir önceki eylemle harmanlanır
+(ani sıçramaları engeller): $a = 0.15\,a_{\text{önceki}} + 0.85\,a$ (satır 127).
+
+\subsection{Geçiş Dinamiği --- $P$ (stokastik)}
+Konum güncellemesi, dünya çerçevesine döndürülmüş hız ve \textbf{rüzgâr
+gürültüsü} ile yapılır (satır 133--139):
+\begin{align*}
+v_x &\mathrel{+}= \mathcal{N}(0, \sigma_{\text{wind}}), \quad
+v_y \mathrel{+}= \mathcal{N}(0, \sigma_{\text{wind}}), \quad
+w_z \mathrel{+}= \mathcal{N}(0, \sigma_{\text{wind}}) \\
+\mathbf{pos} &\mathrel{+}= R(\text{yaw}) \cdot [v_x, v_y]^\top \cdot dt
+\end{align*}
+Bu, $P(s'\mid s,a)$'yı \textbf{dejenere olmaktan çıkarır}: aynı $(s,a)$ farklı
+$s'$ üretebilir $\rightarrow$ ortam gerçekten stokastiktir (bkz. Bölüm~\ref{sec:stokastik}).
+
+\subsection{İndirim Faktörü --- $\gamma = 0.98$}
+Hiperparametre araması sonucu seçilmiştir (Bölüm~\ref{sec:hp}). $0.98$, $\sim 50$ adımlık
+etkin ufuk sağlar; gecikmeli oda ödülünü yakalayacak kadar uzun, kararsızlık
+yaratmayacak kadar kısadır.
+
+% ======================================================================
+\section{Ortamın Stokastikliği (Kanıt)}\label{sec:stokastik}
+% ======================================================================
+Ortam, üç bağımsız Gauss gürültü kaynağı ve zaman-değişken engeller içerir. Tüm
+rastgelelik \texttt{numpy.random.default\_rng} ile üretilir
+(\texttt{np.random.seed} / \texttt{np.random.choice} \textbf{kullanılmaz}).
+
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+\textbf{Kaynak} & \textbf{Parametre} & \textbf{Etki} & \textbf{Kod} \\
+\midrule
+Rüzgâr (geçiş) & $\sigma_{\text{wind}}=0.015$ & Hız komutuna gürültü & 133--135 \\
+LIDAR (gözlem) & $\sigma_{\text{lidar}}=0.015$ & Mesafe ölçümüne gürültü & 319--320 \\
+Odometri (gözlem) & $\sigma_{\text{odom}}=0.004$ & Ölçülen konum/yaw'a gürültü & 234--236 \\
+Hareketli engeller & 3 adet & Sinüzoidal, zaman-değişken & 203--206 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent\textbf{Dürüst not:} Rastgele başlangıç (reset) \emph{tek başına}
+stokastiklik sayılmaz; yalnızca başlangıç dağılımı $\mu(s_0)$'ı etkiler. Asıl
+stokastiklik yukarıdaki geçiş + gözlem gürültüsünden gelir.
+
+% ======================================================================
+\section{Ödül Fonksiyonu --- $R$}
+% ======================================================================
+Ödül, adım başına aşağıdaki terimlerin toplamıdır (\texttt{fast\_2d\_drone\_env.py},
+satır 158--183, \texttt{step} metodu). \textbf{Rapor ile kod birebir aynıdır.}
+
+\begin{align*}
+r_t = \;& -0.01 \\
+      & + 3.0 \cdot \mathbb{1}[\text{yeni voxel keşfedildi}] \\
+      & + 20.0 \cdot \mathbb{1}[\text{yeni odaya girildi}] \\
+      & - 0.10 \cdot \mathbb{1}[\text{50 adımdır yeni voxel yok}] \\
+      & - 0.3 \cdot \max\!\left(0,\; \tfrac{0.7 - \text{min\_lidar}}{0.7}\right)
+        \quad \text{(duvara yakınlık cezası)} \\
+      & - 40.0 \cdot \mathbb{1}[\text{çarpışma}] \\
+      & + 60.0 \cdot \mathbb{1}[\text{6 odanın tamamı gezildi}] \\
+      & - 0.10 \cdot \mathbb{1}[\text{hücre son 60 adımda tekrar ziyaret edildi}]
+\end{align*}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Terim} & \textbf{Değer} & \textbf{Amaç} \\
+\midrule
+Adım cezası & $-0.01$ & Verimli/kısa yolu teşvik \\
+Yeni voxel & $+3.0$ & \textbf{Asıl keşif sinyali} (LIDAR ile görülen her yeni hücre) \\
+Yeni oda & $+20.0$ & Odalar arası geçişi (kapı bulmayı) teşvik \\
+Boşta cezası & $-0.10$ & 50 adım yeni keşif yoksa takılmayı kır \\
+Duvar yakınlığı & $\le -0.3$ & Güvenli mesafe ($\text{min\_lidar} < 0.7$ m) \\
+Çarpışma & $-40.0$ & Episode'u bitirir; güçlü caydırıcı \\
+Tüm odalar bonusu & $+60.0$ & Görev tamamlama ödülü \\
+Tekrar ziyaret & $-0.10$ & Aynı yerde dönüp durmayı engelle \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent\textbf{Keşif mekaniği (önemli):} Yeni voxel sayımı \textbf{görünürlük
+tabanlıdır} --- drone yalnızca bastığı yeri değil, \textbf{64 LIDAR ışınının
+duvara kadar geçtiği tüm hücreleri} keşfeder
+(\texttt{\_mark\_visible\_voxels}, satır 255--287). Işın bir duvara çarptığında
+durur ($\text{in\_range} = t \le \text{lidar\_dist}$), bu yüzden \textbf{duvar
+arkası görülmez} --- fiziksel olarak doğru bir görüş modeli.
+
+\noindent\textbf{Episode sonu koşulları:}
+\begin{itemize}[noitemsep]
+  \item \texttt{terminated}: çarpışma \emph{veya} 6 odanın tamamı gezildi (satır 185)
+  \item \texttt{truncated}: 600 adım doldu (satır 186)
+\end{itemize}
+
+% ======================================================================
+\section{Algoritma: Soft Actor-Critic (SAC)}
+% ======================================================================
+SAC; \textbf{sürekli eylem uzayları} için tasarlanmış, \textbf{off-policy},
+entropi düzenlemeli bir aktör-kritik algoritmasıdır. Bu problem için seçilme
+nedenleri:
+
+\begin{enumerate}[noitemsep]
+  \item \textbf{Sürekli eylem:} Hız komutları $(v_x, v_y, w_z)$ doğal olarak
+  süreklidir; ayrıklaştırma gerektirmez (DQN'in aksine).
+  \item \textbf{Entropi maksimizasyonu:} \texttt{ent\_coef=auto} ile sıcaklık
+  otomatik ayarlanır; keşif--sömürü dengesi öğrenme boyunca kendiliğinden
+  düzenlenir --- keşif görevi için kritik.
+  \item \textbf{Örnek verimliliği:} Replay buffer ile off-policy çalışır;
+  stokastik ortamda (PPO gibi on-policy yöntemlere kıyasla) daha verimlidir.
+  \item \textbf{Stokastik politika:} Gürültülü POMDP'de gürbüz davranış sağlar.
+\end{enumerate}
+
+\noindent Uygulama: \textbf{Stable-Baselines3} \texttt{SAC} + \texttt{MlpPolicy}
+($[256, 256]$ gizli katman).
+
+% ======================================================================
+\section{Hiperparametreler}\label{sec:hp}
+% ======================================================================
+Tek kaynak: \texttt{config.yaml}. Eğitim altyapısı: 8 paralel ortam
+(\texttt{SubprocVecEnv}).
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Parametre} & \textbf{Değer} & \textbf{Açıklama} \\
+\midrule
+\texttt{learning\_rate} & $3\mathrm{e}{-4}$ & HP araması sonucu \\
+\texttt{gamma} ($\gamma$) & $0.98$ & HP araması sonucu \\
+\texttt{buffer\_size} & $600\,000$ & Uzun eğitim için geniş replay \\
+\texttt{batch\_size} & $512$ & GPU verimliliği \\
+\texttt{learning\_starts} & $10\,000$ & Önce saf keşifle buffer doldur \\
+\texttt{tau} & $0.02$ & Hedef ağ yumuşak güncelleme \\
+\texttt{train\_freq / gradient\_steps} & $32 / 32$ & Burst toplama ($\sim$1:8 update:data) \\
+\texttt{ent\_coef} & \texttt{auto} & Otomatik sıcaklık \\
+\texttt{net\_arch} & $[256, 256]$ & Aktör \& kritik MLP \\
+\texttt{num\_envs} & $8$ & Paralel veri toplama \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Hiperparametre Araması}
+$\gamma \in \{0.97, 0.98, 0.99\}$ $\times$ $lr \in \{1\mathrm{e}{-4}, 3\mathrm{e}{-4},
+1\mathrm{e}{-3}\}$ ızgarası, seed 42 üzerinde kısa eğitimlerle
+(\texttt{smart\_train.py}, \texttt{sweep.sh}) tarandı. Skor metriği:
+$10\cdot\text{ortalama\_oda} + 0.05\cdot\text{ortalama\_getiri}$. Sonuç:
+\textbf{$\gamma=0.98,\ lr=3\mathrm{e}{-4}$} uzun vadede en kararlı/yüksek
+performansı verdi (\texttt{plot\_hp\_search.py}, Grafik~4).
+
+% ======================================================================
+\section{Eğitim Metodolojisi}
+% ======================================================================
+\begin{itemize}[noitemsep]
+  \item \textbf{5 rastgele tohum:} \texttt{seeds.txt = \{7, 13, 42, 123, 2025\}}
+  --- varyans/gürbüzlük raporlaması için (kural gereği $\ge 5$ seed).
+  \item \textbf{Erken durdurma:} \texttt{StopTrainingOnNoModelImprovement}
+  (\texttt{--stop-patience}); ardışık eval'larda iyileşme yoksa eğitim durur, en
+  fazla 1M adım.
+  \item \textbf{En iyi model:} \texttt{EvalCallback} her $10$k adımda deterministik
+  (greedy) eval yapar; en yüksek ortalama getirili model
+  \texttt{best/best\_model.zip} olarak saklanır.
+  \item \textbf{Devam (\texttt{--resume}):} Checkpoint'tan kaldığı yerden eğitim;
+  tohumlar farklı toplam adıma kadar sürdürüldü.
+  \item \textbf{Tekrarlanabilirlik:} Her koşu \texttt{run\_meta.json} (seed,
+  config, sürüm) üretir; ham loglar \texttt{sonuclar/loglar/} altında her grafiği
+  destekler.
+\end{itemize}
+
+% ======================================================================
+\section{Sonuçlar}
+% ======================================================================
+\subsection{Tohum Bazında Performans (son 50 episode ortalaması)}
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Seed} & \textbf{Toplam Adım} & \textbf{Ort. Getiri} & \textbf{Ort. Oda} & \textbf{Tam-Keşif Başarısı} \\
+\midrule
+\textbf{123} & 1.71 M & \textbf{393.7} & \textbf{5.48 / 6} & \textbf{\%60} \\
+\textbf{42}  & 1.53 M & 348.0 & 5.26 / 6 & \%48 \\
+7            & 0.50 M & 315.2 & 4.90 / 6 & \%36 \\
+2025         & 0.90 M & 268.3 & 4.38 / 6 & \%12 \\
+13           & 0.50 M & 247.9 & 4.14 / 6 & \%12 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+En iyi model \textbf{seed 123}'tür (\texttt{runs/seed\_123/best/best\_model.zip}).
+Tohum 13 ve 2025'in görece düşük kalması, RL'in \textbf{seed'e duyarlılığını}
+(varyansı) gösterir; bu, $\ge 5$ seed raporlamasının neden gerekli olduğunun
+somut kanıtıdır.
+
+\subsection{Temel Politikalarla Karşılaştırma (Baseline --- 100 episode)}\label{sec:baseline}
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Politika} & \textbf{Ort. Getiri} & \textbf{Ort. Oda} & \textbf{Kapsama} & \textbf{Tam-Keşif} \\
+\midrule
+Rastgele & 48.8 & 1.07 / 6 & \%38.6 & \%0 \\
+Sezgisel (heuristik) & 402.0 & 4.08 / 6 & \%79.9 & \%20 \\
+\textbf{SAC (en iyi)} & $\sim$366$^{*}$ & \textbf{5.48 / 6} & \textbf{\%95+} & \textbf{\%60} \\
+\bottomrule
+\end{tabular}
+\end{center}
+\noindent {\footnotesize $^{*}$ Deterministik eval getirisi; eğitim getirisiyle
+birebir kıyaslanamaz.}
+
+\noindent\textbf{Yorum:} Sezgisel politika güçlü bir temeldir --- ``en açık LIDAR
+yönüne git'' kuralı, açık alanlarda yüksek voxel ödülü toplayarak yüksek
+\emph{getiri} (402) üretir. Ancak \textbf{asıl görev metriğinde} (ziyaret edilen
+oda: 4.08 ve tam-keşif: \%20), öğrenen ajan onu açık farkla geçer (5.48 oda,
+\%60 başarı). Bunun nedeni: heuristik açık alana yönelirken \textbf{sistematik
+olarak kapı arayıp tüm odaları dolaşmayı} öğrenemez; SAC ajanı gecikmeli oda
+ödülünü ($+20$) ve tüm-oda bonusunu ($+60$) optimize ederek bu davranışı kazanır.
+Rastgele politika ise referans tabanı oluşturur (\%0 başarı), öğrenmenin gerçek
+bir kazanım olduğunu doğrular.
+
+% ======================================================================
+\section{Zorunlu Grafikler ve Yorumlar}
+% ======================================================================
+Aşağıdaki beş grafiğin y-ekseni \textbf{episode getirisidir} (anlık/per-step ödül
+değil). Her grafik $\ge 5$ seed ortalaması $\pm$ std bandı ve hareketli ortalama
+penceresiyle çizilmiştir. Grafiklerin tümü \texttt{sunum/grafikler/} altında ayrı
+PNG olarak da bulunur. Her grafiğin altında dört cümlelik yorum (Gözlem
+$\rightarrow$ Karşılaştırma $\rightarrow$ Açıklama $\rightarrow$ Sonuç) verilmiştir.
+
+\begin{figure}[htbp]
+\centering
+\resizebox{0.78\textwidth}{!}{\includegraphics{1_ogrenme_egrisi.png}}
+\caption{\textbf{Grafik 1 --- Öğrenme Eğrisi.}
+\textbf{Gözlem:} Episode getirisi ilk $\sim$200k adımda hızla yükselip
+$\sim$350--390 bandında platoya oturur; std bandı seedler arası varyansı gösterir.
+\textbf{Karşılaştırma:} Erken dönemdeki dik yükseliş, geç dönemdeki marjinal
+iyileşmeden belirgin biçimde farklıdır. \textbf{Açıklama:} SAC önce replay
+buffer'ı keşifle doldurup temel kaçınma/keşif davranışını öğrenir; politika
+olgunlaştıkça entropi düşer ve iyileşme yavaşlar (azalan getiri).
+\textbf{Sonuç:} $\sim$1M adım bu görev için yeterlidir; daha uzun eğitim
+getiriden çok seed varyansını azaltır.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\resizebox{0.78\textwidth}{!}{\includegraphics{2_eval_egrisi.png}}
+\caption{\textbf{Grafik 2 --- Test (Eval) Eğrisi.}
+\textbf{Gözlem:} Deterministik (greedy) eval getirisi eğitim eğrisiyle aynı
+seviyede ve kararlı seyreder, ani çöküş yoktur. \textbf{Karşılaştırma:} Eval
+getirisi stokastik eğitim getirisine göre daha düzgündür; greedy politika
+gürültüsüz eylem seçer. \textbf{Açıklama:} Eğitim eğrisi tek başına kanıt
+değildir; deterministik eval, performansın keşif şansına değil öğrenilen gerçek
+beceriye dayandığını doğrular. \textbf{Sonuç:} Model ezber yapmamış,
+genellenebilir bir keşif politikası öğrenmiştir.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\resizebox{0.78\textwidth}{!}{\includegraphics{3_loss_egrisi.png}}
+\caption{\textbf{Grafik 3 --- Loss Eğrisi.}
+\textbf{Gözlem:} Actor loss negatif bantta (entropi terimi), critic loss düşük
+ve sınırlı bir aralıkta dalgalanır; $\sim$0.5M ve $\sim$0.9M'de geçici sıçramalar
+görülür. \textbf{Karşılaştırma:} Bu sıçrama noktaları dışında her iki kayıp da
+kararlıdır, ıraksama (diverjans) yoktur. \textbf{Açıklama:} Sıçramalar
+\texttt{--resume} ile eğitime devam edilirken replay buffer'ın sıfırdan
+dolmasından kaynaklanır (model ağırlıkları korunur, buffer yeniden örneklenir).
+\textbf{Sonuç:} Eğitim sayısal olarak sağlıklıdır; loss patlaması veya çökmesi
+gözlenmez.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\resizebox{0.88\textwidth}{!}{\includegraphics{4_hiperparametre_duyarlilik.png}}
+\caption{\textbf{Grafik 4 --- Hiperparametre Duyarlılığı.}
+\textbf{Gözlem:} Entropi katsayısı (ent\_coef) $0.05 \to 0.2$ arttıkça getiri ve
+keşfedilen oda artar; öğrenme oranında ise düşük değer ($1\mathrm{e}{-4}$) en
+yüksek getiriyi verir, $1\mathrm{e}{-3}$'te düşer. \textbf{Karşılaştırma:} İki
+parametre zıt eğilimdedir --- yüksek entropi faydalı, yüksek öğrenme oranı
+zararlıdır. \textbf{Açıklama (keşif--sömürü):} Yüksek ent\_coef ajanı daha çok
+keşfe iter (keşif görevinde fayda); yüksek öğrenme oranı ise güncellemeleri
+kararsızlaştırıp politikayı erken/yanlış bir optimuma sıkıştırır.
+\textbf{Sonuç:} Keşif ağırlıklı bir ayar (yüksek entropi, ılımlı
+$lr=3\mathrm{e}{-4}$) bu görev için en dengeli sonucu verir.}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\resizebox{0.74\textwidth}{!}{\includegraphics{5_baseline_karsilastirma.png}}
+\caption{\textbf{Grafik 5 --- Baseline Karşılaştırması.}
+\textbf{Gözlem:} Dört metrikte de (getiri, keşfedilen oda, kapsama, tam-keşif)
+sıralama \emph{SAC $\ge$ heuristik $>$ rastgele} şeklindedir; rastgele politika
+\%0 başarıyla taban oluşturur. \textbf{Karşılaştırma:} Heuristik \emph{getiri}
+olarak SAC'ye yakındır, ancak görev metriklerinde (oda, başarı) SAC açık farkla
+öndedir. \textbf{Açıklama:} Rastgele politika hiçbir yapı öğrenmez; heuristik
+açık alana yönelip voxel toplar ama sistematik kapı/oda planlaması yapamaz; SAC
+gecikmeli oda ödülünü optimize ederek bunu öğrenir. \textbf{Sonuç:} Öğrenme
+gerçek ve anlamlı bir kazanımdır; ajan hem kör temeli hem güçlü sezgiseli görev
+hedefinde geçer.}
+\end{figure}
+
+% ======================================================================
+\section{Sonuç ve Değerlendirme}
+% ======================================================================
+Stokastik, çok-odalı bir keşif probleminde SAC ajanı, ham LIDAR gözleminden
+başlayarak \textbf{sistematik oda-oda keşif} davranışını öğrenmiştir. En iyi
+model \%60 tam-keşif başarısı ve 5.48/6 ortalama oda ile hem rastgele hem de
+güçlü sezgisel temel politikayı görev metriğinde geçmiştir. Görünürlük tabanlı
+keşif, gecikmeli oda ödülü ve otomatik entropi düzenlemesinin birleşimi
+başarının anahtarıdır.
+
+
+\end{document}

@@ -37,12 +37,17 @@ python3 evaluate.py --runs-root "$RUNS_ROOT" --seeds-file "$SEEDS_FILE" \
 echo "=== 3) BASELINE (random + heuristic) ==="
 python3 baseline.py --seeds-file "$SEEDS_FILE" --out ../sonuclar/baseline_per_episode.csv
 
-echo "=== 4) GRAFIKLER + sonuclar.csv ==="
+echo "=== 4) 5 ZORUNLU GRAFIK + sonuclar.csv ==="
 python3 plot_results.py --runs-root "$RUNS_ROOT" --seeds-file "$SEEDS_FILE" \
     --eval-csv ../sonuclar/eval_per_episode.csv \
     --baseline-csv ../sonuclar/baseline_per_episode.csv \
     --hp-root runs_hp \
     --out ../sunum/grafikler --summary-out ../sonuclar/sonuclar.csv
+
+echo "=== 5) PER-SEED GRAFIKLER (ogrenme/eval/loss + dashboard) ==="
+python3 plot_per_seed.py --runs-root "$RUNS_ROOT" --seeds-file "$SEEDS_FILE" \
+    --eval-csv ../sonuclar/eval_per_episode.csv \
+    --out ../sunum/grafikler/per_seed
 
 echo "=== ham loglari sonuclar/loglar/ altina kopyala ==="
 mkdir -p ../sonuclar/loglar

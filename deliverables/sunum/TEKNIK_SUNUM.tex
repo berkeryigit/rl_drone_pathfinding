@@ -1,0 +1,393 @@
+% ======================================================================
+%  Sunum (Beamer) — Pekistirmeli Ogrenme ile Drone Kesif/Yol Bulma
+%  Derleme:  pdflatex TEKNIK_SUNUM.tex   (iki kez)
+%  Grafikler:  grafikler/ klasorunden gomulur (run_all.sh uretir)
+% ======================================================================
+\documentclass[aspectratio=169,11pt]{beamer}
+
+% --- Turkce + kodlama ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+% Turkce babel '=' karakterini shorthand yapar (\begin{document}'te aktive eder)
+% ve \includegraphics[width=...] keyval'ini bozar. shorthands=off kalici kapatir.
+\usepackage[turkish,shorthands=off]{babel}
+\usepackage{lmodern}
+
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{colortbl}  % \rowcolor icin (beamer xcolor'i zaten yukler)
+
+% --- Tema ---
+\usetheme{Madrid}
+\usecolortheme{seahorse}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{caption}{\raggedright\insertcaption\par}
+\setbeamercovered{transparent}
+
+% Grafikler grafikler/ klasorunden gomulur. graphicspath sayesinde dosya
+% adi yeterli; alt klasorler (per_seed/...) yine acikca yazilir.
+% ONEMLI: PDF'e cevirirken grafikler/ klasorunu .tex ile AYNI yerde tutun
+% (Overleaf'e yukluyorsaniz klasoru de yukleyin).
+\graphicspath{{grafikler/}{./}}
+
+% \resizebox kullaniyoruz (icinde 'width='/'height=' YOK) => babel '=' shorthand
+% sorunundan tamamen bagimsiz, her zaman calisir.
+% \grafik{dosya}{yukseklik}  — yukseklik tabanli (kare/dikey grafikler)
+\newcommand{\grafik}[2]{%
+  \begin{center}\resizebox{!}{#2}{\includegraphics{#1}}\end{center}%
+}
+% \grafikw{dosya}{genislik} — genislik tabanli (genis/yatay grafikler)
+\newcommand{\grafikw}[2]{%
+  \begin{center}\resizebox{#2}{!}{\includegraphics{#1}}\end{center}%
+}
+
+\title[RL Drone Keşif]{Pekiştirmeli Öğrenme ile Çok-Odalı Ortamda\\Drone Keşif / Yol Bulma}
+\subtitle{Soft Actor-Critic (SAC) ile Otonom Keşif}
+\author[M. A. Albayrak]{Mehmet Akif Albayrak \\ \small Öğrenci No: 220202082}
+\date{13 Haziran 2026}
+
+\begin{document}
+
+% ---------------------------------------------------------------------
+\begin{frame}[plain]
+  \titlepage
+\end{frame}
+
+% ---------------------------------------------------------------------
+\begin{frame}{İçerik}
+  \tableofcontents
+\end{frame}
+
+% =====================================================================
+\section{Problem ve Ortam}
+% =====================================================================
+\begin{frame}{Problem Tanımı}
+  \textbf{Amaç:} Altı odalı kapalı bir ortamda otonom dronun \alert{tüm odaları
+  keşfetmesi} (coverage / exploration).
+  \vfill
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \begin{itemize}
+        \item Dünya: $16\times 16$ m, duvarlarla \textbf{6 odaya} bölünmüş
+        \item Odalar arası geçiş: \textbf{5 kapı}
+        \item Keşif ızgarası: $0.5$ m hücre $\rightarrow 1024$ hücre
+        \item Episode: en çok $600$ adım ($\approx 72$ s)
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.45\textwidth}
+      \footnotesize
+      \textbf{Neden zor bir RL problemi?}
+      \begin{itemize}
+        \item Gecikmeli ödül (önce koridoru geç, sonra oda)
+        \item Ardışık karar
+        \item Kısmi gözlemlenebilirlik (POMDP)
+        \item Stokastik dinamik
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Neden 2B Ortamda Eğitim?}
+  \begin{itemize}
+    \item Eğitim \alert{yalnızca} hızlı 2B Gymnasium ortamında
+    (\texttt{fast\_2d\_drone\_env.py}) yapılır.
+    \item Gazebo (3B) eğitim için \textbf{kullanılmaz} --- yalnızca test/gösterim.
+    \item \textbf{Kazanç:} $\sim$onlarca kat hız $\Rightarrow$ milyon adıma kadar
+    eğitim mümkün.
+    \item Aynı MDP korunur: LIDAR, ardışık eylem, gecikmeli ödül, stokastik
+    gürültü.
+  \end{itemize}
+  \vfill
+  \begin{block}{Saf Python + numpy + gymnasium}
+    Ağır bağımlılık yok; kurallara uygun (\texttt{import gymnasium},
+    \texttt{numpy.random.default\_rng}).
+  \end{block}
+\end{frame}
+
+% =====================================================================
+\section{MDP Formülasyonu}
+% =====================================================================
+\begin{frame}{Durum ve Eylem Uzayı}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Gözlem $S$ (75 boyut)}
+      \footnotesize
+      \begin{tabular}{lc}
+        \toprule
+        Bileşen & Boyut \\
+        \midrule
+        LIDAR ışınları ($5.625^\circ$) & 64 \\
+        Yaw (cos, sin) & 2 \\
+        Önceki eylem & 3 \\
+        İlerleme + oda & 2 \\
+        min-LIDAR + boşta & 2 \\
+        Kapı + duvar mesafesi & 2 \\
+        \bottomrule
+      \end{tabular}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{Eylem $A$ (sürekli, 3 boyut)}
+      \footnotesize
+      \begin{tabular}{ll}
+        \toprule
+        Eylem & Ölçek \\
+        \midrule
+        $v_x$ (ileri/geri) & $1.2$ m/s \\
+        $v_y$ (yanal) & $1.2$ m/s \\
+        $w_z$ (dönüş) & $1.5$ rad/s \\
+        \bottomrule
+      \end{tabular}
+      \vfill
+      \scriptsize
+      Eylem yumuşatma: $a = 0.15\,a_{\text{önceki}} + 0.85\,a$
+    \end{column}
+  \end{columns}
+  \vfill
+  \footnotesize
+  \textbf{POMDP:} Gözleme giren konum/yaw \emph{ölçülen} (gürültülü) değerlerdir;
+  gerçek konum bozulmaz.
+\end{frame}
+
+\begin{frame}{Ortam Gerçekten Stokastik (Kanıt)}
+  Üç bağımsız Gauss gürültü kaynağı + hareketli engeller:
+  \vfill
+  \begin{center}
+  \begin{tabular}{lll}
+    \toprule
+    \textbf{Kaynak} & \textbf{Parametre} & \textbf{Etki} \\
+    \midrule
+    Rüzgâr (geçiş) & $\sigma_{\text{wind}}=0.015$ & Hız komutuna gürültü \\
+    LIDAR (gözlem) & $\sigma_{\text{lidar}}=0.015$ & Mesafe ölçümüne gürültü \\
+    Odometri (gözlem) & $\sigma_{\text{odom}}=0.004$ & Ölçülen konum/yaw'a gürültü \\
+    Hareketli engeller & 3 adet & Sinüzoidal, zaman-değişken \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \vfill
+  \begin{alertblock}{Sonuç}
+    Aynı $(s,a)$ farklı $s'$ üretebilir $\Rightarrow P(s'\mid s,a)$ dejenere
+    değil. Rastgele başlangıç tek başına stokastiklik \emph{sayılmaz}.
+  \end{alertblock}
+\end{frame}
+
+% =====================================================================
+\section{Ödül Fonksiyonu}
+% =====================================================================
+\begin{frame}{Ödül Fonksiyonu $R$ \small (rapor ile kod birebir)}
+  \small
+  \begin{align*}
+  r_t = \;& -0.01
+          + 3.0\cdot\mathbb{1}[\text{yeni voxel}]
+          + 20.0\cdot\mathbb{1}[\text{yeni oda}] \\
+        & - 0.10\cdot\mathbb{1}[\text{50 adım boşta}]
+          - 0.3\cdot\max\!\left(0, \tfrac{0.7-\text{min\_lidar}}{0.7}\right) \\
+        & - 40.0\cdot\mathbb{1}[\text{çarpışma}]
+          + 60.0\cdot\mathbb{1}[\text{6 oda tamam}]
+          - 0.10\cdot\mathbb{1}[\text{tekrar ziyaret}]
+  \end{align*}
+  \vfill
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \footnotesize
+      \textbf{Teşvikler}
+      \begin{itemize}
+        \item \textcolor{green!50!black}{$+3.0$} yeni voxel (asıl keşif sinyali)
+        \item \textcolor{green!50!black}{$+20.0$} yeni oda (kapı bul)
+        \item \textcolor{green!50!black}{$+60.0$} tüm odalar bonusu
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \footnotesize
+      \textbf{Cezalar}
+      \begin{itemize}
+        \item \textcolor{red!70!black}{$-40.0$} çarpışma (episode biter)
+        \item \textcolor{red!70!black}{$\le -0.3$} duvara yakınlık
+        \item \textcolor{red!70!black}{$-0.10$} boşta / tekrar ziyaret
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Görünürlük Tabanlı Keşif}
+  \begin{columns}[T]
+    \begin{column}{0.58\textwidth}
+      \begin{itemize}
+        \item Drone yalnızca \textbf{bastığı yeri değil}, 64 LIDAR ışınının
+        \textbf{duvara kadar geçtiği tüm hücreleri} keşfeder.
+        \item Işın duvara çarpınca durur:
+        $\text{in\_range} = t \le \text{lidar\_dist}$
+        \item $\Rightarrow$ \alert{Duvar arkası görülmez} --- fiziksel olarak
+        doğru görüş modeli.
+      \end{itemize}
+      \vfill
+      \footnotesize
+      Beyaz "gölge" bölgeler = hiç o açıdan bakılamayan, erişilemeyen köşeler.
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \grafik{demo_son.png}{4.5cm}
+      \centering\scriptsize 2B demo --- son kare (keşif haritası)
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% =====================================================================
+\section{Algoritma ve Eğitim}
+% =====================================================================
+\begin{frame}{Neden Soft Actor-Critic (SAC)?}
+  \begin{itemize}
+    \item \textbf{Sürekli eylem:} Hız komutları doğal olarak sürekli ---
+    ayrıklaştırma yok (DQN'in aksine).
+    \item \textbf{Entropi maksimizasyonu:} \texttt{ent\_coef=auto} ---
+    keşif--sömürü dengesi kendiliğinden ayarlanır (keşif görevi için kritik).
+    \item \textbf{Örnek verimliliği:} Off-policy + replay buffer ---
+    stokastik ortamda PPO'dan verimli.
+    \item \textbf{Stokastik politika:} Gürültülü POMDP'de gürbüz.
+  \end{itemize}
+  \vfill
+  \begin{block}{Uygulama}
+    Stable-Baselines3 \texttt{SAC} + \texttt{MlpPolicy} $[256,256]$,
+    8 paralel ortam.
+  \end{block}
+\end{frame}
+
+\begin{frame}{Hiperparametreler ve Arama}
+  \begin{columns}[T]
+    \begin{column}{0.46\textwidth}
+      \footnotesize
+      \begin{tabular}{ll}
+        \toprule
+        Parametre & Değer \\
+        \midrule
+        learning\_rate & $3\mathrm{e}{-4}$ \\
+        gamma ($\gamma$) & $0.98$ \\
+        buffer\_size & $600\,000$ \\
+        batch\_size & $512$ \\
+        tau & $0.02$ \\
+        train/grad steps & $32/32$ \\
+        ent\_coef & auto \\
+        net\_arch & $[256,256]$ \\
+        \bottomrule
+      \end{tabular}
+    \end{column}
+    \begin{column}{0.54\textwidth}
+      \footnotesize
+      \textbf{Izgara araması} ($\gamma\times lr$, seed 42):
+      \begin{itemize}
+        \item $\gamma\in\{0.97,0.98,0.99\}$
+        \item $lr\in\{1\mathrm{e}{-4},3\mathrm{e}{-4},1\mathrm{e}{-3}\}$
+        \item Skor: $10\cdot\text{oda} + 0.05\cdot\text{getiri}$
+      \end{itemize}
+      \alert{En iyi: $\gamma=0.98,\ lr=3\mathrm{e}{-4}$}
+      ($lr=1\mathrm{e}{-3}$ kısa vadede iyi, uzunda kararsız).
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\begin{frame}{Hiperparametre Duyarlılığı (Grafik 4)}
+  \grafik{4_hiperparametre_duyarlilik.png}{6.3cm}
+  \centering\scriptsize
+  Her parametre kendi satırında (ent\_coef linear, learning\_rate log eksen).
+  Kırmızı halka = en iyi değer.
+\end{frame}
+
+\begin{frame}{Hiperparametre Arama ($\gamma \times lr$ Izgarası)}
+  \grafik{hp_arama_sonuclari.png}{6.8cm}
+\end{frame}
+
+\begin{frame}{Eğitim Metodolojisi}
+  \begin{itemize}
+    \item \textbf{5 rastgele tohum:} $\{7, 13, 42, 123, 2025\}$ --- varyans
+    raporlaması ($\ge 5$ kural gereği).
+    \item \textbf{Erken durdurma:} ardışık eval'larda iyileşme yoksa dur
+    (\texttt{--stop-patience}), en fazla 1M adım.
+    \item \textbf{En iyi model:} her $10$k adımda deterministik eval $\rightarrow$
+    \texttt{best\_model.zip}.
+    \item \textbf{Devam:} \texttt{--resume} ile checkpoint'tan sürdürme.
+    \item \textbf{Tekrarlanabilirlik:} \texttt{run\_meta.json} + ham loglar her
+    grafiği destekler.
+  \end{itemize}
+\end{frame}
+
+% =====================================================================
+\section{Sonuçlar}
+% =====================================================================
+\begin{frame}{Tohum Bazında Performans}
+  \begin{center}
+  \begin{tabular}{lcccc}
+    \toprule
+    \textbf{Seed} & \textbf{Adım} & \textbf{Getiri} & \textbf{Oda} & \textbf{Başarı} \\
+    \midrule
+    \rowcolor{green!15} \textbf{123} & 1.71 M & \textbf{393.7} & \textbf{5.48/6} & \textbf{\%60} \\
+    \textbf{42}  & 1.53 M & 348.0 & 5.26/6 & \%48 \\
+    7            & 0.50 M & 315.2 & 4.90/6 & \%36 \\
+    2025         & 0.90 M & 268.3 & 4.38/6 & \%12 \\
+    13           & 0.50 M & 247.9 & 4.14/6 & \%12 \\
+    \bottomrule
+  \end{tabular}
+  \end{center}
+  \vfill
+  \footnotesize
+  En iyi: \alert{seed 123} --- \%60 tam-keşif, 5.48/6 oda. Tohum 13/2025'in geri
+  kalması RL'in \textbf{seed varyansını} gösterir (5 seed raporlamanın sebebi).
+\end{frame}
+
+\begin{frame}{Baseline Karşılaştırması (Grafik 5)}
+  \grafik{5_baseline_karsilastirma.png}{6.2cm}
+  \centering\footnotesize
+  Dört metrik: getiri / keşfedilen oda / kapsama / tam-keşif başarısı.
+  \alert{Görev metriklerinde SAC önde}; rastgele politika referans tabanı (\%0).
+\end{frame}
+
+% =====================================================================
+\section{Tohum Bazında Detay (Ayrı Ayrı)}
+% =====================================================================
+\begin{frame}{Seed 123 --- En İyi Model}
+  \grafikw{per_seed/seed_123_dashboard.png}{0.76\linewidth}
+\end{frame}
+
+\begin{frame}{Seed 42}
+  \grafikw{per_seed/seed_42_dashboard.png}{0.76\linewidth}
+\end{frame}
+
+\begin{frame}{Seed 7}
+  \grafikw{per_seed/seed_7_dashboard.png}{0.76\linewidth}
+\end{frame}
+
+\begin{frame}{Seed 13}
+  \grafikw{per_seed/seed_13_dashboard.png}{0.76\linewidth}
+\end{frame}
+
+\begin{frame}{Seed 2025}
+  \grafikw{per_seed/seed_2025_dashboard.png}{0.76\linewidth}
+\end{frame}
+
+\begin{frame}{Seed 123 --- Ayrı Metrik Eğrileri}
+  \begin{columns}[c]
+    \begin{column}{0.5\textwidth}
+      \grafikw{per_seed/ogrenme_egrisi/seed_123.png}{\linewidth}
+      \centering\scriptsize Öğrenme eğrisi (1.71M adım)
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \grafikw{per_seed/loss_egrisi/seed_123.png}{\linewidth}
+      \centering\scriptsize Actor \& critic loss
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% =====================================================================
+\section{Sonuç}
+% =====================================================================
+\begin{frame}{Sonuç ve Değerlendirme}
+  \begin{itemize}
+    \item SAC ajanı ham LIDAR'dan \alert{sistematik oda-oda keşif} davranışını
+    öğrendi.
+    \item En iyi model: \%60 tam-keşif, 5.48/6 oda --- hem rastgele hem güçlü
+    heuristik temeli geçti.
+    \item Başarının anahtarı: görünürlük tabanlı keşif + gecikmeli oda ödülü +
+    otomatik entropi.
+  \end{itemize}
+\end{frame}
+
+\end{document}

@@ -1,87 +1,92 @@
-# DEGISIKLIK LISTESI
+# Değişiklik Listesi
 
-Bu belge, onceki gondedrime gore yapilan **her** degisikligi madde madde listeler.
-(Beyan edilmeyen degisiklik yapilmamis sayilir.)
+Önceki gönderime göre yapılan değişiklikler madde madde aşağıdadır.
+Beyan edilmeyen değişiklik yapılmamış sayılır.
 
-> Not: Ilk teslim iseniz bu dosyayi tek satirla "ilk teslim" olarak degistirin.
-> Asagidaki liste, mevcut repodaki onceki SAC/Gazebo calismasina gore yapilan
-> degisiklikleri belgeler.
-
-## 1. Egitim mimarisi: SADECE 2D (Gazebo egitimden cikarildi)
-- Egitim artik **yalnizca** `kod/env/fast_2d_drone_env.py` (saf Python + numpy +
-  gymnasium) uzerinde yapilir. Gazebo egitim dongusunden cikarildi.
-- Gazebo **yalnizca** egitilmis politikanin testi/gosterimi icin kullanilir
-  (ana repo: `ros2_ws/.../agents/eval_sac.py`).
-- Gerekce: 2D ortam ile egitim ~onlarca kat hizli; ayni MDP (lidar, ardisik
-  eylem, gecikmeli odul, stokastik dinamik) korunuyor.
-
-## 2. Hiz / replay buffer ayarlari (egitimi hizlandirma)
-`kod/config.yaml` ve `kod/train.py` (ayrica ana repo `train_sac_fast_2d.py`):
-- `buffer_size`: 250.000 -> **600.000** (100k+ step icin yeterli replay kapasitesi)
-- `batch_size`: 256 -> **512** (GPU verimliligi)
-- `learning_starts`: 5.000 -> **10.000**
-- `train_freq`: (1, step) -> **(32, step)** + `gradient_steps`: 1 -> **32**
-  (burst toplama; Python dongu yuku azalir, ~1:8 update:data orani korunur)
-- `optimize_memory_usage` opsiyonu eklendi (cok buyuk buffer'da RAM ~yariya iner)
-- `total_timesteps` varsayilani 100.000 -> **300.000** (ve `--timesteps` ile
-  istenildigi kadar artirilabilir)
-
-## 2b. Lidar cozunurlugu 32 -> 64 (gozlem boyutu 43 -> 75)
-- `LIDAR_BINS`: 32 -> **64** (acisal cozunurluk 11.25° -> 5.625°).
-- `observation_space` artik **dinamik**: `shape=(LIDAR_BINS + 11,)` = 75
-  (onceden hardcoded `shape=(43,)` idi -> gizli kuplaj giderildi).
-- Hem 2D egitim ortami (`fast_2d_drone_env.py`) hem Gazebo test ortami
-  (`drone_exploration_env.py`) **birlikte** guncellendi; Gazebo `_bin_lidar`
-  ham 360 nokta /scan'i 64 bin'e indirir => 2D'de egitilen model Gazebo testinde
-  ayni 75-d gozlemle calisir.
-- NOT: Eski 43-d egitilmis modeller bu degisiklikten sonra yuklenemez; sifirdan
-  egitim gerekir (zaten yeniden egitiliyor).
-
-## 2c. Stokastisite: odom_noise artik uygulaniyor (olu parametre giderildi)
-- `odom_noise_std` onceden dataclass'ta tanimliydi ama **hicbir yerde kullanilmiyordu**
-  (kod/iddia tutarsizligi). Artik `_make_obs` icinde uygulaniyor:
-  GERCEK poz/yaw (dinamik + carpisma) bozulmadan, **olculen** poz/yaw gozleme
-  gurultulu girer => stokastik gozlem (POMDP tadi).
-- Ortamin stokastik oldugunun kod-satiri kaniti (savunma icin):
-  - Gecis gurultusu (ruzgar): `fast_2d_drone_env.py` step(), `self._rng.normal(...)`
-    vx/vy/wz uzerine => ayni (s,a) -> farkli s'  (P(s'|s,a) dejenere degil).
-  - Gozlem gurultusu (lidar): `_compute_lidar`, `self._rng.normal(...)`.
-  - Gozlem gurultusu (odom): `_make_obs`, olculen poz/yaw.
-- NOT: Rastgele baslangic (reset) tek basina stokastik SAYILMAZ; yalnizca baslangic
-  dagilimi mu(s0)'i etkiler. Hareketli engeller deterministik (sin(adim)).
-
-## 3. Yeni teslim pipeline'i (kod/)
-Onceki gonderimde tek-seed, dagil grafik vardi. Eklenenler:
-- `train.py` — config.yaml tabanli **tek-seed** egitim (CLI override'lar: timesteps,
-  num_envs, lr, ent_coef, device, out).
-- `evaluate.py` — **deterministik (greedy)** eval, per-episode CSV (eval egrisi/B2).
-- `baseline.py` — **random + heuristik** baseline (B5 baseline grafigi).
-- `plot_results.py` — **5 zorunlu grafik** (ayri PNG) + `sonuclar.csv`.
-- `run_all.sh` — tum seed egitim -> eval -> baseline -> grafik tek komut.
-- `sweep.sh` — hiperparametre duyarliligi sweep (2 param x 3 deger, B4).
-- `seeds.txt` (5 seed), `requirements.txt` (**== sabit surum**), `config.yaml`.
-
-## 4. Grafik standardina uyum
-- Tum grafiklerde y-ekseni **episode getirisi** (anlik/per-step odul DEGIL).
-  Log kolonu `ep_reward` -> **`ep_return`** olarak yeniden adlandirildi (netlik).
-- Her grafikte: baslik, birimli eksen etiketi, lejant, **>=5 seed mean +/- std bandi**,
-  hareketli ortalama penceresi (lejant basliginda belirtildi).
-
-## 5. Kural ihlali kontrolu (sert kurallar)
-- `import gym` (eski API): repoda **yok** — her yerde `import gymnasium as gym`.
-- `np.random.seed()` / `np.random.choice()`: repoda **yok** — tum rastgelelik
-  `numpy.random.default_rng` ile (ortam RNG'si, baseline RNG'si, eval seed'leri).
-- Bu maddeler dogrulandi; ihlal bulunmadi.
-
-## 6. Teslim klasor yapisi
-Rehber §A'ya birebir uyacak iskelet olusturuldu:
-`rapor/  sunum/grafikler/  kod/{env, train.py, evaluate.py, config.yaml,
-requirements.txt, seeds.txt, run_all.sh, README.md}  sonuclar/{loglar, sonuclar.csv}`
-ve bu `DEGISIKLIK_LISTESI.md`.
+**Önceki teslim:** tek seed, Gazebo üzerinde eğitim, dağınık tek grafik.
+**Bu teslim:** çoklu-seed 2B eğitim, deterministik değerlendirme, baseline
+karşılaştırması ve tam grafik/log pipeline'ı. Aşağıda eklenen özellikler ve
+yapılan değişiklikler listelenmiştir.
 
 ---
-### Henuz uretilmesi gerekenler (egitim kullanici tarafindan calistirilacak)
-- `bash kod/run_all.sh` -> `sonuclar/loglar/` ham loglari + `sunum/grafikler/` 5 PNG
-  + `sonuclar/sonuclar.csv` doldurulacak.
-- `bash kod/sweep.sh` -> Grafik 4 (hiperparametre duyarliligi) verisi.
-- Her grafik altina 4 cumlelik yorum (Gozlem->Karsilastirma->Aciklama->Sonuc) rapora.
+
+## Eklenen özellikler
+
+1. **Hızlı 2B eğitim ortamı** — Eğitim için saf Python + numpy + gymnasium ile
+   yazılmış yeni bir 2B ortam (`env/fast_2d_drone_env.py`). Gazebo eğitim
+   döngüsünden çıkarıldı; yalnızca test/gösterim için kullanılıyor.
+
+2. **Görünürlük tabanlı keşif** — Drone sadece bastığı yeri değil, LIDAR
+   ışınlarının duvara kadar gördüğü tüm hücreleri keşfeder. Işın duvara çarpınca
+   durur, yani duvar arkası görülmez (gerçekçi görüş modeli).
+
+3. **Stokastik ortam (POMDP)** — Ortama üç bağımsız gürültü kaynağı eklendi:
+   rüzgâr (hareket), LIDAR (algılama) ve odometri (konum ölçümü). Gerçek konum
+   bozulmaz; yalnızca gözleme giren ölçümler gürültülüdür.
+
+4. **Çoklu-seed eğitim** — Tek seed yerine 5 farklı tohumla eğitim
+   (`seeds.txt`), sonuçların varyansını/gürbüzlüğünü raporlamak için.
+
+5. **Hiperparametre araması** — İndirim faktörü (gamma) ve öğrenme oranını
+   ızgara taramasıyla deneyip en iyisini seçen otomatik arama
+   (`smart_train.py`, `sweep.sh`).
+
+6. **En iyi modeli otomatik kaydetme** — Eğitim boyunca düzenli deterministik
+   değerlendirme yapılır; en yüksek skorlu model `best_model.zip` olarak ayrı
+   saklanır.
+
+7. **Erken durdurma** — Performans bir süre iyileşmezse eğitim kendiliğinden
+   durur (`--stop-patience`), gereksiz hesaplama yapılmaz.
+
+8. **Checkpoint'ten devam** — Eğitim durdurulup `--resume` ile kaldığı yerden
+   sürdürülebilir; log üzerine yazmaz, ekleme yapar.
+
+9. **Deterministik değerlendirme** — Eğitilmiş modeli greedy politikayla
+   çalıştırıp episode bazında sonuç üreten ayrı betik (`evaluate.py`).
+
+10. **Baseline karşılaştırması** — Rastgele ve sezgisel (heuristik) iki temel
+    politika eklendi (`baseline.py`); ajanın öğrenmesinin gerçek kazanım
+    olduğunu göstermek için.
+
+11. **5 zorunlu grafik** — Öğrenme, eval, loss, hiperparametre duyarlılığı ve
+    baseline karşılaştırması grafiklerini ayrı PNG olarak üreten betik
+    (`plot_results.py`). Baseline grafiği getiri, keşfedilen oda, kapsama ve
+    başarı olmak üzere dört metriği birden gösterir.
+
+12. **Tohum bazında bireysel grafikler** — Her seed için ayrı öğrenme, eval,
+    loss ve özet (dashboard) grafikleri (`plot_per_seed.py`).
+
+13. **Hiperparametre arama görselleştirmesi** — Izgara aramasının sonuçlarını
+    ısı haritası ve öğrenme eğrileriyle gösteren grafik (`plot_hp_search.py`).
+
+14. **2B demo kaydı** — En iyi modeli 2B ortamda çalıştırıp keşfini animasyonlu
+    GIF + son kare olarak kaydeden betik (`record_2d.py`).
+
+15. **Tek komutluk pipeline** — Tüm seed eğitimi → değerlendirme → baseline →
+    grafikler → özet CSV → ham log kopyalama tek komutta (`run_all.sh`).
+
+16. **Daha hassas algılama** — LIDAR çözünürlüğü artırıldı (açısal çözünürlük
+    iki katına çıktı); gözlem boyutu sabit-kodlu olmaktan çıkarılıp dinamik
+    hale getirildi.
+
+---
+
+## Grafik standardına uyum
+
+- Tüm grafiklerde y-ekseni **episode getirisi** (anlık/per-step ödül değil).
+- Her grafikte başlık, birimli eksen etiketi, lejant, ≥5 seed ortalama ± std
+  bandı ve hareketli ortalama penceresi var.
+- Ham loglar `sonuclar/loglar/` altında her grafiği destekler.
+
+## Kural uygunluğu
+
+- `import gymnasium as gym` kullanılır; eski `import gym` **yok**.
+- Tüm rastgelelik `numpy.random.default_rng` ile; `np.random.seed` /
+  `np.random.choice` **yok**.
+- Ödül formülü rapor ile kod (`fast_2d_drone_env.py`, `step`) birebir aynıdır.
+
+## Teslim klasör yapısı
+
+`rapor/  sunum/grafikler/  kod/{env, train.py, evaluate.py, config.yaml,
+requirements.txt, seeds.txt, run_all.sh, README.md}  sonuclar/{loglar,
+sonuclar.csv}` ve bu `DEGISIKLIK_LISTESI.md`.

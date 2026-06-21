@@ -8,25 +8,55 @@ __pycache__/
 venv/
 .env
 
-# --- ros2 ---
+# --- ros2 / colcon ---
 ros2_ws/build/
 ros2_ws/install/
 ros2_ws/log/
+build/
+install/
+log/
 
-# --- training artifacts ---
+# --- training artifacts (model agirliklari pushlanmaz) ---
 runs/
+runs_hp/
+runs_backup_*/
+hp_search/
 checkpoints/
 *.zip
 *.pt
 *.ckpt
+*.npz
 tb/
 events.out.tfevents.*
+
+# --- LaTeX ara dosyalari ---
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
+*.nav
+*.snm
+*.vrb
 
 # --- editor / OS ---
 .vscode/
 .idea/
 .DS_Store
 *.swp
+Thumbs.db
+desktop.ini
 
 # --- docker ---
 .docker/
+
+# --- kisisel sinav/savunma hazirligi (paylasimli repoya gitmesin) ---
+deliverables/SAVUNMA_HAZIRLIK.*
+deliverables/FINAL_SINAV_HAZIRLIK.*
+deliverables/SUNUM_KONUSMA_METNI.*

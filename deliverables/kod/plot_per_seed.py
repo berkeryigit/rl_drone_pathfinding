@@ -1,22 +1,23 @@
-"""Her seed icin bireysel 2x2 dashboard grafigi + tum seed karsilastirmasi.
+"""Her seed icin AYRI grafikler: ogrenme egrisi, eval egrisi, loss egrisi.
 
-Panel basina (her seed):
-  [1] Egitim episode getirisi  (ham soluk + yumusatilmis kalin)
-  [2] Deterministik eval getirisi  (EvalCallback'ten evaluations.npz)
-  [3] Kesif orani / Coverage %
-  [4] Ziyaret edilen oda sayisi
+Ayrica her seed icin 2x2 dashboard ve tum seedleri ust uste koyan karsilastirma.
 
 Cikti dizini: ../sunum/grafikler/per_seed/
-  seed_7_dashboard.png
-  seed_13_dashboard.png
-  seed_42_dashboard.png
-  seed_123_dashboard.png
-  seed_2025_dashboard.png
-  tum_seedler_karsilastirma.png
+  seed_<N>_dashboard.png              -> 2x2 ozet (getiri/eval/coverage/oda)
+  tum_seedler_karsilastirma.png       -> tum seedler ust uste
+  ogrenme_egrisi/seed_<N>.png         -> tek seed egitim getirisi
+  eval_egrisi/seed_<N>.png            -> tek seed deterministik eval
+  loss_egrisi/seed_<N>.png            -> tek seed actor & critic loss
+
+Eval verisi iki kaynaktan gelir:
+  1) runs/seed_<N>/eval/evaluations.npz  (egitim boyunca eval EGRISI; varsa)
+  2) eval_per_episode.csv                 (evaluate.py'nin final eval'i; npz yoksa)
+  Boylece eval npz'si olmayan seedler de bos kalmaz (evaluate.py verisini kullanir).
 
 Kullanim:
-    python3 plot_per_seed.py
-    python3 plot_per_seed.py --runs-root runs --seeds-file seeds.txt \\
+    python plot_per_seed.py
+    python plot_per_seed.py --runs-root runs --seeds-file seeds.txt \\
+        --eval-csv ../sonuclar/eval_per_episode.csv \\
         --out ../sunum/grafikler/per_seed
 """
 from __future__ import annotations
@@ -52,235 +53,274 @@ def load_log(runs_root: Path, seed: int) -> pd.DataFrame | None:
     p = runs_root / f"seed_{seed}" / "training_log.csv"
     if not p.exists():
         return None
-    return pd.read_csv(p)
+    df = pd.read_csv(p)
+    return df if len(df) else None
 
 
-def load_eval(runs_root: Path, seed: int) -> tuple[np.ndarray | None, np.ndarray | None]:
+def load_eval_curve(runs_root: Path, seed: int) -> tuple[np.ndarray | None, np.ndarray | None]:
+    """Egitim boyunca eval egrisi (evaluations.npz)."""
     p = runs_root / f"seed_{seed}" / "eval" / "evaluations.npz"
     if not p.exists():
         return None, None
     data = np.load(p)
-    timesteps = data["timesteps"]
-    results = data["results"].mean(axis=1)
-    return timesteps, results
+    return data["timesteps"], data["results"].mean(axis=1)
+
+
+def load_eval_csv(eval_csv: Path | None) -> pd.DataFrame | None:
+    if eval_csv is None or not eval_csv.exists():
+        return None
+    df = pd.read_csv(eval_csv)
+    return df if len(df) else None
 
 
 def _fmt_ax(ax, title: str, xlabel: str, ylabel: str):
-    ax.set_title(title, fontsize=10, fontweight="bold")
-    ax.set_xlabel(xlabel, fontsize=8)
-    ax.set_ylabel(ylabel, fontsize=8)
-    ax.tick_params(labelsize=7)
+    ax.set_title(title, fontsize=11, fontweight="bold")
+    ax.set_xlabel(xlabel, fontsize=9)
+    ax.set_ylabel(ylabel, fontsize=9)
+    ax.tick_params(labelsize=8)
     ax.grid(True, alpha=0.3)
 
 
-def plot_seed_dashboard(
-    seed: int,
-    df: pd.DataFrame,
-    eval_ts: np.ndarray | None,
-    eval_ret: np.ndarray | None,
-    out_path: Path,
-    color,
-) -> None:
-    fig, axes = plt.subplots(2, 2, figsize=(14, 9))
-    fig.suptitle(
-        f"Seed {seed}  —  Toplam {int(df['timestep'].iloc[-1]):,} step  "
-        f"({len(df)} episode)",
-        fontsize=13, fontweight="bold",
-    )
+def _save(fig, out_path: Path):
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  [OK] {out_path.name}")
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tek seed — ogrenme egrisi
+# ─────────────────────────────────────────────────────────────────────────────
+def plot_seed_learning(seed: int, df: pd.DataFrame, out_path: Path, color) -> None:
+    steps = df["timestep"].values
+    raw = df["ep_return"].values
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.plot(steps, raw, alpha=0.15, color=color, linewidth=0.6, label="ham episode getirisi")
+    ax.plot(steps, smooth(raw), color=color, linewidth=2.3,
+            label=f"hareketli ort. (pencere={SMOOTH_WINDOW})")
+    ax.axhline(0, color="gray", linestyle="--", linewidth=0.8)
+    last = df.tail(min(50, len(df)))
+    ax.annotate(f"son 50 ep ort: {last['ep_return'].mean():.1f}",
+                xy=(steps[-1], smooth(raw)[-1]), xytext=(-130, 16),
+                textcoords="offset points", fontsize=9, color=color,
+                arrowprops=dict(arrowstyle="->", color=color, alpha=0.6))
+    _fmt_ax(ax, f"Seed {seed} — Öğrenme Eğrisi (eğitim, {int(steps[-1]):,} adım)",
+            "Kümülatif adım (timestep)", "Episode getirisi (toplam ödül)")
+    ax.legend(loc="lower right", fontsize=9)
+    _save(fig, out_path)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tek seed — eval egrisi (npz egrisi VEYA eval_per_episode.csv dagilimi)
+# ─────────────────────────────────────────────────────────────────────────────
+def plot_seed_eval(seed: int, eval_ts, eval_ret, eval_df: pd.DataFrame | None,
+                   out_path: Path, color) -> None:
+    # TUM seedler ayni format: evaluate.py'nin final deterministik eval'i
+    # (eval_per_episode.csv) -> episode bazinda dagilim. Boylece eval npz'si
+    # olan/olmayan tum seedlerde grafik birebir ayni gorunur.
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    if eval_df is not None and seed in set(eval_df["seed"].unique()):
+        es = eval_df[eval_df["seed"] == seed]
+        rets = es["ep_return"].values
+        eps = np.arange(1, len(rets) + 1)
+        ax.bar(eps, rets, color=color, alpha=0.75, edgecolor="white",
+               label=f"final eval ({len(rets)} episode)")
+        ax.axhline(rets.mean(), color="red", linestyle="--", linewidth=1.6,
+                   label=f"ortalama: {rets.mean():.1f} (±{rets.std():.1f})")
+        _fmt_ax(ax, f"Seed {seed} — Final Deterministik Eval (en iyi model)",
+                "Episode", "Episode getirisi (toplam ödül)")
+        ax.legend(loc="best", fontsize=9)
+    else:
+        ax.text(0.5, 0.5, "eval verisi yok\n(eval_per_episode.csv eksik -> evaluate.py calistirin)",
+                ha="center", va="center", transform=ax.transAxes, fontsize=11, color="#b71c1c")
+        _fmt_ax(ax, f"Seed {seed} — Eval", "Episode", "Getiri")
+
+    _save(fig, out_path)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tek seed — loss egrisi (actor & critic, ikili eksen)
+# ─────────────────────────────────────────────────────────────────────────────
+def plot_seed_loss(seed: int, df: pd.DataFrame, out_path: Path) -> None:
+    if "actor_loss" not in df.columns and "critic_loss" not in df.columns:
+        return
+    steps = df["timestep"].values
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax2 = ax.twinx()
+
+    if "actor_loss" in df.columns:
+        ax.plot(steps, smooth(df["actor_loss"].values), color="#c62828",
+                linewidth=2.0, label="actor loss")
+        ax.set_ylabel("Actor loss", color="#c62828", fontsize=9)
+        ax.tick_params(axis="y", labelcolor="#c62828", labelsize=8)
+    if "critic_loss" in df.columns:
+        ax2.plot(steps, smooth(df["critic_loss"].values), color="#6a1b9a",
+                 linewidth=2.0, label="critic loss")
+        ax2.set_ylabel("Critic loss", color="#6a1b9a", fontsize=9)
+        ax2.tick_params(axis="y", labelcolor="#6a1b9a", labelsize=8)
+
+    ax.set_title(f"Seed {seed} — Loss Eğrisi (actor & critic, pencere={SMOOTH_WINDOW})",
+                 fontsize=11, fontweight="bold")
+    ax.set_xlabel("Kümülatif adım (timestep)", fontsize=9)
+    ax.grid(True, alpha=0.3)
+    lines = ax.get_lines() + ax2.get_lines()
+    ax.legend(lines, [ln.get_label() for ln in lines], loc="upper right", fontsize=9)
+    _save(fig, out_path)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tek seed — 2x2 dashboard
+# ─────────────────────────────────────────────────────────────────────────────
+def plot_seed_dashboard(seed, df, eval_ts, eval_ret, eval_df, out_path, color) -> None:
+    fig, axes = plt.subplots(2, 2, figsize=(14, 9))
+    fig.suptitle(f"Seed {seed}  —  Toplam {int(df['timestep'].iloc[-1]):,} adım  "
+                 f"({len(df)} episode)", fontsize=13, fontweight="bold")
     steps = df["timestep"].values
 
-    # ── Panel 1: episode getirisi ──────────────────────────────────────
+    # 1) egitim getirisi
     ax = axes[0, 0]
     raw = df["ep_return"].values
     ax.plot(steps, raw, alpha=0.12, color=color, linewidth=0.5)
     ax.plot(steps, smooth(raw), color=color, linewidth=2.0, label=f"seed {seed}")
-    _fmt_ax(ax, "Egitim Episode Getirisi", "Adim", "Episode Getirisi")
+    _fmt_ax(ax, "Eğitim Episode Getirisi", "Adım", "Episode Getirisi")
     ax.legend(fontsize=8)
 
-    # ── Panel 2: deterministik eval ───────────────────────────────────
+    # 2) eval — tum seedler ayni format: final deterministik eval (CSV) barlari
     ax = axes[0, 1]
-    if eval_ts is not None and len(eval_ts) > 0:
-        ax.plot(eval_ts, eval_ret, color=color, linewidth=2.0,
-                marker="o", markersize=3, label=f"seed {seed}")
-        best_idx = int(np.argmax(eval_ret))
-        ax.axvline(eval_ts[best_idx], color=color, linestyle="--", alpha=0.4, linewidth=1)
-        ax.annotate(
-            f"en iyi: {eval_ret[best_idx]:.1f}",
-            xy=(eval_ts[best_idx], eval_ret[best_idx]),
-            xytext=(8, -12), textcoords="offset points",
-            fontsize=7, color=color,
-        )
+    if eval_df is not None and seed in set(eval_df["seed"].unique()):
+        es = eval_df[eval_df["seed"] == seed]["ep_return"].values
+        ax.bar(np.arange(1, len(es) + 1), es, color=color, alpha=0.7)
+        ax.axhline(es.mean(), color="red", linestyle="--", label=f"ort {es.mean():.1f}")
+        _fmt_ax(ax, "Final Deterministik Eval", "Episode", "Getiri")
+        ax.legend(fontsize=8)
     else:
-        ax.text(0.5, 0.5, "eval verisi bulunamadi",
-                ha="center", va="center", transform=ax.transAxes, fontsize=9)
-    _fmt_ax(ax, "Deterministik Eval Getirisi", "Adim", "Ortalama Getiri")
-    ax.legend(fontsize=8)
+        ax.text(0.5, 0.5, "eval verisi yok", ha="center", va="center",
+                transform=ax.transAxes, fontsize=9, color="gray")
+        _fmt_ax(ax, "Final Deterministik Eval", "Episode", "Getiri")
 
-    # ── Panel 3: coverage % ───────────────────────────────────────────
+    # 3) coverage
     ax = axes[1, 0]
     cov = df["coverage_pct"].values
     ax.plot(steps, cov, alpha=0.12, color=color, linewidth=0.5)
     ax.plot(steps, smooth(cov), color=color, linewidth=2.0)
     ax.set_ylim(0, 105)
     ax.axhline(100, color="green", linestyle="--", linewidth=1, alpha=0.4, label="%100 hedef")
-    _fmt_ax(ax, "Kesif Orani (Coverage %)", "Adim", "Coverage (%)")
+    _fmt_ax(ax, "Keşif Oranı (Coverage %)", "Adım", "Coverage (%)")
     ax.legend(fontsize=8)
 
-    # ── Panel 4: visited rooms ─────────────────────────────────────────
+    # 4) rooms
     ax = axes[1, 1]
     rooms = df["visited_rooms"].values
     ax.plot(steps, rooms, alpha=0.12, color=color, linewidth=0.5)
     ax.plot(steps, smooth(rooms), color=color, linewidth=2.0)
     ax.axhline(6, color="red", linestyle="--", linewidth=1.2, alpha=0.6, label="hedef (6 oda)")
     ax.set_ylim(0, 7)
-    _fmt_ax(ax, "Ziyaret Edilen Oda Sayisi", "Adim", "Oda Sayisi")
+    _fmt_ax(ax, "Ziyaret Edilen Oda Sayısı", "Adım", "Oda Sayısı")
     ax.legend(fontsize=8)
 
-    # özet istatistik kutusu
     last_n = min(200, len(df))
     last = df.tail(last_n)
-    success_rate = last["success"].mean() * 100
-    mean_cov = last["coverage_pct"].mean()
-    mean_ret = last["ep_return"].mean()
-    txt = (
-        f"Son {last_n} ep ortalaması:\n"
-        f"  Getiri  : {mean_ret:.1f}\n"
-        f"  Coverage: {mean_cov:.1f}%\n"
-        f"  Başarı  : %{success_rate:.0f}"
-    )
+    txt = (f"Son {last_n} ep ortalaması:\n"
+           f"  Getiri  : {last['ep_return'].mean():.1f}\n"
+           f"  Coverage: {last['coverage_pct'].mean():.1f}%\n"
+           f"  Başarı  : %{last['success'].mean()*100:.0f}")
     fig.text(0.01, 0.01, txt, fontsize=7.5, va="bottom",
              bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.7))
-
     plt.tight_layout(rect=[0, 0.05, 1, 1])
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  [OK] {out_path.name}")
+    _save(fig, out_path)
 
 
-def plot_combined(
-    seeds: list[int],
-    dfs: dict[int, pd.DataFrame | None],
-    eval_data: dict[int, tuple],
-    out_path: Path,
-    max_steps: int | None = None,
-) -> None:
-    # max_steps belirtilmemisse tum seedlerin min adim sayisina kırp (adil karsilastirma)
-    valid_dfs = {s: df for s, df in dfs.items() if df is not None}
+# ─────────────────────────────────────────────────────────────────────────────
+# Tum seedler ust uste
+# ─────────────────────────────────────────────────────────────────────────────
+def plot_combined(seeds, dfs, eval_curves, out_path, max_steps=None) -> None:
+    valid = {s: d for s, d in dfs.items() if d is not None}
+    if not valid:
+        return
     if max_steps is None:
-        max_steps = int(min(df["timestep"].max() for df in valid_dfs.values()))
+        max_steps = int(min(d["timestep"].max() for d in valid.values()))
 
     fig, axes = plt.subplots(2, 2, figsize=(16, 10))
-    fig.suptitle(
-        f"Tum Seedler — Karsilastirmali Egitim Ozeti (ilk {max_steps//1000}k adim)",
-        fontsize=14, fontweight="bold",
-    )
+    fig.suptitle(f"Tüm Seedler — Karşılaştırmalı Eğitim Özeti (ilk {max_steps//1000}k adım)",
+                 fontsize=14, fontweight="bold")
 
     for i, seed in enumerate(seeds):
-        df = dfs[seed]
+        df = dfs.get(seed)
         if df is None:
             continue
-        # max_steps'e kadar kes
         df = df[df["timestep"] <= max_steps]
         if df.empty:
             continue
         color = COLORS[i % len(COLORS)]
         label = f"seed {seed}"
         steps = df["timestep"].values
-
-        # return
-        axes[0, 0].plot(steps, smooth(df["ep_return"].values),
-                        color=color, linewidth=1.6, label=label)
-        # eval — max_steps uygulanmaz (eval resumed training'de geç basliyor olabilir)
-        ts, ret = eval_data[seed]
+        axes[0, 0].plot(steps, smooth(df["ep_return"].values), color=color, linewidth=1.6, label=label)
+        ts, ret = eval_curves.get(seed, (None, None))
         if ts is not None and len(ts) > 0:
-            axes[0, 1].plot(ts, ret, color=color, linewidth=1.6,
-                            marker="o", markersize=2, label=label)
-        # coverage
-        axes[1, 0].plot(steps, smooth(df["coverage_pct"].values),
-                        color=color, linewidth=1.6, label=label)
-        # rooms
-        axes[1, 1].plot(steps, smooth(df["visited_rooms"].values),
-                        color=color, linewidth=1.6, label=label)
+            axes[0, 1].plot(ts, ret, color=color, linewidth=1.6, marker="o", markersize=2, label=label)
+        axes[1, 0].plot(steps, smooth(df["coverage_pct"].values), color=color, linewidth=1.6, label=label)
+        axes[1, 1].plot(steps, smooth(df["visited_rooms"].values), color=color, linewidth=1.6, label=label)
 
     specs = [
-        ("Egitim Episode Getirisi (yumusatilmis)", "Adim", "Episode Getirisi"),
-        ("Deterministik Eval Getirisi",             "Adim", "Ortalama Getiri"),
-        ("Kesif Orani",                             "Adim", "Coverage (%)"),
-        ("Ziyaret Edilen Oda",                      "Adim", "Oda Sayisi"),
+        ("Eğitim Episode Getirisi (yumuşatılmış)", "Adım", "Episode Getirisi"),
+        ("Deterministik Eval Eğrisi", "Adım", "Ortalama Getiri"),
+        ("Keşif Oranı", "Adım", "Coverage (%)"),
+        ("Ziyaret Edilen Oda", "Adım", "Oda Sayısı"),
     ]
     for ax, (title, xlabel, ylabel) in zip(axes.flat, specs):
         _fmt_ax(ax, title, xlabel, ylabel)
         ax.legend(fontsize=8)
 
-    # Eval verisi yoksa not ekle
-    eval_ax = axes[0, 1]
-    has_eval = any(
-        eval_data[s][0] is not None and len(eval_data[s][0]) > 0
-        for s in seeds if dfs.get(s) is not None
-    )
-    if not has_eval:
-        eval_ax.text(0.5, 0.5, "eval verisi yok\n(evaluations.npz eksik)",
-                     ha="center", va="center", transform=eval_ax.transAxes,
-                     fontsize=9, color="gray")
-
+    if not any(eval_curves.get(s, (None, None))[0] is not None for s in seeds):
+        axes[0, 1].text(0.5, 0.5, "eval eğrisi yok\n(evaluations.npz eksik)",
+                        ha="center", va="center", transform=axes[0, 1].transAxes,
+                        fontsize=9, color="gray")
     axes[1, 0].set_ylim(0, 105)
     axes[1, 1].set_ylim(0, 7)
-    axes[1, 1].axhline(6, color="red", linestyle="--", linewidth=1.2,
-                       alpha=0.5, label="hedef")
-
+    axes[1, 1].axhline(6, color="red", linestyle="--", linewidth=1.2, alpha=0.5)
     plt.tight_layout()
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    print(f"  [OK] {out_path.name}")
+    _save(fig, out_path)
 
 
 def main(argv=None) -> None:
-    parser = argparse.ArgumentParser(description="Per-seed dashboard grafikleri")
-    parser.add_argument(
-        "--runs-root", type=Path,
-        default=Path(__file__).resolve().parent / "runs",
-    )
-    parser.add_argument(
-        "--seeds-file", type=Path,
-        default=Path(__file__).resolve().parent / "seeds.txt",
-    )
-    parser.add_argument(
-        "--out", type=Path,
-        default=Path(__file__).resolve().parent / "../sunum/grafikler/per_seed",
-    )
-    parser.add_argument(
-        "--max-steps", type=int, default=None,
-        help="Birlesik grafigi bu adima kadar kes (varsayilan: tum seedlerin minimumu)",
-    )
+    here = Path(__file__).resolve().parent
+    parser = argparse.ArgumentParser(description="Per-seed ayri grafikler + dashboard")
+    parser.add_argument("--runs-root", type=Path, default=here / "runs")
+    parser.add_argument("--seeds-file", type=Path, default=here / "seeds.txt")
+    parser.add_argument("--eval-csv", type=Path, default=here / "../sonuclar/eval_per_episode.csv",
+                        help="evaluate.py ciktisi; eval npz'si olmayan seedler icin yedek")
+    parser.add_argument("--out", type=Path, default=here / "../sunum/grafikler/per_seed")
+    parser.add_argument("--max-steps", type=int, default=None)
     args = parser.parse_args(argv)
 
     seeds = read_seeds(args.seeds_file)
     out = args.out.resolve()
+    eval_df = load_eval_csv(args.eval_csv.resolve())
+    if eval_df is None:
+        print("  [NOT] eval_per_episode.csv bulunamadi -> once 'python evaluate.py' calistirin "
+              "(eval npz'si olmayan seedlerin eval grafigi bos kalir).")
 
-    dfs: dict[int, pd.DataFrame | None] = {}
-    eval_data: dict[int, tuple] = {}
-    for seed in seeds:
-        dfs[seed] = load_log(args.runs_root, seed)
-        eval_data[seed] = load_eval(args.runs_root, seed)
-        if dfs[seed] is None:
-            print(f"  [UYARI] seed {seed}: training_log.csv yok, atlaniyor")
+    dfs, eval_curves = {}, {}
+    for s in seeds:
+        dfs[s] = load_log(args.runs_root, s)
+        eval_curves[s] = load_eval_curve(args.runs_root, s)
+        if dfs[s] is None:
+            print(f"  [UYARI] seed {s}: training_log.csv yok, atlaniyor")
 
-    print("Bireysel seed dashboardlari:")
-    for i, seed in enumerate(seeds):
-        if dfs[seed] is None:
+    print("Her seed icin AYRI grafikler (ogrenme / eval / loss / dashboard):")
+    for i, s in enumerate(seeds):
+        if dfs[s] is None:
             continue
-        ts, ret = eval_data[seed]
-        plot_seed_dashboard(
-            seed, dfs[seed], ts, ret,
-            out / f"seed_{seed}_dashboard.png",
-            COLORS[i % len(COLORS)],
-        )
+        color = COLORS[i % len(COLORS)]
+        ts, ret = eval_curves[s]
+        plot_seed_learning(s, dfs[s], out / "ogrenme_egrisi" / f"seed_{s}.png", color)
+        plot_seed_eval(s, ts, ret, eval_df, out / "eval_egrisi" / f"seed_{s}.png", color)
+        plot_seed_loss(s, dfs[s], out / "loss_egrisi" / f"seed_{s}.png")
+        plot_seed_dashboard(s, dfs[s], ts, ret, eval_df, out / f"seed_{s}_dashboard.png", color)
 
-    print("Birlesik karsilastirma grafigi:")
-    plot_combined(seeds, dfs, eval_data, out / "tum_seedler_karsilastirma.png",
+    print("Birlesik karsilastirma:")
+    plot_combined(seeds, dfs, eval_curves, out / "tum_seedler_karsilastirma.png",
                   max_steps=args.max_steps)
     print(f"\nTum grafikler: {out}")
 
