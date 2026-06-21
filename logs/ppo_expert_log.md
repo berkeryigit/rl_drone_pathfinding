@@ -12357,3 +12357,52 @@ V9 eğitimi 2026-05-30 22:00'da Gazebo sim deadlock ile 193k step'te dondu; arad
 ### Müdahale
 **Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10-optimal; lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, net_arch=[256,256], n_envs=1, total_timesteps=1.5M. **53. ardışık tespit: tek ve aşılamaz bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
 ---
+
+## [2026-06-21 07:03 UTC]
+**Step:** 193,248 (FROZEN — 22 GÜN 9 SAAT, son ilerleme 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+54. ardışık analiz. V9 Gazebo eğitimi step=193,248'de tamamen durmuş (son aktif checkpoint: ppo_drone_180000_steps.zip). CSV'nin son 25 satırı özdeş — process kesin ölü. `configs/ppo.yaml` 2026-06-02'den beri v10-optimal, değiştirilmeyecek. `runs/ppo_v10/` yok → V10 Gazebo eğitimi remote container'da hiç başlamamış.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV 47 satır (46 veri). Erken faz (step ~142k-599k, 11:00-12:30 UTC): ep_rew_mean -270/-290, ep_len=1000 (timeout). Drone duvardan kaçmayı hiç öğrenemedi — ep_len=1000 sadece episode kesimidir, başarı değil.
+- Crash-restart döngüsü: 80k checkpoint'e 22 kez geri dönüldü (interventions.jsonl). Restart sonrası kısa iyileşme: peak ep_rew_mean=-37 @~145k, ep_len=215.
+- 2026-05-30 22:00 UTC'de ep_rew_mean=-173 @193k → muhtemelen policy collapse veya çarpışma döngüsü.
+- 2026-05-30 22:20'dan bu yana **25 özdeş satır** — mutlak dondurma (process ölü).
+- **+15 oda bonusu: 46 kayıtta sıfır kez tetiklendi.** Drone hiçbir zaman komşu odaya geçmedi.
+- Sonuç: Ne plato ne kırılım — **çöküş + ölü process**.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- V9 orijinal lr=7.5e-5 sabit: Erken fazda büyük negatif reward gradyanlarını karşılamak için çok düşük. ep_rew_mean -270/-290 bölgesinde 4 saat takıldı.
+- V8 lineer 3e-4→3e-5 ile peak +113 @1.6M step kanıtladı: yüksek başlangıç lr + decay şeması zorunlu.
+- `configs/ppo.yaml` 2026-06-02'de lineer 3e-4→1e-5 schedule'a güncellendi — sorun zaten düzeltildi. Artık bu tartışma V9 için geçerli; V10 config doğru.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- entropy=-4.212: -4.0 eşiğinin altında → aşırı deterministikleşme. V9 ent_coef=0.0015 erken fazda keşifi felç etti.
+- std=0.985: 0.70 tehlike eşiğinin üstünde — aksiyon dağılımı sayısal olarak geniş, ama entropy basıncının yokluğu arama genişliğini kısıyor.
+- V10 ent_coef=0.008 (5.3× artış) + fast_sim v4.8 doğrulaması: entropy -2.5→-3.8 aralığı korundu, keşif sağlandı.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9 ölü, V10 başlamadı. fast_sim v4.8 + v3.0 Gazebo (peak=110.3 @610k) referans alınırsa:
+  - İlk oda geçişi: ~150-250k step
+  - 3+ oda: ~300-500k step
+  - 5-6 oda (tüm harita): ~500-800k step
+  - Toplam bütçe: 1.5M step — V10 ppo.yaml ile yeterli.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py`: `collision_penalty=25`** — fast_sim 18-config sweep (v4.3→v5.0): 25→%0 çarpışma (v4.8, 100 bölüm, tam 2500 adım hayatta), 22→%37 (v4.9 çöküş), 30→%8 (v4.5). ±3 sapma katastrofik → bu değer sabitleniyor.
+2. **Lokal makinede `./scripts/train.sh configs/ppo.yaml`** — ppo.yaml 19 gündür v10-optimal; remote container'da Gazebo Harmonic + ROS2 Jazzy yoktur. Tek çözüm lokal çalıştırmak.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml`: HAYIR — v10-optimal, değiştirilmeyecek (lineer lr 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, net_arch=[256,256], n_envs=1, 1.5M).
+- Operasyonel: KRİTİK (22 GÜN 9 SAAT) — V10 Gazebo eğitimi lokal makinede başlatılmadı. 54 ardışık analizde sabit: `./scripts/train.sh configs/ppo.yaml` komutu lokal makinede çalıştırılmadan ilerleme yok.
+
+### v10 Önerisi
+1. **`collision_penalty=25` (`drone_exploration_env.py`)** — fast_sim 18-config'in en güvenilir ve tekrarlanabilir bulgusu: %0 çarpışma, 5+ oda, 117 voxel. ±3 bile katastrofik sapma → korunmalı.
+2. **Lokal `./scripts/train.sh configs/ppo.yaml`** — ppo.yaml 19 gündür hazır (v10-optimal). Remote container'da Gazebo desteği yok; bloker lokal ortam.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10-optimal; hiçbir parametre değiştirilmedi. **54. ardışık tespit: tek ve aşılamaz bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
+---
