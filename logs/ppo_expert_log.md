@@ -12828,3 +12828,44 @@ Eğitim 31 Mayıs 03:01'den bu yana tamamen durmuş; `runs/` dizini mevcut deği
 ### Müdahale
 **Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10-optimal; değiştirilmedi. **64. ardışık tespit: tek ve aşılamaz bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
 ---
+
+## [2026-06-21 18:03 UTC]
+**Step:** 193,248 (FROZEN — 22 GÜN 17 SAAT, son gerçek ilerleme 2026-05-30 22:00 UTC) | **ep_rew_mean:** -173.85 (frozen) | **entropy:** -4.212 (frozen) | **std:** 0.985 (frozen)
+
+### Durum
+65. ardışık analiz. V9 Gazebo eğitimi step=193,248'de tamamen ölü; `training_metrics.csv` 46 satır veri içeriyor, son 15 satır identik (2026-05-30 22:20 → 2026-05-31 03:01). Aktif Gazebo/ROS2 process yok. `configs/ppo.yaml` 2026-06-02'den beri v10-optimal, değiştirilmeyecek. Remote container'da Gazebo Harmonic + ROS2 Jazzy mevcut değil; v10 lokal makinede başlatılmayı bekliyor.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV tam geçmiş (46 veri noktası, 2026-05-30 11:02 → 2026-05-31 03:01):
+  - **Faz 1** (~142k–193k step, crash-recovery döngüsü): ep_rew_mean -25.3 @84k (en iyi) → -173.85 @193k (çöküş). Kararsız restart artefaktı: step değerleri 90k-193k arası ileri-geri gidiyor.
+  - **Faz 2** (22:00 sonrası freeze): GZ transport deadlock — 15 ardışık identik satır, step 193k'da sabitlenmiş.
+- ep_rew_mean hiç pozitife geçmedi. +15 oda sıçraması (oda keşif sinyali) hiç kaydedilmedi. Plato değil — erken instabilite ardından kalıcı freeze.
+- FPS: crash-recovery döneminde 61-121 (restart artefaktı), donma öncesi 72.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru muydu?**
+- Hayır. V9 operasyonel configde 7.5e-5 constant, keşif başlamadan policy pozitife geçemedi. Karşılaştırma: V8 lineer 3e-4→3e-5 → peak +113 @1.6M. `configs/ppo.yaml` 2026-06-02'de lineer 3e-4→1e-5 schedule'a güncellendi — doğru düzeltme, V10 için geçerli.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Donmuş değerler yorumlanamaz. Faz 1'deki entropy -4.21 ile -4.27 arası (ent_coef=0.0015 etkisi: düşük keşif baskısı). Std ~0.985-1.003: 0.7 eşiğinin çok üzerinde, aksiyon varyansı korunuyordu. Oda keşfinin olmaması policy deterministikleşmesinden değil, ortam instabilitesi + yanlış lr/ent_coef seçiminden kaynaklandı.
+- V10 düzeltme: ent_coef=0.008 (5.3×). fast_sim v4.8'de entropy -3.2/-3.8 korunurken 5+ oda, %0 çarpışma kanıtlandı.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- V9: kurtarılamaz, oda geçişi sıfır. Gazebo v3.0 referansı (aynı hyperparameler, aynı harita konsepti): ilk oda 150-250k step, 3+ oda 350-500k, tüm 6 oda 500-700k. V10 total_timesteps=1.5M yeterli; 2M+ sonrası güvenlik kollapsu (fast_sim v4.10/v4.11/v4.13, 5 bağımsız deney kanıtı).
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py` içinde `collision_penalty=25` doğrula** — fast_sim 18-config sweep kesin bulgusu: 22→%37 çarpışma erken kollaps, 25→%0 çarpışma @v4.8. ±3 sapma katastrofik.
+2. **Lokal `./scripts/train.sh configs/ppo.yaml`** — ppo.yaml 19 gündür optimal ve doğrulanmış. Remote container'da Gazebo/ROS2 yoktur; tek adım lokal terminal.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- `configs/ppo.yaml`: **HAYIR** — v10-optimal (lr=3e-4→1e-5 linear, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, net_arch=[256,256], n_envs=1, 1.5M step), değiştirilmeyecek. 65. ardışık teyit.
+- **Operasyonel Kritik (22+ GÜN):** V10 eğitimi lokal makinede başlatılmadı. Remote container'da Gazebo Harmonic + ROS2 Jazzy yoktur. Çözüm yolu yalnızca lokal terminal.
+
+### v10 Önerisi
+1. **`collision_penalty=25` (`drone_exploration_env.py`)** — fast_sim sweep kesin kanıtı; bu olmadan v10 erken çarpışma loop'uyla oda keşfini kaçırır.
+2. **Lokal `./scripts/train.sh configs/ppo.yaml`** — ppo.yaml tamamen hazır; tek gereken lokal Gazebo+ROS2 ortamında komutu çalıştırmak.
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10-optimal; değiştirilmedi ve değiştirilmeyecek. **65. ardışık tespit: tek ve aşılamaz bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
+---
