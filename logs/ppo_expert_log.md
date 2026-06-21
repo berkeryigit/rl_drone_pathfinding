@@ -12891,3 +12891,44 @@ Eğitim 31 Mayıs 03:01'den bu yana tamamen durmuş; `runs/` dizini mevcut deği
 ### Müdahale
 **Yok** — `configs/ppo.yaml` 2026-06-02'den beri v10-optimal; değiştirilmedi. **66. ardışık tespit: tek ve aşılamaz bloker lokal makinede `./scripts/train.sh configs/ppo.yaml` komutunu çalıştırmaktır.**
 ---
+
+## [2026-06-21 20:02 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 21 GÜN STALE) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 training 2026-05-31 03:01'den beri step=193k'da donmuş. Bu container'da Gazebo/ROS2 yok; `runs/` dizini mevcut değil. ppo.yaml v10 optimal konfigürasyonunu taşıyor. **Aktif eğitim yok — 67. ardışık tespit.**
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim yok. CSV 21 gündür donmuş — 46 unique satır (31 gerçek + kalan watchdog tekrarı).
+- v9 içi tek gerçek trend: step~84k → -25.3 (tüm v9'un en iyisi) → 108-193k arası -107→-173 (crash-loop regreasyonu). +15 oda sıçraması v9'da hiç gözlemlenmedi.
+- v10 `runs/` dizini yok → güncel plato/kırılım değerlendirmesi mümkün değil.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Artık geçersiz soru. ppo.yaml tamamen v10: `lr=3e-4→1e-5 linear, lr_final=1e-5`. v3.0 bu schedule ile peak=110.3 üretti (610k step). Doğru karar, değiştirme.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale değerler: entropy=-4.212 (eşik -4.0, borderline ✓), std=0.985 (eşik 0.7, güvenli ✓).
+- 21 günlük crash-loop anından kalma — v10 için geçersiz. v10 ent_coef=0.008 ile early training entropy -3.2→-3.8 arası beklenir.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 Gazebo referansı (aynı hyperparametreler): ilk oda 150-250k, 3+ oda 350-500k, 6 oda 500-700k.
+- v10 `lidar_history=1` riski: duvar terminasyonları +50-100k geciktirebilir.
+- Hareketli engeller devre dışı → statik harita avantajı.
+
+**e) v10 için en kritik 1-2 öneri:**
+1. **Lokal makinede v10 başlat (21 gündür bekliyor):** `./scripts/train.sh configs/ppo.yaml` — ppo.yaml tam hazır (lr linear 3e-4→1e-5, ent_coef=0.008, 1.5M step, n_envs=1).
+2. **200k milestone'da kontrol eşiği:** std<0.7 + entropy>-3.5 birlikte → ent_coef 0.008→0.015. İlk oda 250k'ya gelmezse → frontier_bonus 0.4→0.6. Bu eşikler öncesi config değiştirme.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- ppo.yaml değişikliği YOK — v10 config kanıtlanmış optimal (fast_sim 18 konfigürasyon, 5 bağımsız doğrulama).
+- **Tek kritik bloker:** 21 gün sıfır eğitim ilerlemesi. Lokal makinede `./scripts/train.sh configs/ppo.yaml` çalıştırılmalı.
+
+### v10 Önerisi
+1. **Lokal makinede hemen başlat:** ppo.yaml hazır; Gazebo + ROS2 lokal ortamda mevcut.
+2. **1.5M step sınırını koru:** fast_sim 5 deneyle kanıtladı — 2M+ sonrası safety collapse kaçınılmaz. Checkpoint sweep 1.0M-1.5M arası yapılacak.
+
+### Müdahale
+Yok — ppo.yaml değişikliğine gerek yok. Mevcut v10 config (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M) kanıtlanmış optimal parametreler taşıyor.
+---
