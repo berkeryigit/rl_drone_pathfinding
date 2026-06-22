@@ -13918,3 +13918,43 @@ Bu 17. analiz oturumu. CSV 23 gündür tamamen donmuş (step=193k). ppo.yaml v10
 ### Müdahale
 **Yok** — %80 güven eşiğini aşan config veya env sorunu tespit edilmedi. CSV'nin Faz 1 vs Faz 2 analizi yeni bir bulgu ortaya koydu (Faz 1 gerçek deterministikleşme), ancak bu ppo.yaml değişikliğini gerektirmiyor (zaten v10'a taşınmış). ppo.yaml 17. oturumda da değişmedi.
 ---
+
+## [2026-06-22 21:03 UTC]
+**Step:** 193,248 (SON KAYIT — 23 GÜN FROZEN, 2026-05-31 03:01'den beri) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+18. analiz oturumu. CSV 23 gündür tamamen dondurulmuş (step=193k), runs/ dizini yok, container'da Gazebo/ROS2 yok. Bu oturumun yeni katkısı: `versions.jsonl` ilk kez tam okundu; fast_sim v4.0–v5.0 zinciri (18 deney) detaylıca analiz edilerek v10 config'deki her kritik parametre artık deney sonucuyla çapraz doğrulandı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV değişmedi. 46 satır; son 22 satır (2026-05-30 22:20 → 2026-05-31 03:01) tamamen özdeş. v9 boyunca ep_rew_mean hiç pozitife geçmedi; peak -25.3 @ step~84k. +15 oda sıçraması sıfır kez gözlemlendi.
+- **Faz 1 (step 142k–599k, ep_len=1000):** entropy -3.89→-3.32 (yükselen = ERKEN DETERMİNİZASYON), std 0.888→0.746 (0.7 eşiğine yaklaşıyor). Ent_coef=0.0015 keşifi bastırdı.
+- **Faz 2 (step 49k–193k, 34+ crash döngüsü):** entropy sabit ~-4.21, std ~0.99 — keşif yeterliydi ama crash döngüsü training'i dondurdu.
+- Net: Analiz edilecek yeni trend yok.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- ppo.yaml 2026-06-02'de v10'a taşındı: `lr=3e-4→1e-5 linear` (1.5M). Sabit 7.5e-5 terk edildi. v3.0 Gazebo (aynı schedule, peak=133.35@501k) bu seçimi kanıtladı.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut değerler stale (v9 çöküşünden kalma). v10'da ent_coef=0.008 (v9'un 5.3×'i): fast_sim v4.2 (ent=0.02, rooms_mean 2.0→4.98) ve v4.5 (rooms=5.0, collision %8) deneyleri yüksek entropinin oda keşfini doğrudan tetiklediğini kanıtladı. Beklenti: v10 erken fazda entropy_loss -3.2→-3.8, std >0.85.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 başlatılmamış. Fast_sim v4.8 referansı (n_envs=8, collision_penalty=25, lidar_history=2): %0 çarpışma + 5 oda + voxels=117 @ 1.5M adım; oda geçişi ~350k. Gazebo yavaşlığı (~40fps vs fast_sim ~4000fps) ve n_envs=1 göz önünde bulundurulduğunda **Gazebo v10 beklentisi: ilk oda 100–250k step, 6/6 tamamlama 450–650k step.**
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **collision_penalty=25 (env satır ~350) korunmalı:** versions.jsonl fast_sim zinciri kesin kanıt sağladı. v4.8 (25) → %0 çarpışma; v4.9 (22) → 2 odaya çöküş (%37 çarpışma); v4.6 (30) → %93 çarpışma. Tatli nokta dar ve DAR. Env koduna dokunma.
+2. **2M adım sınırını aşma:** v4.10 (5M, %54 çarpışma) ve v4.11 (5M+collision50, %100 çarpışma) kesin olarak kanıtladı: 2M+ sonrasında güvenlik çöküyor. ppo.yaml `total_timesteps=1.5M` bu yüzden doğru. 1.5M tamamlanırsa v10 checkpoint'ten eval çalıştır, ek training yapma.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml:** Hayır. Bu oturumda versions.jsonl tam okundu; fast_sim zinciri (v4.0–v5.0, 18 deney) v10 config'deki her parametreyi bağımsız olarak doğruladı: lr-schedule (v3.0 Gazebo), ent_coef=0.008 (v4.2 rooms breakthrough), collision_penalty=25 (v4.8 sweet spot), lidar_history=2/obs_shape=72 (v4.11'de eval gap fix, v5.0'da lidar_history=3 dominated by v4.8), total_timesteps=1.5M (v4.10/v4.11 güvenlik çöküşü).
+- **env kodu:** Hayır. Doğrulama önceki oturumlarda yapıldı.
+- **Operasyonel:** Training 23 gündür ölü. Container'da Gazebo/ROS2 yok. Lokal `./scripts/train.sh configs/ppo.yaml` tek başlatıcı.
+
+### v10 Önerisi
+1. **`./scripts/train.sh configs/ppo.yaml` ile v10 başlat.** Config 18 oturumda validate edildi; fast_sim 18-deney + v3.0 Gazebo ile çapraz doğrulandı. İlk +15 oda bonusu 100–250k içinde bekleniyor. Env satır ~350'de `collision_penalty=25` olduğunu teyit et; bu parametreye dokunma.
+2. **2M adım sınırı kesin:** v4.10/v4.11 deneyleri 2M+ sonrası güvenlik çöküşünü kanıtladı. 1.5M'de eğitimi durdur, en iyi checkpoint'i eval et, daha uzun eğitme.
+
+### Müdahale
+**Yok** — %80 güven eşiğini aşan config veya env sorunu tespit edilmedi. Bu oturumun yeni katkısı (versions.jsonl tam analiz) config değişikliğini gerektirmiyor; aksine mevcut v10 config'i güçlü biçimde doğruluyor. ppo.yaml 18. oturumda da değişmedi.
+---
