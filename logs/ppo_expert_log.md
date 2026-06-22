@@ -13800,3 +13800,42 @@ Aktif eğitim yok — v9 training 2026-05-31'den bu yana tamamen durdurulmuş. B
 ### Müdahale
 **Yok** — %80 güven eşiğini aşan config veya env sorunu tespit edilmedi. ppo.yaml 14. oturumda da değişmedi. Stale CSV verisi (son 22 satır özdeş, step=193k) herhangi bir parametrik müdahale için zemin sağlamıyor.
 ---
+
+## [2026-06-22 18:04 UTC]
+**Step:** 193,248 (SON KAYIT — 23 GÜN FROZEN, 2026-05-31 03:01'den beri) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+Aktif eğitim yok. v9 training 2026-05-31'den bu yana dondurulmuş durumda (193k/2.5M). ppo.yaml 2026-06-02'de v10'a taşındı ve 14+ oturumda teyit edildi. Bu oturum, bugün (2026-06-22) CSV'de yeni satır olmadığını, training'in hâlâ başlatılmadığını ve ppo.yaml'ın %100 hazır olduğunu teyit etti.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV toplam 46 data satırı. İlk 24 satır (11:02–22:00): step 64k–193k arası 34+ crash-recovery döngüsü. En iyi ep_rew_mean = -25.3 @ step~84k. Sonraki 22 satır (22:20–03:01) tamamen özdeş: step=193,248 donmuş.
+- **Plato değil, kırılım başlamadan training öldü.** +15 oda sıçraması hiç gözlemlenmedi. ep_rew_mean hiç pozitife çıkmadı. v9 doğrudan çökme döngüsüyle sonlandı.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz soru: ppo.yaml 2026-06-02'de v10'a taşındı. Aktif config `lr=3e-4→1e-5 linear` (1.5M boyunca). v9'un sabit 7.5e-5'i terk edildi. v3.0 Gazebo (aynı schedule, aynı 6-oda harita) peak=133.35 @ ~501k verdi → doğru seçim kanıtlanmış.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut değerler v9 çöküşünden kalma (stale), yorumlanamaz. v9'da asıl sorun ent_coef=0.0015 (çok düşük) + 34+ crash-recovery kararsızlığıydı. v10 ent_coef=0.008 (5.3×) ile erken fazda entropy -3.2→-3.8 beklenir, std erken training'de >0.8 tutulacak.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 henüz başlatılmamış. v3.0 referansı (n_envs=1, aynı harita, aynı lr schedule, collision_penalty=10): ilk oda ~150–250k, 3+ oda 350–500k, 6/6 tamamlama 500–700k.
+- v10 farkları: collision_penalty=25 (drone duvardan daha erken kaçar → ilk oda potansiyel olarak daha erken), obs_shape=72 (lidar_history=2 ile daha zengin state), ent_coef=0.008 (daha geniş keşif). **Beklenti: ilk oda 100–250k, full 6/6 tamamlama 450–650k.**
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **n_steps=2048 gözlem noktası:** v10'da n_steps 512→2048 (4×) arttı, n_envs=1. Bu, her policy update'te 2048 step birikiyor demek. İlk 200k'da ep_rew_mean iyileşmezse (std >0.9, sıfır oda), n_steps=1024 dene — daha sık gradient update erken fazda keşfi hızlandırabilir. %80 eşiği: step ≥ 200k ve visited_rooms = 0.
+2. **350k early-stop kuralı (aktif):** ep_rew_mean < 0 VE visited_rooms = 0 @ step ≥ 350k → ent_coef 0.008→0.015 + restart. v9 bu patikada 145k'da öldü; v10'a 350k'ya kadar süre tanı, daha erken müdahale etme.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml:** Hayır. Config v10-optimal ve 14 oturumda teyit edildi. lr schedule, ent_coef, n_steps, collision_penalty, obs_shape hepsi v3.0 Gazebo + fast_sim 18-deney zinciriyle uyumlu.
+- **env kodu:** Hayır. `collision_penalty=25` (satır 350) ve `obs_shape=72` (satır 198) önceki oturumda doğrulandı.
+- **Operasyonel:** Training 23 gündür ölü. Container'da Gazebo/ROS2 yok. Lokal terminalde `./scripts/train.sh configs/ppo.yaml` ile v10 başlatılabilir — tek bloker bu.
+
+### v10 Önerisi
+1. **Lokal `./scripts/train.sh configs/ppo.yaml` ile v10 başlat.** Config hazır, env hazır. İlk 100–250k içinde oda bonusu (+15) beklenir. n_steps=2048 + n_envs=1 kombinasyonunu yakından izle: 200k'da oda yoksa n_steps=1024'e düş.
+2. **350k early-stop kuralı aktif tut.** ep_rew_mean < 0 ve visited_rooms = 0 ise ent_coef 0.008→0.015 + restart. v9 öğretisi: crash döngüsünden kurtulmak için ent_coef yetersizliği değil, training stabilitesi kritik.
+
+### Müdahale
+**Yok** — %80 güven eşiğini aşan config veya env sorunu tespit edilmedi. ppo.yaml 15. oturumda da değişmedi. Stale CSV (23 gün, son 22 satır özdeş, step=193k) herhangi bir parametrik müdahale zemini sağlamıyor. v10 training lokal makinede başlatılana kadar bu analiz oturumları yeni veri üretemez.
+---
