@@ -13958,3 +13958,44 @@ Bu 17. analiz oturumu. CSV 23 gündür tamamen donmuş (step=193k). ppo.yaml v10
 ### Müdahale
 **Yok** — %80 güven eşiğini aşan config veya env sorunu tespit edilmedi. Bu oturumun yeni katkısı (versions.jsonl tam analiz) config değişikliğini gerektirmiyor; aksine mevcut v10 config'i güçlü biçimde doğruluyor. ppo.yaml 18. oturumda da değişmedi.
 ---
+
+## [2026-06-22 22:05 UTC]
+**Step:** 193,248 (SON KAYIT — 23 GÜN FROZEN, 2026-05-31 03:01'den beri) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+19. analiz oturumu. CSV 23 gündür tamamen donmuş (step=193k), `runs/` dizini container'da yok, Gazebo/ROS2 mevcut değil. ppo.yaml v10-optimal (2026-06-02 güncellemesinden bu yana değişmedi). Yeni katkı: CSV'nin Faz 1 vs Faz 2 analizi, interventions.jsonl ve versions.jsonl bütünü çapraz doğrulandı; her değişkenin etkisi teyit edildi.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV 47 satır: başlık + 46 veri. Son 22 satır (2026-05-30 22:20 → 2026-05-31 03:01) tamamen özdeş — step=193,248, ep_rew_mean=-173.85, fps=72. Düz çizgi, plato veya kırılım analizi yapılamaz.
+- **Faz 1 (11:02–13:02, step 142k–599k, ep_len=1000):** ep_rew_mean -290 → -272 (pozitife geçmedi); entropy_loss -3.886 → -3.616 (yükselen = erken determinizasyon); std 0.888 → 0.813. Ent_coef=0.0015 çok düşük, keşif bastırıldı.
+- **Faz 2 (13:02–03:01, step 49k–193k):** 34+ crash-recovery döngüsü; peak -25.3 @ 83k. +15 oda sıçraması sıfır kez.
+- **Net:** v9 boyunca sıfır oda keşfi, sıfır pozitif reward. Analiz edilecek yeni trend yok.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz; v9'da kullanılan sabit 7.5e-5, 2026-06-02'de terk edildi. Güncel ppo.yaml: `lr=3e-4→1e-5 linear` (1.5M boyunca). v3.0 Gazebo kanıtı (peak=133.35 @ 501k) aynı schedule ile. Doğru seçim.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut değerler (entropy -4.212, std 0.985) v9'un son çalışma anından kalma — stale. Sayılar sağlıklı ama eğitim ölü.
+- v10'da ent_coef=0.008 (v9'un 5.3×'i). Fast_sim v4.2 kanıtı: ent_coef yüksekken rooms_mean 2.0→4.98 sıçraması. Beklenti: v10 erken fazda entropy_loss -3.0→-3.8 aralığı, std >0.85. -4 altına erken düşerse ent_coef artır.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 başlatılmamış, öngörü değişmedi: **ilk oda 100–250k step, 6/6 tamamlama 450–650k step** (n_envs=1, collision_penalty=25, Gazebo gerçekçiliği baz alınarak). Fast_sim v4.8 referans: 5 oda + %0 çarpışma @ 1.5M. 350k öncesi erken müdahale yapma.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **Başlatma:** Config 19 oturumda validate edildi. Tek eksik: lokal terminalde `./scripts/train.sh configs/ppo.yaml` çalıştırmak. Gazebo/ROS2 kurulu makinede yapılacak tek eylem bu.
+2. **200k early-warning eşiği:** std <0.80 veya entropy_loss > -3.5 görülürse (step ≤ 300k), ent_coef 0.008→0.012 arttır. v9 Faz 1 hatası bundan kaynaklandı. 300k'ya kadar başka hiperparametre değiştirme.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml:** HAYIR. v10 config eksiksiz ve doğrulanmış.
+- **env kodu:** HAYIR. collision_penalty=25 (satır ~350) ve obs_shape=72 (lidar_history=2) önceki oturumlarda teyit edildi. Dokunma.
+- **Operasyonel:** Eğitim 23 gündür ölü. Lokal terminalde `./scripts/train.sh configs/ppo.yaml` tek başlatıcı.
+
+### v10 Önerisi
+1. **Lokal terminalde `./scripts/train.sh configs/ppo.yaml` çalıştır.** Config 19 oturumda eksiksiz doğrulandı; fast_sim 18 deney + v3.0 Gazebo ile çapraz onaylı. İlk +15 oda bonusu 100–250k içinde bekleniyor.
+2. **2M adım sınırı kesin:** v4.10/v4.11 kanıtı: 2M+ sonrası güvenlik çöküşü. 1.5M'de durdur, en iyi checkpoint'i eval et, tekrar eğitme.
+
+### Müdahale
+**Yok** — ppo.yaml değiştirilmedi (19. oturumda da). Config için %80 güven eşiğini aşan bir sorun tespit edilmedi; mevcut v10 parametreleri deney zinciriyle tam uyumlu. Operasyonel başlatma lokal makinede kullanıcı tarafından yapılacak.
+---
