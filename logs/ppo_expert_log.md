@@ -13758,3 +13758,45 @@ Aktif eğitim yok. v9 training 2026-05-31'den bu yana tamamen dondurulmuş. **Bu
 ### Müdahale
 **Yok** — %80 güven eşiğini aşan herhangi bir config veya env sorunu tespit edilmedi. ppo.yaml 13. oturumda da değişmedi. Stale CSV verisi herhangi bir parametrik müdahale için zemin sağlamıyor.
 ---
+
+## [2026-06-22 17:03 UTC]
+**Step:** 193,248 (SON KAYIT — 23 GÜN FROZEN, 2026-05-31 03:01'den beri) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+Aktif eğitim yok — v9 training 2026-05-31'den bu yana tamamen durdurulmuş. Bu, bugün (2026-06-22) 3. analiz oturumu (14:05, 15:04, 17:03 UTC). CSV'de 46 veri satırı: son 22 satır özdeş (step=193k), hiç pozitif reward ya da oda kırılımı yok. ppo.yaml v10 config ile güncel ve 12+ oturumda teyit edildi. Bu oturumda da config değişikliği eşiği aşılmadı.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV tam: 46 satır. Faz 1 (11:02–12:32, step 142k→599k, monitor restart öncesi): ep_len=1000 (max cap), ep_rew_mean -290→-270, entropy -3.89→-3.32 (deterministikleşme), std 0.888→0.746. Sıfır oda keşfi.
+- Faz 2 (13:02–22:00, 34+ crash-recovery): step 50k–193k arası kısa rolloutlar. En iyi: ep_rew_mean=-29.0 @ step=110,720 (2026-05-30 15:13). Genel trend -50 ile -109 arasında zigzag — hiç istikrarlı iyileşme yok.
+- Faz 3 (22:20 itibaren): tamamen dondurulmuş. 22 satır özdeş step=193,248, ep_rew_mean=-173.85.
+- **+15 oda sıçraması hiç gözlemlenmedi. ep_rew_mean hiç pozitife geçmedi. Plato değil — kırılım başlamadan training öldü.**
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Geçersiz: ppo.yaml 2026-06-02'de v10'a taşındı. Aktif config: `lr=3e-4→1e-5 linear, 1.5M boyunca`. v9'un sabit 7.5e-5'i zaten terk edildi. v3.0 Gazebo (aynı harita, aynı lr schedule): peak=133.35 @ ~501k → kanıtlanmış tercih.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut stale değerler v9 çöküşünden kalma (ent_coef=0.0015). Faz 2'de entropy -4.21 civarında sabit (kötüleşmiyor), std ~0.985–0.999 (hâlâ yüksek). v9'un asıl sorunu düşük ent_coef değil, 34+ crash-recovery döngüsünün getirdiği öğrenme kararsızlığıydı.
+- v10 ent_coef=0.008 (5.3× artış): erken training entropy -3.2/−3.8 beklenir. std'nin 0.7 altına düşmesi 600k+ öncesi beklenmemeli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- Güncel veri yok. v3.0 referans (n_envs=1, aynı 6-oda harita, aynı lr schedule): ilk oda ~150–250k, 3+ oda 350–500k, 6/6 tamamlama 500–700k.
+- v10 (collision_penalty=25, obs_shape=72, ent_coef=0.008, n_steps=2048): **ilk oda 150–300k, full 6/6 tamamlama 500–700k beklenir.**
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **n_steps=2048 dikkat noktası:** v10 config'de n_steps 512→2048 (4×) arttırıldı, n_envs=1 ile birlikte rollout=2048 step/güncelleme. Bu, ilk pozitif reward sinyalinin policy'ye taşınma süresini uzatabilir. Erken fazda (0–200k) ep_rew_mean iyileşmezse ve std >0.9 kalırsa sorun n_steps'ten değil, keşif sürekliliğinden kaynaklanıyor demektir — ent_coef müdahalesi (0.008→0.015) 350k'dan önce gündeme gelmemeli.
+2. **350k early-stop kuralı (değişmedi):** ep_rew_mean < 0 VE visited_rooms = 0 @ step ≥ 350k → ent_coef 0.008→0.015 + restart. v9 bu patikada 145k'da öldü; v10'a 350k'ya kadar süre tanı.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml:** Hayır. Config 14. analiz oturumunda da v10-optimal teyit edildi. fast_sim 18-deney zinciri + v3.0 Gazebo bulguları ile tam uyumlu.
+- **env kodu:** Hayır. `collision_penalty=25` (satır 350) ve `obs_shape=72` (satır 198) önceki oturumda kaynak kod okunarak doğrulandı.
+- **Operasyonel:** Training 23 gündür ölü. Container'da Gazebo/ROS2 yok. Lokal makinede `./scripts/train.sh configs/ppo.yaml` ile v10 başlatılabilir. CSV güncellenene kadar bu analiz oturumları yeni veri üretemez.
+
+### v10 Önerisi
+1. **Config tamam, env tamam — tek bloker lokal başlatma.** ppo.yaml v10-optimal (lr=3e-4→1e-5, ent_coef=0.008, n_steps=2048, collision_penalty=25, obs_shape=72). Lokal terminalde `./scripts/train.sh configs/ppo.yaml` çalıştırıldığında 150–300k içinde ilk oda bonusu (+15) beklenir.
+2. **350k erken uyarı aktif:** ep_rew_mean < 0 ve oda=0 ise ent_coef 0.008→0.015 + restart. v9 bu patikada 145k'da öldü; v10'a tam 350k'ya kadar süre tanı, daha erken müdahale etme.
+
+### Müdahale
+**Yok** — %80 güven eşiğini aşan config veya env sorunu tespit edilmedi. ppo.yaml 14. oturumda da değişmedi. Stale CSV verisi (son 22 satır özdeş, step=193k) herhangi bir parametrik müdahale için zemin sağlamıyor.
+---
