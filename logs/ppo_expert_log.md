@@ -13633,3 +13633,44 @@ v9 eğitimi kurtarılamaz, 23 gündür tamamen inaktif. **KRİTİK YENİ BULGU:*
 ### Müdahale
 **Yok** — `configs/ppo.yaml` 10 oturumda v10-optimal teyit edildi; `drone_exploration_env.py` env kodu ZATEN güncel (collision_penalty=25, obs 72-d). %80 güven eşiğini aşan herhangi bir config veya env sorunu tespit edilmedi. v10 başlatmak için lokal terminalde `./scripts/train.sh configs/ppo.yaml` komutu yeterli.
 ---
+
+## [2026-06-22 14:05 UTC]
+**Step:** 193,248 (SON KAYIT — 23 GÜN FROZEN, 2026-05-31 03:01'den beri) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+Eğitim verisi tamamen stale. Yeni bulgu: `ros2_ws/drone_exploration_env.py` **bizzat kaynak koddan doğrulandı** — `collision_penalty=25.0` (satır 350) ve `obs_shape=(72,)` (satır 198) gerçekten uygulanmış. Önceki oturumların "env blocker kaldı" tespiti kesin olarak yanlış: blocker sadece Gazebo/ROS2 eksikliği (container kısıtı).
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV 47 satır (başlık dahil), son 17 satır özdeş: step=193k, ep_rew_mean=-173.85. Eğitim tamamen donmuş.
+- v9 eğitim trajedisi (3 faz): ① 142k-447k arası ep_len=1000 (max cap'a çarpıyor, sıfır oda), std 0.888→0.745; ② 49k-193k arası 34+ crash-recovery döngüsü, peak=-37.4 (negatif, sıfır oda bonusu), idle death spiral; ③ 193k'dan bu yana tam dondurma.
+- +15 oda sıçraması hiç gözlemlenmedi. Reward kırılımı yoktu — v9 keşfetmeden öldü.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Soru tarihi: ppo.yaml 2026-06-02'de v10'a geçirildi. Mevcut: `lr=3e-4 → 1e-5` linear, 1.5M step boyunca. v9'un sabit 7.5e-5'i terk edildi. v3.0 aynı schedule ile peak=133.35 @ ~501k üretti — kanıtlanmış optimal.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale değerler: entropy=-4.212, std=0.985. Bu v9'un erken deterministikleşmesinden kalma (ent_coef=0.0015 yüzünden).
+- v10 ent_coef=0.008 (5.3×): beklenen erken training entropy -3.2/-3.8 arası (sağlıklı). v10 başladığında 200-300k'da -4.0 sınırı izlenmeli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 referans (aynı hyperparametreler, aynı harita): ilk oda ~150-250k, 3+ oda ~350-500k, 6/6 oda ~500-700k.
+- v10 avantajları (collision_penalty=25 ✓, obs_shape=72 ✓, ent_coef=0.008): ilk oda 150-300k, 4+ oda 400-550k beklenir.
+
+**e) v10 için şu an en kritik 1-2 önerin ne olur?**
+1. **KOD DOĞRULAMASI TAMAMLANDI:** `drone_exploration_env.py` satır 350: `reward -= 25.0` ✓ ve satır 197-198: `shape=(72,)` ✓ — doğrudan kaynak koddan okundu. Önceki oturumların şüphesi kesinlikle çözüldü. v10 tüm katmanlarıyla başlatmaya hazır: `./scripts/train.sh configs/ppo.yaml`.
+2. **350k early-warning checkpoint:** Eğer eğitim başlarsa — ep_rew_mean < 0 VE visited_rooms = 0 @ step ≥ 350k → ent_coef 0.008→0.015 (ppo.yaml güncelle + restart). v9'da bu patik 145k'da öldürücü oldu; v10'da 350k'ya kadar süre tanı.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml:** Hayır. v10-optimal, 11. oturumda da teyit edildi.
+- **env kodu:** Hayır. `collision_penalty=25` (satır 350) ve `obs_shape=72` (satır 198) bizzat kaynak kod okunarak doğrulandı — bu oturumun tek yeni katkısı.
+- **Operasyonel:** v9 training 23 gündür ölü. Container'da Gazebo/ROS2 yok. Lokal terminalde `./scripts/train.sh configs/ppo.yaml` ile v10 başlatılabilir.
+
+### v10 Önerisi
+1. **Kaynak kod doğrulaması kesinleşti:** `drone_exploration_env.py` satır 350 (`reward -= 25.0`) ve satır 198 (`shape=(72,)`) okundu. Tüm fast_sim bulgular Gazebo env'e uygulanmış. v10 için tek eylem: lokal terminalde `./scripts/train.sh configs/ppo.yaml`.
+2. **300k izleme noktası:** ep_rew_mean sıfırı geçene kadar her 50k'da kontrol. Sıfırı ilk geçişi oda sıçraması (+15) gösterecek — bu milestone eğitimin sağlıklı olduğunu teyit eder.
+
+### Müdahale
+**Yok** — ppo.yaml 11 oturumda v10-optimal teyit edildi. Env kodu (`collision_penalty=25`, `obs_shape=72`) kaynak kod okunarak doğrulandı, değişiklik gerekmedi. %80 güven eşiğini aşan herhangi bir config sorunu bulunmadı.
+---
