@@ -13504,3 +13504,42 @@ v9 eğitimi crash-loop'ta kalıcı olarak donmuş (23 gün); ppo.yaml v10-optima
 ### Müdahale
 **Yok** — `configs/ppo.yaml` v10-optimal konfigürasyonunda; 8 oturumda %80 güven eşiğini aşan config sorunu tespit edilmedi. Env kodu değişikliklerini (collision_penalty ve lidar_history) kullanıcı `drone_exploration_env.py`'de uygulamalı, ardından `./scripts/train.sh configs/ppo.yaml` ile v10 başlatılmalı.
 ---
+
+## [2026-06-22 11:03 UTC]
+**Step:** 193,248 (son aktif kayıt — FROZEN) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 training 2026-05-31 03:01'den beri (23 gün) tamamen inaktif; son aktif adım 193k'da froze, runs/ dizini mevcut değil. ppo.yaml v10-optimal durumda (lr linear 3e-4→1e-5, ent_coef=0.008), ancak drone_exploration_env.py'de iki kritik env parametresi hâlâ eski değerde.
+
+### Detay
+- **Veri durumu:** training_metrics.csv son 17 satırı (22:00-03:01) tamamen donmuş — step=193,248, ep_rew_mean=-173.85, ckpt=ppo_drone_180000_steps.zip sabit. Gerçek eğitim ~22:00'de çöktü, monitor stale verisini tekrar tekrar yazdı.
+- **v9 yaşam döngüsü özeti:** Peak = ep_rew_mean = **-37.4 @ step 145,600** (2026-05-30 21:20). Oda sıçraması (+15) tek seferinde bile gözlemlenmedi. step 145k → 193k arasında idle death spiral: ep_len 214→637, ep_rew_mean -37→-174. Kök neden: ent_coef=0.0015 (v9) yetersiz entropy → drone hareketsizliğe drift etti, idle+time cezaları biriktirdi.
+- **Entropy trendi:** v9 erken phase (ilk restart, ~599k step TB): entropy -3.88→-3.32, std 0.888→0.746. Restart sonrası yeni TensorBoard oturumu: entropy -4.21 ile -4.26 arası sabit (ent_coef=0.0015 ile enforced deterministikleşme). -4.0'ın altında sabitlenmiş → v9 keşif yetersizliği doğrulandı.
+- **std:** Restart sonrası 0.985-1.003 (VecNormalize sıfırı → normalleşme sürecinde). Alarm eşiği (0.70) aşılmamış ama ent_coef zaten baskılayıcı rol oynuyor.
+- **FPS:** 103-121 (crash öncesi), 72 (step-frozen faz). runs/ dizini yok → aktif eğitim kanıtı yok.
+- **interventions.jsonl:** 23 ayrı crash_recovery girişi (hepsi 80k checkpoint'ten tekrar başlatma girişimi). Son gerçek bilgi: 2026-06-01 01:30 — "v3.0 saglikli, peak 102.54@430k" (Gazebo v3.0, ayrı oturum).
+- **versions.jsonl:** fast_sim v4.1→v5.0 (18 config) zinciri tamamlanmış. Kesinleşen bulgular: collision_penalty sweet spot = **25** (v4.8: %0 çarpışma); lidar_history = **2** optimal (v5.0: history=3 → voxel 281→106, regresyon); 1.5M üst sınır geçerli (v4.10/v4.11: 2M+ güvenlik kollapsu).
+- **ppo.yaml durumu:** v10-optimal. lr=3e-4 linear→1e-5 (1.5M), ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, n_envs=1. Sekiz oturumda teyit edilmiş; %80 güven eşiğini aşan müdahale gereksinimi yok.
+
+### Analiz Yanıtları
+**a) Reward eğrisi:** Platoya değil negatif spirale girdi, ardından crash. v9 peak = -37.4 (negatif — oda keşfi olmadan sadece engel cezaları). Gerçek öğrenme kırılımı (oda+15 spike) hiç gözlemlenmedi. v9 çevrimiçi değil.
+
+**b) lr=7.5e-5 constant:** Geçersiz soru — ppo.yaml çoktan v10'a geçilmiş (3e-4 linear). v9'un sabit 7.5e-5'i idle spiral'ı önleyemedi; deterministikleşmeye katkıda bulundu. v10 schedule v3.0'da kanıtlanmış optimal.
+
+**c) Entropy/std:** v9 aktif fazda entropy=-4.21 sabit (ent_coef=0.0015 → deterministik). v10 ent_coef=0.008 (5.3x daha yüksek) bu soruyu ortadan kaldırır. Alarm eşiği: entropy < -4.5 VE std < 0.70 birlikte (v10 için).
+
+**d) Oda geçişi step tahmini:** v9 verisiyle yanıt yok (oda keşfi olmadı). v3.0 referans (n_envs=1, 6 oda): ilk oda ~150-250k, 3+ oda ~350-500k. v10 (lidar_history=2 + collision=25): **ilk oda 200-350k, tam 6/6 oda 550-800k** konservatif öngörü. Hareketli engel aktif → alt sınırı biraz yukarı çeker.
+
+**e) v10 için kritik 1-2 öneri:**
+1. `drone_exploration_env.py`: `collision_penalty` **10.0 → 25.0** — fast_sim v4.7/v4.8/v4.9 üçlü taraması dar sweet spot kanıtladı (22=collapse, 25=optimal, 30=%8 crash). YAML dışı, doğrudan env kodu.
+2. `drone_exploration_env.py`: `lidar_history` **1 → 2** (obs 41-d → 72-d) — v5.0 history=3 regresyon kanıtladı; optimal 2. Hareketli engel hızını gözlemleme kritik, aksi halde eval gap tekrar üretilir.
+
+**f) Acil müdahale:** ppo.yaml → HAYIR. Env kodu değişiklikleri kullanıcı tarafından uygulanmalı. Asıl blocker: bu container'da Gazebo Harmonic yok, lokal terminalde `./scripts/train.sh configs/ppo.yaml` başlatılması gerekiyor.
+
+### v10 Önerisi
+1. **collision_penalty=25 env kodunda uygula ÖNCE** (`drone_exploration_env.py`, v4.8 sweet spot). v4.9 (22) collapse gösterdi — tek birim fark kritik; YAML'dan değil env'den değiştirilmeli.
+2. **150-250k'da idle-spiral monitörü:** ep_len > 400 VE ep_rew_mean < -80 birlikte ≥ 3 ölçüm → ent_coef 0.008→0.015 acil müdahale (v9'un sonunu getiren kalıp erken yakala).
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` sekiz oturumda v10-optimal teyit edildi; %80 güven eşiğini aşan herhangi bir config sorunu tespit edilmedi. Env kodu değişikliklerini (collision_penalty=25, lidar_history=2) kullanıcı `ros2_ws/src/rl_drone_pathfinding/rl_drone_pathfinding/envs/drone_exploration_env.py`'de uygulamalı, ardından `./scripts/train.sh configs/ppo.yaml` ile v10 başlatılmalı.
+---
