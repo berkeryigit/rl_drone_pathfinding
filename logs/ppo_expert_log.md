@@ -13716,3 +13716,45 @@ Aktif eğitim yok — v9 training 23 gündür ölü. Bu oturumda `logs/versions.
 ### Müdahale
 **Yok** — ppo.yaml tüm fast_sim (v4.1–v5.0, 18 deney) bulgularıyla tutarlı, 12. oturumda da değişiklik eşiği aşılmadı. Env kodu önceki oturumdan doğrulanmış. Stale CSV verisi hiçbir müdahaleye olanak tanımıyor.
 ---
+
+## [2026-06-22 16:22 UTC]
+**Step:** 193,248 (SON KAYIT — 23 GÜN FROZEN, 2026-05-31 03:01'den beri) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+Aktif eğitim yok. v9 training 2026-05-31'den bu yana tamamen dondurulmuş. **Bu oturumun yeni gözlemi:** Bugün (2026-06-22) 14:05 ve 15:04 UTC'de iki analiz daha yapılmış — hepsi özdeş sonuç. Bu 3. oturum. Tekrarlayan analiz sessize alınabilir; tek bloker Gazebo/ROS2'nin bu container'da yokluğu.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV'nin tamamı: 46 data satırı. Faz 1 (2026-05-30 11:02 → 12:32): step 142k→599k, ep_len=1000 (max cap'e çarpıyor), ep_rew_mean -290→-270, entropy -3.89→-3.32 (sürekli düşüyor → deterministikleşme), std 0.888→0.746. **Sıfır oda keşfi, tamamen boşta.**
+- Faz 2 (13:02 → 22:00): crash-reset sonrası fresh rollout, step ~50k-193k arası 34+ crash-recovery döngüsü. En iyi değer: ep_rew_mean=-25.3 @ step=84k (2026-05-30 13:52). Sonra tekrar kötüleşme → 193k'da ep_len=637 (yarı timeout), ep_rew_mean=-173.
+- Faz 3 (22:20'den itibaren): tamamen dondurulmuş — 15 özdeş satır aynı değerle.
+- **+15 oda sıçraması hiç gözlemlenmedi. ep_rew_mean hiç pozitife geçmedi.**
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz: ppo.yaml 2026-06-02'de v10'a taşındı. Güncel config: `lr=3e-4→1e-5 linear, 1.5M step`. v9'un sabit 7.5e-5'i terk edildi. v3.0 Gazebo (aynı schedule) peak=133.35 @ 501k verdi → kanıtlanmış doğru karar.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut stale değerler v9 çöküşünden kalma (ent_coef=0.0015 → erken deterministikleşme). Faz 1'de entropy -3.89→-3.32 düşüşü (std 0.888→0.746) açıkça gösteriyor: v9 ilk 500k adımda sıfır oda keşfederken politika sertleşti.
+- v10 ent_coef=0.008 (5.3×): erken training entropy -3.2 → -3.8 beklenir. Std'nin 0.7 altına düşmesi 600k+ öncesi beklenmemeli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- Yeni veri yok. v3.0 referans: ilk oda 150-250k, 3+ oda 350-500k, 6/6 oda 500-700k.
+- v10 (collision_penalty=25, obs_shape=72, ent_coef=0.008): ilk oda 150-300k beklenir.
+
+**e) v10 için şu an en kritik 1-2 önerin ne olur?**
+1. **OPERASYONEL BLOKER (değişmedi):** Bu cloud container'da Gazebo/ROS2 yok. `./scripts/train.sh configs/ppo.yaml` ancak lokal makinede çalışır. ppo.yaml ve env kodu (collision_penalty=25, obs_shape=72) hazır — tüm beklenti lokal başlatmada.
+2. **3. oturum uyarısı:** Bugün 3 analiz oturumu yapıldı, hepsi özdeş sonuç verdi. Eğer v10 başlatılmışsa yeni metriklerin logs/training_metrics.csv'ye eklenmesi gerekiyor — CSV güncellenmeden bu analiz oturumları değer üretemiyor.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml:** Hayır. Config 13. oturumda da v10-optimal teyit edildi. fast_sim 18 deney zinciri + v3.0 Gazebo bulgularıyla tam uyumlu.
+- **Env kodu:** Hayır. `collision_penalty=25` (satır 350) ve `obs_shape=72` (satır 198) önceki oturumlarda kaynak kod okunarak doğrulandı.
+- **Operasyonel:** Training 23 gündür ölü. Scheduled analiz oturumu tekrarlayan stale veri görüyor — lokal makinede v10 başlatılana kadar yeni bilgi üretemez.
+
+### v10 Önerisi
+1. **Lokal `./scripts/train.sh configs/ppo.yaml` ile v10 başlatılabilir** — tüm hazırlık tamamlanmış: ppo.yaml optimal, env kodu güncel, fast_sim 18 deney teyit ediyor.
+2. **350k erken uyarı (henüz geçerli):** ep_rew_mean < 0 VE visited_rooms = 0 @ step ≥ 350k → ent_coef 0.008→0.015 + restart. v9 bu patikada 145k'da öldü; v10'a 350k'ya kadar süre tanı.
+
+### Müdahale
+**Yok** — %80 güven eşiğini aşan herhangi bir config veya env sorunu tespit edilmedi. ppo.yaml 13. oturumda da değişmedi. Stale CSV verisi herhangi bir parametrik müdahale için zemin sağlamıyor.
+---
