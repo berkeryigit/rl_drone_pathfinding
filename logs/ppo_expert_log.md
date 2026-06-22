@@ -13877,3 +13877,44 @@ v9 training 23 gündür ölü (step=193k dondurulmuş). ppo.yaml 2026-06-02'de v
 ### Müdahale
 **Yok** — %80 güven eşiğini aşan config veya env sorunu tespit edilmedi. ppo.yaml 16. oturumda da değişmedi. Stale CSV (23 gün, 22 özdeş satır, step=193k) parametrik müdahale için zemin sağlamıyor. v10 training lokal başlatılana kadar bu analiz oturumları yeni veri üretemez.
 ---
+
+## [2026-06-22 20:04 UTC]
+**Step:** 193,248 (SON KAYIT — 23 GÜN FROZEN, 2026-05-31 03:01'den beri) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+Bu 17. analiz oturumu. CSV 23 gündür tamamen donmuş (step=193k). ppo.yaml v10-optimal. v10 bu container'da hiç başlatılmadı (`runs/` yok). Yeni bulgu: CSV'nin **Faz 1 vs Faz 2 ayrımı** netleştirildi — iki farklı eğitim rejimi tespit edildi.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- **Faz 1 (11:02–13:02, step 142k–599k, ep_len=1000):** Drone max_episode_steps'e çarpıyor, reward -290→-270 (yavaş ama anlamsız iyileşme). ep_len sabit 1000 → drone kaçmayı öğreniyor ama oda keşfetmiyor.
+- **Faz 2 (13:02–03:01, step 49k–193k, ep_len=95–637):** Training sıfırlanıp 80k checkpoint'ten devam. Peak -25.3 @ step=83k. Sonra 34+ crash-recovery döngüsü. Step sayacı sürekli geri sarıyor (49k→83k→49k→83k... crash pattern).
+- **Net:** Plato yok, kırılım yok. v9 hiç pozitif reward görmedi. +15 oda sıçraması sıfır. Training 193k'da öldü.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz soru. ppo.yaml 2026-06-02'de `lr=3e-4→1e-5 linear` (1.5M) olarak güncellendi. v9'un sabit 7.5e-5'i terk edildi. v3.0 Gazebo aynı schedule ile peak=133.35@501k verdi → doğru seçim. Sabit lr kullanımı Faz 1 ve Faz 2'deki erken determinizasyonu açıklayan faktörlerden biridir.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- **Faz 1 (KRİTİK BULGU):** entropy_loss -3.886→-3.324 (yükseliyor, daha az negatif = entropi düşüyor), std 0.888→0.746. **-4'ün üzerine çıktı: EVET.** step~599k'da std=0.745 < 0.7 eşiği yaklaşıyordu. Bu, v9 Faz 1'de GERÇEK ERKEN DETERMİNİZASYON BAŞLAMIŞTI. Haklı olarak sıfırlandı.
+- **Faz 2 (GÜVENLİ):** entropy_loss -4.212→-4.263 (sabit, -4.0 altında ✓), std 0.985→1.003 (≫0.7 ✓). 80k checkpoint'ten devam eden yüksek entropi korunmuş. Sorun keşif değil — crash döngüsü.
+- **v10 beklentisi:** ent_coef=0.008 (Faz1'in 5.3×'i) → erken fazda entropy_loss -3.2→-3.8 beklenir. 600k+ öncesi std <0.7 görmemeli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 henüz başlatılmamış. v3.0 referans (n_envs=1, aynı harita, aynı lr, collision_penalty=10): ilk oda ~150–250k. v10 farkları: collision_penalty=25 (env satır 350), obs_shape=72 (lidar_history=2). fast_sim v4.8 kanıtladı: collision_penalty=25 → %0 çarpışma + 5 oda @ 2M. Gazebo gerçekçiliğiyle **ilk oda 100–250k, 6/6 tamamlama 450–650k** beklenir.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **Faz 1 hatasını tekrarlama:** std <0.75 veya entropy_loss > -3.5 görülürse (step ≤ 300k), **derhal ent_coef 0.008→0.012 arttır + restart**. v9 Faz 1'de bu hata yapıldı (ent_coef=0.0015 çok düşüktü, entropi erken çöktü). v10 ent_coef=0.008 bu riski azalttı ama izleme gerekli.
+2. **n_steps=2048 erken izleme noktası:** step ≥ 200k, visited_rooms=0, std >0.9 ise → n_steps=1024 geç (daha sık gradient update). fast_sim n_envs=8 + n_steps=2048 ile bu sorun yaşanmadı; ama n_envs=1'de rollout birikimi yavaşlar. 200k eşiği aşılmadan müdahale etme.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml:** Hayır. Config v10-optimal (lr=3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, clip_range=0.2, n_envs=1, 1.5M). fast_sim 18-deney zinciri + v3.0 Gazebo ile tam uyumlu. 16 önceki oturumda değişmedi, bu oturumda da değişmedi.
+- **env kodu:** Hayır. collision_penalty=25 (satır 350) ve obs_shape=72 (lidar_history=2, satır 198) önceki oturumlarda doğrulandı.
+- **Operasyonel — KRİTİK:** Training 23 gündür ölü. Container'da Gazebo/ROS2 yok. Lokal terminalde `./scripts/train.sh configs/ppo.yaml` ile v10 başlatılabilir.
+
+### v10 Önerisi
+1. **Faz 1 determinizasyon tuzağına dikkat:** v9 Faz 1'de entropy_loss -3.9→-3.3 (std 0.89→0.74) gözlemlendi — v9'un birincil keşif başarısızlığı. v10 ent_coef=0.008 ile bu risk büyük ölçüde azaltılmış; ama 200k içinde std <0.8 görülürse ent_coef arttır.
+2. **Lokal `./scripts/train.sh configs/ppo.yaml` ile v10 başlat.** Config 16 oturumda validate edildi, env kodu hazır. İlk +15 oda bonusu 100–250k içinde bekleniyor. 350k'ya kadar erken müdahale yapma; v9 öğretisi = crash döngüsünü stability ile kır, hiperparametre ile değil.
+
+### Müdahale
+**Yok** — %80 güven eşiğini aşan config veya env sorunu tespit edilmedi. CSV'nin Faz 1 vs Faz 2 analizi yeni bir bulgu ortaya koydu (Faz 1 gerçek deterministikleşme), ancak bu ppo.yaml değişikliğini gerektirmiyor (zaten v10'a taşınmış). ppo.yaml 17. oturumda da değişmedi.
+---
