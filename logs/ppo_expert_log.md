@@ -13376,3 +13376,48 @@ v9 eğitimi crash-loop'ta donmuş durumda; ppo.yaml v10-optimal konfigürasyona 
 ### Müdahale
 **Yok** — ppo.yaml v10-optimal konfigürasyonunda (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M, n_envs=1). 22+ gündür yeni eğitim verisi yok; %80 güven eşiğini aşan config sorunu tespit edilmedi. Config değişikliği veri yokken risk/fayda dengesi negatif.
 ---
+
+## [2026-06-22 08:04 UTC]
+**Step:** 193,248 (SON KAYIT — 23 GÜN STALE, 2026-05-31 03:01'den beri değişmedi) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 eğitimi crash-loop'ta kalıcı olarak donmuş; ppo.yaml v10-optimal konfigürasyonunda hazır bekliyor. Bugün 6. analiz (03:03, 04:03, 05:03, 06:04, 07:03, 08:04 UTC) — tüm CSV verisi tam okundu, yeni teşhis: v9'un "idle death spiral" kalıbı ilk kez belgelendi.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim YOK. Son 16 CSV satırı identik (step=193,248, ep_rew_mean=-173.85) — 2026-05-30 22:20'den 2026-05-31 03:01'e 10 saat watchdog artifact'ı.
+- v9 gerçek trajektor (tam CSV, 47 satır analizi): **-25.3 @ step 83k (13:52) en ERKEN en iyi**, ardından crash loop gürültüsü, **-37.4 @ step 145k (21:20) mutlak BEST**.
+- **YENİ TESHİS — Idle Death Spiral (21:20→22:00 arası):** Step 145k: ep_len=214, ep_rew_mean=-37.4. Step 193k: ep_len=637, ep_rew_mean=-173.85. ep_len 3x arttı ama reward 4.7x kötüleşti → drone çarpmayı öğrendi ama oda keşfini kaybetti. 637 step × (-0.001 zaman + ≥-0.1 idle) ≈ -173 = oda bonusu sıfır, tamamen idle penalty birikiyor. ent_coef=0.0015 yeterli keşif yoğunluğu sağlayamadı.
+- +15 oda bonus sıçraması v9'da hiç gözlemlenmedi; 23 gündür yok.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz: ppo.yaml `lr: 3e-4, lr_schedule: linear, lr_final: 1e-5` (v10, 1.5M boyunca). Sabit 7.5e-5 tamamen terk edildi.
+- v3.0 Gazebo aynı linear schedule ile peak=133.35 @ 501k üretti — kanıtlanmış optimal.
+- Ek gözlem: Phase 1 CSV (11:02-12:32) TB-mixing artifact'ı olsa da oradaki entropy -3.886→-3.324 + std 0.888→0.746 trendi, sabit düşük lr'nin (7.5e-5) deterministikleşmeyi engelleyemeyeceğini gösteriyor. v10 linear decay + ent_coef=0.008 bu sorunu yapısal olarak çözüyor.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut değerler 23 günlük stale — yorumlanamaz.
+- Phase 1 TB-mix verisi (step 599k'ye kadar): std=0.746 → **0.75 eşiğinin altına düştü**, entropy=-3.324. v9 config ile deterministikleşme 200-400k adımda kaçınılmazdı.
+- v10 ent_coef=0.008 ile beklenti: ilk 200k'da std>0.85, entropy -3.0/-3.8 arası. Alarm eşiği: entropy < -4.5 VE std < 0.70 birlikte → ent_coef 0.008→0.015.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 Gazebo (aynı hyperparametreler, 6 oda, n_envs=1): ilk oda 150-250k, 3+ oda 350-500k, 6/6 oda ~600k.
+- v10'da 3 hareketli engel aktif → +50-100k ek gecikme. **Öngörü: ilk oda 200-350k, 6/6 tam keşif 650-900k.**
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **collision_penalty=25 drone_exploration_env.py'de doğrula** (fast_sim v4.8 sweet spot — v4.7 penalty=10: %32 çarpışma, v4.8 penalty=25: %0, v4.9 penalty=22: çöküş → tatli nokta DAR, 25 optimal).
+2. **Idle death spiral monitörü kur:** 150k-250k bandında ep_len artarken ep_rew_mean düşüyorsa (ep_len>400 + ep_rew_mean<-100) → acil ent_coef artışı tetikle. Bu v9'un sonunu getiren kalıptı.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- ppo.yaml: HAYIR — v10-optimal (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M, n_envs=1). 6 oturumda teyit edildi.
+- **Operasyonel:** Eğitim bu container'da başlatılamaz (Gazebo Harmonic + ROS2 Jazzy eksik). Lokal terminalde `./scripts/train.sh configs/ppo.yaml` gerekli.
+- 2M+ step yasağı kesin: fast_sim v4.10-v4.13 + v5.0 (5 bağımsız deney) — güvenlik kollapsu, total_timesteps=1.5M sabit.
+
+### v10 Önerisi
+1. **collision_penalty=25 env kodunda teyit et** — fast_sim v4.8 sweet spot; bu YAML dışı kritik env parametresi, yanlış değer tüm eğitimi bozar.
+2. **Idle death spiral erken uyarısı**: 150-250k adımda ep_len>400 + ep_rew_mean<-100 birlikte → ent_coef 0.008→0.015 (v9'un sonunu getiren kalıptan koruma).
+
+### Müdahale
+**Yok** — ppo.yaml v10-optimal konfigürasyonunda. 23 gündür yeni eğitim verisi yok; %80 güven eşiğini aşan config sorunu tespit edilmedi. Tam CSV analizi yeni bir config sorunu ortaya çıkarmadı.
+---
