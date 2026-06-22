@@ -13421,3 +13421,47 @@ v9 eğitimi crash-loop'ta kalıcı olarak donmuş; ppo.yaml v10-optimal konfigü
 ### Müdahale
 **Yok** — ppo.yaml v10-optimal konfigürasyonunda. 23 gündür yeni eğitim verisi yok; %80 güven eşiğini aşan config sorunu tespit edilmedi. Tam CSV analizi yeni bir config sorunu ortaya çıkarmadı.
 ---
+
+## [2026-06-22 09:03 UTC]
+**Step:** 193,248 (SON KAYIT — 23 GÜN STALE, 2026-05-31 03:01'den beri değişmedi) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 eğitimi crash-loop'ta kalıcı olarak donmuş (23 gün); ppo.yaml v10-optimal konfigürasyonunda hazır bekliyor. Bugün 7. analiz (03:03, 04:03, 05:03, 06:04, 07:03, 08:04, 09:03 UTC) — tüm CSV verisi sabit, yeni eğitim verisi yok.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim YOK. CSV son 16 satırı identik: step=193,248, ep_rew_mean=-173.85 — 2026-05-30 22:20'den 2026-05-31 03:01'e 10 saat watchdog artifact'ı, ardından kalıcı dondurma.
+- v9 gerçek best: **ep_rew_mean = -37.4 @ step ~145,600** (2026-05-30 21:20). +15 oda sıçraması hiç gözlemlenmedi.
+- Idle death spiral teyit: step 145k'dan 193k'ya ep_len 214→637 (+3x) ama ep_rew_mean -37.4→-173.85 (-4.7x) — drone hareketsiz kaldı, zaman cezaları biriktirdi. ent_coef=0.0015 keşif için yetersizdi.
+- Plato değil, crash-loop — gerçek anlamda öğrenme 145k adımda sona erdi.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz: ppo.yaml zaten v10 konfigürasyonuna taşındı → `lr: 3e-4, lr_schedule: linear, lr_final: 1e-5` (1.5M adımda doğrusal azalma).
+- v3.0 Gazebo aynı schedule ile peak=133.35 @ 501k → kanıtlanmış optimal. Sabit 7.5e-5 deterministikleşmeyi engelleyemezdi.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- CSV değerleri (entropy=-4.212, std=0.985) 23 günlük stale — yorumlanamaz, aktif eğitimi temsil etmiyor.
+- Phase 1 CSV (11:02-12:32 arası, muhtemelen TB-mix artifact): std 0.888→0.746 → **0.75 eşiğinin altına düştü**. v9 config (ent_coef=0.0015) ile deterministikleşme 200-400k adımda kaçınılmazdı.
+- v10 beklentisi: ent_coef=0.008 ile ilk 200k'da std>0.85, entropy -3.0/-3.8 arası; alarm eşiği entropy < -4.5 VE std < 0.70 birlikte.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v9 verisiyle yanıt verilemiyor (crash-loop). Referans: v3.0 Gazebo (6 oda, n_envs=1, aynı hyperparametreler): ilk oda 150-250k, 3+ oda 350-500k, 6/6 oda ~600k.
+- v10 hareketli engel (+3) etkisiyle: **ilk oda 200-350k, tam keşif (6/6 oda) 650-900k** konservatif öngörü.
+
+**e) v10 için şu an en kritik 1-2 önerin ne olur?**
+1. **collision_penalty=25 drone_exploration_env.py'de doğrula** — fast_sim v4.7 (penalty=10): %32 çarpışma vs. v4.8 (penalty=25): %0 çarpışma. Parametre YAML dışında, env kodunda. Yanlış değer tüm eğitimi bozar.
+2. **Idle death spiral erken uyarısı:** 150-250k bandında ep_len>400 VE ep_rew_mean<-100 birlikte gözlenirse → ent_coef 0.008→0.015 (tek yeterli müdahale). Bu v9'un çöküşünü getiren kalıptan korunma mekanizması.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- ppo.yaml: HAYIR — v10-optimal (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M, n_envs=1). 7 oturumda teyit edildi.
+- **Operasyonel:** Eğitim bu container'da başlatılamaz (Gazebo Harmonic + ROS2 Jazzy yok). Lokal terminalde `./scripts/train.sh configs/ppo.yaml` gerekli.
+- 2M+ step yasağı: fast_sim v4.10-v4.13 + v5.0 (5 bağımsız deney) → güvenlik kollapsu, total_timesteps=1.5M sabit tutulmalı.
+
+### v10 Önerisi
+1. **collision_penalty=25 env kodunda teyit et** — fast_sim v4.8 sweet spot (penalty=10→%32 çarpışma, penalty=25→%0, penalty=22→çöküş); YAML dışı kritik parametre.
+2. **150-250k erken kontrol:** ep_len>400 + ep_rew_mean<-100 birlikte → ent_coef 0.008→0.015; aksi hâlde dokunma. v9'un idle death spiral kalıbından koruma.
+
+### Müdahale
+**Yok** — ppo.yaml zaten v10-optimal konfigürasyonunda. 23+ gündür yeni eğitim verisi yok; %80 güven eşiğini aşan config sorunu tespit edilmedi. Config değişikliği gereksiz risk taşır.
+---
