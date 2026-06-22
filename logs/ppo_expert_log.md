@@ -13674,3 +13674,45 @@ Eğitim verisi tamamen stale. Yeni bulgu: `ros2_ws/drone_exploration_env.py` **b
 ### Müdahale
 **Yok** — ppo.yaml 11 oturumda v10-optimal teyit edildi. Env kodu (`collision_penalty=25`, `obs_shape=72`) kaynak kod okunarak doğrulandı, değişiklik gerekmedi. %80 güven eşiğini aşan herhangi bir config sorunu bulunmadı.
 ---
+
+## [2026-06-22 15:04 UTC]
+**Step:** 193,248 (SON KAYIT — 23 GÜN FROZEN, 2026-05-31 03:01'den beri) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+Aktif eğitim yok — v9 training 23 gündür ölü. Bu oturumda `logs/versions.jsonl` tam okundu: fast_sim v4.1→v5.0 (18 deney) zinciri tamamlanmış ve tüm anahtar bulgular `configs/ppo.yaml` v10 config ile tutarlı. `total_timesteps=1.5M` sınırı fast_sim'in 2M+ güvenlik kolapsı bulgusundan direkt geliyor. **ppo.yaml değişikliği yok — config 12. oturumda da optimal teyit edildi.**
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV 47 satır, son 17 satır özdeş (step=193k). Hiçbir yeni veri yok.
+- v9 trajectory özeti: Faz 1 (142k-447k) ep_len=1000 max-cap, sıfır oda keşfi; Faz 2 (49k-193k) 34+ crash-recovery, peak=-37.4 (negatif, oda bonusu yok); Faz 3 (193k, 22:00 30-May → …) tam dondurma.
+- Plato değil — eğitim hiç kırılım yaşamadan çöktü. +15 oda sıçraması hiç gözlemlenmedi.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Geçersiz soru: ppo.yaml 2026-06-02'de v10'a taşındı. Güncel: `lr=3e-4→1e-5 linear`, 1.5M boyunca. v3.0 Gazebo (aynı harita, aynı schedule) peak=133.35 @ ~501k verdi.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut stale değerler v9 çöküşünden kalma (ent_coef=0.0015 yüzünden erken deterministikleşme).
+- v10 ent_coef=0.008 (5.3×): erken training entropy -3.2/-3.8 beklenir (sağlıklı keşif).
+- v10 başladığında 200-300k'da -4.0 eşiği izlenmeli; std'nin 0.7 altına düşmesi 600k+ öncesi beklenmemeli.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 referans (n_envs=1, 6 oda, aynı harita): ilk oda ~150-250k, 3+ oda ~350-500k, 6/6 ~500-700k.
+- v10: collision_penalty=25 (v4.8 sweet spot: %0 çarpışma) + obs_shape=72 + ent_coef=0.008 → **ilk oda 150-300k, 4+ oda 400-550k**.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **fast_sim bağımsız teyit:** versions.jsonl v4.8→v5.0 sonuçlarının tamamı okundu. `total_timesteps=1.5M` v4.10 (5M'de güvenlik kolapsı @3.2M) ve v4.13 (8M, 5M'deki 281-voxel zirvesi geçici olduğu kanıtlandı) bulgularıyla DOĞRUDAN uyumlu. `collision_penalty=25` v4.8 champion bulgusuyla uyumlu (v4.9: 22 →rooms 2, v4.6: 30 →%93 çarpışma; 25 sweet spot). ppo.yaml'ın tüm kritik parametreleri bağımsız doğrulandı.
+2. **350k erken uyarı:** ep_rew_mean < 0 VE visited_rooms = 0 @ step ≥ 350k → ent_coef 0.008→0.015 (ppo.yaml güncelle + restart). v9 bu trajekte 145k'da öldü; v10'a 350k'ya kadar süre tanı.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml:** Hayır. 12. oturumda da v10-optimal teyit edildi. fast_sim 18-deney zincirinin tamamı bu oturumda okundu ve parametreler uyumlu.
+- **env kodu:** Hayır. Önceki oturumda `collision_penalty=25` (satır 350) ve `obs_shape=72` (satır 198) kaynak koddan doğrulandı. Bu oturum fast_sim sonuçları üzerinden bağımsız teyit etti (v4.8 %0 çarpışma → 25 optimal).
+- **Operasyonel:** Training 23 gündür ölü. Lokal terminalde `./scripts/train.sh configs/ppo.yaml` ile v10 başlatılabilir. Container'da Gazebo/ROS2 yok.
+
+### v10 Önerisi
+1. **fast_sim 18-deney teyidi tamamlandı:** `total_timesteps=1.5M` (v4.10/v4.13 uzun-eğitim güvenlik kolapsı), `collision_penalty=25` (v4.8 champion: %0 çarpışma), `lidar_history=2` (v5.0 history=3 başarısız) — tüm kritik seçimler versions.jsonl'dan bağımsız teyit edildi. Config değişikliği gereksiz.
+2. **350k checkpoint kuralı:** ep_rew_mean < 0 ve oda=0 ise ent_coef 0.008→0.015 + restart. Gerekirse ppo.yaml güncellenir.
+
+### Müdahale
+**Yok** — ppo.yaml tüm fast_sim (v4.1–v5.0, 18 deney) bulgularıyla tutarlı, 12. oturumda da değişiklik eşiği aşılmadı. Env kodu önceki oturumdan doğrulanmış. Stale CSV verisi hiçbir müdahaleye olanak tanımıyor.
+---
