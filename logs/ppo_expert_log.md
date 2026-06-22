@@ -13333,3 +13333,46 @@ v9 eğitimi 22 gün önce crash-loop'a girdi ve bir daha ilerlemedi. ppo.yaml v1
 ### Müdahale
 **Yok** — ppo.yaml zaten v10-optimal konfigürasyonunu taşıyor (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M, n_envs=1). 22 gündür yeni eğitim verisi yok. %80 güven eşiğini aşan config sorunu tespit edilmedi; mevcut veri yokluğunda config değişikliği risk/fayda dengesi negatif.
 ---
+
+## [2026-06-22 07:03 UTC]
+**Step:** 193,248 (SON KAYIT — 22+ GÜN STALE, 2026-05-31 03:01'den beri değişmedi) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 eğitimi crash-loop'ta donmuş durumda; ppo.yaml v10-optimal konfigürasyona taşındı. Bugün 5. tekrar analiz (03:03, 04:03, 05:03, 06:04, 07:03 UTC) — durumda değişiklik yok, config müdahale gerekmez.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim YOK. CSV son 25 satır tamamen özdeş: step=193,248, ep_rew_mean=-173.85 — crash-loop watchdog artifact'ı (2026-05-31 03:01'den 2026-05-31 03:01'e kadar tekrar).
+- Gerçek best: **ep_rew_mean ≈ -37.4 @ step ~145,600** (2026-05-30 21:20). v9 hiçbir zaman pozitife geçmedi.
+- +15 oda bonus sıçraması v9'da hiç gözlemlenmedi. İlk reward pozitifleşmesi 80k-120k adım arası olması gerekirdi ama crash-loop önce araya girdi.
+- interventions.jsonl: 39 crash-recovery, tamamı step=180k checkpoint'ten loop — gerçek ilerleme v9 kapanmış.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- KICKOFF.md'de bahsedilen 7.5e-5 constant artık geçersiz. ppo.yaml v10 konfigürasyonuna geçirildi: `learning_rate: 3e-4, lr_schedule: linear, lr_final: 1e-5` (1.5M adımda decay). Bu v3.0 Gazebo peak=133.35 @ 501k konfigürasyonuyla aynı — kanıtlanmış optimal.
+- Sabit 7.5e-5 kullanımı erken fine-tune bölgesinde takılmaya yol açardı; linear schedule doğru tercih.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut değerler (entropy=-4.212, std=0.985) 22+ günlük stale — gerçek eğitimi temsil etmiyor.
+- v10 için beklenti: ent_coef=0.008 (v9 0.0015'in 5.3x'i) sayesinde ilk 100-200k'da entropy -3.0/-3.8 bandında olması beklenir. Deterministikleşme riski 400-600k bandında; alarm eşiği: entropy < -4.5 VE std < 0.70 birlikte.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v9 veri yok — v3.0 referansı (aynı hyperparametreler, 6 oda, n_envs=1): ilk oda 150-250k, 3+ oda 350-500k, 6/6 oda ~600k.
+- v10'da 3 hareketli engel aktif → +50-100k ek gecikme. Konservatif öngörü: **ilk oda 200-350k, tam keşif (6/6 oda) 650-900k**.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **collision_penalty=25 drone_exploration_env.py'de doğrula** — fast_sim v4.7 (penalty=10): %32 çarpışma → v4.8 (penalty=25): %0 çarpışma. YAML dışı kritik env parametresi; bu olmadan v10 eğitimi sağlıklı başlamaz.
+2. **200k erken kontrol noktası:** ep_rew_mean > -50 → sistem sağlıklı, dokunma; ep_rew_mean < -100 VE std < 0.70 birlikte → sadece ent_coef 0.008→0.015 değiştir (başka hiçbir şeye dokunma).
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- ppo.yaml için: HAYIR — v10-optimal, 5 oturumda teyit edildi, %80 güven eşiğini geçen sorun yok.
+- **Operasyonel:** Eğitim bu container'da başlatılamaz (Gazebo Harmonic + ROS2 Jazzy eksik). Lokal terminalde `./scripts/train.sh configs/ppo.yaml` gerekli.
+- 2M+ step sınırını geçme: fast_sim v4.10-v4.13 + v5.0 (5 bağımsız deney) → güvenlik kollapsu, total_timesteps=1.5M sabit tutulmalı.
+
+### v10 Önerisi
+1. **collision_penalty=25 env kodunda teyit et** (drone_exploration_env.py) — YAML'dan bağımsız kritik env değişikliği; bu olmadan v10 başarısız başlar.
+2. **200k step erken uyarı eşiği:** ep_rew_mean > -50 → sağlıklı; ep_rew_mean < -100 VE std < 0.70 birlikte → ent_coef 0.008→0.015 (tek yeterli müdahale).
+
+### Müdahale
+**Yok** — ppo.yaml v10-optimal konfigürasyonunda (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M, n_envs=1). 22+ gündür yeni eğitim verisi yok; %80 güven eşiğini aşan config sorunu tespit edilmedi. Config değişikliği veri yokken risk/fayda dengesi negatif.
+---
