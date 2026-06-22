@@ -13465,3 +13465,42 @@ v9 eğitimi crash-loop'ta kalıcı olarak donmuş (23 gün); ppo.yaml v10-optima
 ### Müdahale
 **Yok** — ppo.yaml zaten v10-optimal konfigürasyonunda. 23+ gündür yeni eğitim verisi yok; %80 güven eşiğini aşan config sorunu tespit edilmedi. Config değişikliği gereksiz risk taşır.
 ---
+
+## [2026-06-22 10:04 UTC]
+**Step:** 193,248 (SON KAYIT — 23 GÜN STALE, 2026-05-31 03:01'den beri değişmedi) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 eğitimi crash-loop'ta kalıcı olarak donmuş (23 gün); ppo.yaml v10-optimal konfigürasyonunda hazır bekliyor. Bugün 8. analiz. `versions.jsonl` ilk kez tam okundu — fast_sim v1→v5.0 tüm 18-config zinciri teyit edildi, tüm kaldıraçlar tükendi.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV 23 günlük stale. v9 gerçek best: **ep_rew_mean = -37.4 @ ~145,600 step** (2026-05-30 21:20). +15 oda sıçraması hiç gözlemlenmedi. Ardından idle death spiral: ep_len 214→637, ep_rew_mean -37.4→-173.85 (ent_coef=0.0015 yetersiz keşif → drone hareketsiz kaldı, zaman cezaları biriktirdi).
+- v3.0 Gazebo referansı: peak=133.35@501k / 110.3@610k (kasıtlı durduruldu).
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- GEÇERSİZ SORU. ppo.yaml çoktan `lr: 3e-4, lr_schedule: linear, lr_final: 1e-5` (v10, 1.5M boyunca). v3.0 aynı schedule → peak=133.35 → kanıtlanmış optimal. Sabit 7.5e-5 deterministikleşmeyi engelleyemez; idle death spiral bunun kanıtı.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut değerler 23 günlük stale, yorumlanamaz. v9 Phase-1 verisi (step 599k'ye kadar): std=0.746 → 0.75 eşiğinin altına düştü, entropy=−3.324 → ent_coef=0.0015 ile deterministikleşme kaçınılmazdı. v10 ent_coef=0.008 (v9'un 5.3×'i): 200-260k bandında entropy -3.0/-3.8 arası beklenir. Alarm eşiği: entropy < -4.5 VE std < 0.70 birlikte.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v9 verisiyle yanıt verilemiyor (crash-loop, oda keşfi hiç olmadı). Referans v3.0 (6 oda, n_envs=1): ilk oda 150-250k, 3+ oda 350-500k. v10'da 3 hareketli engel aktif (n_envs=1 → SubprocVecEnv deadlock riski yok): **ilk oda 200-350k, tam keşif (6/6) 650-900k** konservatif öngörü.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **`drone_exploration_env.py`: collision_penalty 10.0→25.0** — fast_sim sweet spot kesinleşmiş (v4.7=10.0→%32 çarpışma, v4.8=25.0→%0, v4.9=22.0→%37 collapse). Parametre YAML dışında; yanlış değer tüm v10 eğitimini bozar.
+2. **`drone_exploration_env.py`: lidar_history 1→2, obs 41-d→72-d** — fast_v2 tek değişiklik → çarpışma %80→%1. Hareketli engel hızı gözlemlenmeden v3.0 kalıbı (train %7-oda / eval %1-oda gap) v10'da tekrar üretilir. ppo.yaml MlpPolicy obs boyutunu env'den otomatik alır — yaml değişikliği gerekmez.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml:** HAYIR — v10-optimal (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M, n_envs=1). 8 oturumda teyit edildi. %80 güven eşiğini aşan herhangi bir config sorunu bulunmadı.
+- **OPERASYONEL BLOCKER:** 3 haftadır aktif eğitim yok. Gazebo Harmonic + ROS2 Jazzy bu container'da mevcut değil; lokal terminalde `./scripts/train.sh configs/ppo.yaml` başlatılması gerekiyor.
+- **Env kodu BLOCKER:** collision_penalty=10.0 (optimal: 25.0) ve lidar_history=1 (optimal: 2) hâlâ eski değerde. Bu iki satır değiştirilmeden v10 başlatmak fast_sim bulgularını göz ardı eder.
+- **versions.jsonl teyidi:** fast_sim v1→v5.0 tüm 18-config zinciri kapandı; kesinleşmiş tavan v4.8 (güvenli: %0 çarpışma, 117 voxel) + v4.10 (kapsam: %54 çarpışma, 281 voxel). Daha fazla fast_sim deneyi gereksiz — Gazebo v10'a geçilmeli.
+
+### v10 Önerisi
+1. **collision_penalty=25 env kodunda uygula** — fast_sim v4.7→v4.9 taraması dar tatli nokta kesinleştirdi (22=collapse, **25=optimal**, 30=%8); bu YAML dışı kritik parametre.
+2. **150-250k idle death spiral monitörü:** ep_len>400 VE ep_rew_mean<-100 birlikte → ent_coef 0.008→0.015 (v9'un sonunu getiren kalıp; v10'da erken tetik şartı olarak takip et).
+
+### Müdahale
+**Yok** — `configs/ppo.yaml` v10-optimal konfigürasyonunda; 8 oturumda %80 güven eşiğini aşan config sorunu tespit edilmedi. Env kodu değişikliklerini (collision_penalty ve lidar_history) kullanıcı `drone_exploration_env.py`'de uygulamalı, ardından `./scripts/train.sh configs/ppo.yaml` ile v10 başlatılmalı.
+---
