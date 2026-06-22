@@ -13290,3 +13290,46 @@ v9 eğitimi 22 gün önce crash-loop'a girdi ve bir daha ilerlemedi. ppo.yaml v1
 ### Müdahale
 **Yok** — ppo.yaml v10-optimal konfigürasyonunda (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M). 22 gündür yeni eğitim verisi yok. %80 güven eşiğini aşan config sorunu tespit edilmedi; config değişikliği yapmak veri yokken risk/fayda dengesi negatif.
 ---
+
+## [2026-06-22 06:04 UTC]
+**Step:** 193,248 (SON KAYIT — 22 GÜN STALE, 2026-05-31 03:01'den beri değişmedi) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+v9 eğitimi 22 gün önce crash-loop'a girdi ve bir daha ilerlemedi. ppo.yaml v10-optimal konfigürasyonunda hazır. Bu oturum bugün 4. analiz (03:03, 04:03, 05:03, 06:04 UTC) — durum değişmedi.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- Aktif eğitim YOK. CSV son 25+ satır tamamen özdeş: step=193,248, ep_rew_mean=-173.85 — crash-loop watchdog artifact'ı.
+- v9 gerçek best: **ep_rew_mean ≈ -37.4 @ step ~145,600** (2026-05-30 21:20). Hiçbir zaman pozitife geçmedi.
+- +15 oda bonus sıçraması v9'da hiç gözlemlenmedi. Plato/kırılım değerlendirmesi için v10 verisi gerekli.
+- interventions.jsonl: 39 crash-recovery, tamamı aynı 180k checkpoint'ten loop — gerçek ilerleme sıfır.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Soru geçersiz: ppo.yaml artık v10 schedule'da — `lr: 3e-4 linear → 1e-5` (1.5M boyunca). Sabit 7.5e-5 çoktan terk edildi.
+- Referans: v3.0 Gazebo aynı linear schedule ile peak=133.35 @ 501k üretti. Schedule kanıtlanmış optimal.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- CSV değerleri (entropy=-4.212, std=0.985) 22 günlük stale — yorumlanamaz.
+- v10 için beklenti: ent_coef=0.008 (v9'un 5.3x'i) ile ilk 150-200k'da std>0.80, entropy -3.0/-3.8. Deterministikleşme riski 400-600k bandında; karar eşiği: entropy < -4.5 VE std < 0.70 birlikte.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v3.0 referans (aynı hyperparametreler, 6 oda, n_envs=1): ilk oda 150-250k, 3+ oda 350-500k, 6/6 oda ~600k.
+- v10'da 3 hareketli engel aktif → +50-100k ek gecikme. Öngörü: **ilk oda 200-350k, 6/6 oda 650-900k**.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **collision_penalty=25 drone_exploration_env.py'de teyit et** (YAML dışı kritik env değişikliği — fast_sim v4.8 sweet spot; v4.7 penalty=10: %32 çarpışma → v4.8 penalty=25: %0).
+2. **200k step erken karar noktası:** ep_rew_mean > -50 → sistem sağlıklı, dokunma; ep_rew_mean < -100 VE std < 0.70 birlikte → ent_coef 0.008→0.015 (tek ve yeterli müdahale).
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- ppo.yaml için: HAYIR — v10-optimal, 70+ oturumda teyit edildi.
+- **Operasyonel (22. gün):** Eğitim container ortamında başlatılamaz (Gazebo Harmonic + ROS2 Jazzy yok). Lokal terminalde `./scripts/train.sh configs/ppo.yaml` komutu gerekli.
+- Bugün 4. tekrar analizin mevcut durumda herhangi yeni bilgi üretmediğini not et.
+
+### v10 Önerisi
+1. **collision_penalty=25 env kodunda doğrula** (drone_exploration_env.py) — bu YAML'dan bağımsız kritik parametre; fast_sim v4.8 vs v4.7 kıyaslaması bunu kanıtladı.
+2. **1.5M step sınırına kesinlikle uy**: fast_sim v4.10-v4.13 ve v5.0 (5 bağımsız deney) — 2M+ sonrası collision %0→%54, voxel 281→134 regresyonu. En iyi checkpoint 1.0-1.5M arasında.
+
+### Müdahale
+**Yok** — ppo.yaml zaten v10-optimal konfigürasyonunu taşıyor (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M, n_envs=1). 22 gündür yeni eğitim verisi yok. %80 güven eşiğini aşan config sorunu tespit edilmedi; mevcut veri yokluğunda config değişikliği risk/fayda dengesi negatif.
+---
