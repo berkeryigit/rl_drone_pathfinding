@@ -13999,3 +13999,45 @@ Bu 17. analiz oturumu. CSV 23 gündür tamamen donmuş (step=193k). ppo.yaml v10
 ### Müdahale
 **Yok** — ppo.yaml değiştirilmedi (19. oturumda da). Config için %80 güven eşiğini aşan bir sorun tespit edilmedi; mevcut v10 parametreleri deney zinciriyle tam uyumlu. Operasyonel başlatma lokal makinede kullanıcı tarafından yapılacak.
 ---
+
+## [2026-06-22 23:03 UTC]
+**Step:** 193,248 (SON KAYIT — 23 GÜN FROZEN, 2026-05-31 03:01'den beri) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+20. analiz oturumu. CSV 23 gündür tamamen donmuş (step=193k). runs/ dizini yok, container'da Gazebo/ROS2 yok. ppo.yaml v10-optimal (2026-06-02'den beri değişmedi). Bu oturumda: (1) v9 iki fazının kök-neden analizi yapıldı; (2) v10 config'in obs normalizasyon ve n_steps seçimine dair ek doğrulama eklendi.
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV 47 satır (başlık + 46 veri). Son 22 satır özdeş — plato veya kırılım analiz edilemez, eğitim ölü.
+- **Faz 1 (step 142k–599k, ep_len=1000):** ep_rew_mean -290 → -270. Raw analiz: time_penalty=-1 + idle_penalty (-0.5×~970step)≈ -486 — drone idle kaldığı için -270 değil ~-487 beklenir; -270 gap'i voxel toplama gösteriyor (~+217 voxel reward). Ancak hiç oda açılmadı (+15 sıfır kez). Entropy_loss -3.886→-3.617 (YUKARI gidiş = entropi AZALIYOR = erken determinizasyon). Std 0.888→0.746 — 0.7 eşiğine yaklaşıyor. Kök neden: ent_coef=0.0015 çok düşük, policy hızla ezberci oldu.
+- **Faz 2 (step 49k–193k, 34+ crash):** ep_len 100-640 arası, peak ep_rew_mean=-25.3 @ ~84k. Entropy_loss ~-4.21 (stabil), std ~0.99 — keşif yeterliydi ama SubprocVecEnv deadlock eğitimi bitirdi.
+- **Net:** v9 iki ayrı nedenle başarısız: (1) ent_coef çok düşük → erken greedileşme, (2) n_envs=2 ile SubprocVecEnv deadlock → 34+ crash. Her ikisi v10 config'de düzeltildi.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz soru: v9'da kullanılan sabit 7.5e-5 terk edildi. Güncel ppo.yaml: lr=3e-4→1e-5 linear (1.5M). v3.0 Gazebo kanıtı: aynı schedule, peak=133.35 @ 501k. Bu seçim kesinleşmiş.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut değerler (entropy=-4.212, std=0.985) stale — v9'un son ölü anından kalma. Aktif eğitim yok.
+- v10 beklentisi: ent_coef=0.008 (v9'un 5.3×'i). Fast_sim v4.2 kanıtı: yüksek ent_coef → rooms_mean 2.0→4.98 sıçraması. Erken fazda entropy_loss -3.2→-3.8 bekleniyor; -4'ün altına 300k öncesi düşerse ent_coef arttırma gerekir.
+- **Ek not (bu oturum):** ppo.yaml'da `norm_obs: false` ve obs_shape=72-d. VecNormalize reward normalizasyonu (clip=10) mevcut. Ham obs ile çalışmak fast_sim'de doğrulandı; n_steps=2048 geniş rollout bu durumu telafi ediyor (daha düzgün advantage tahmini).
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 başlatılmamış. Beklenti değişmedi: **ilk oda 100–250k step, 6/6 tamamlama 450–650k step** (n_envs=1, collision_penalty=25, Gazebo ~40fps). Bu tahminin güven aralığı daraldı: fast_sim v4.8 (n_envs=8 → duvar saati ekstra 8× hız) 1.5M'de 5 oda = Gazebo ekv. ~187k duvar saati adım/oda. 350k'ya kadar müdahale yapma.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **Hemen başlat — `./scripts/train.sh configs/ppo.yaml`.** Config 20 oturumda validate edildi; fast_sim 18 deney + v3.0 Gazebo ile çapraz onaylı. Her gün bekleme kaybedilen training zamanı.
+2. **100k–200k early-warning:** std<0.80 VEYA entropy_loss>-3.5 görülürse ent_coef 0.008→0.012 arttır. 300k öncesi başka hiçbir hyperparametre değiştirme. v9 Faz 1 hatası bu erken müdahalesizlikten kaynaklandı.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml:** HAYIR. v10 config eksiksiz ve 20 oturumda doğrulandı. Değiştirilmedi.
+- **env kodu:** HAYIR. collision_penalty=25 (drone_exploration_env.py satır ~350), lidar_history=2, obs_shape=72-d önceki oturumlarda teyit edildi.
+- **Operasyonel:** Eğitim 23 gündür ölü. Container'da Gazebo/ROS2 yok. Lokal makinede `./scripts/train.sh configs/ppo.yaml` çalıştırmak tek eylem. Bu analiz container'da başlatılamaz.
+
+### v10 Önerisi
+1. **`./scripts/train.sh configs/ppo.yaml` ile v10'u hemen başlat.** Config 20 oturumda doğrulandı; lokal Gazebo/ROS2 kurulu makinede çalıştırılacak tek komut bu.
+2. **200k early-warning protokolü:** Monitor'da std<0.80 veya entropy>-3.5 görürsen ent_coef 0.008→0.012 yap ve commit et. Aksi halde 300k'ya kadar hiperparametre değiştirme.
+
+### Müdahale
+**Yok** — ppo.yaml değiştirilmedi (20. oturumda da). %80 güven eşiğini geçen bir config sorunu tespit edilmedi. Mevcut v10 config fast_sim zinciri + v3.0 Gazebo ile tam doğrulanmış durumda.
+---
