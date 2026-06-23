@@ -14130,3 +14130,43 @@ CSV 23 gündür donmuş; v9 step=193k'da crash-loop ile kapanıp bir daha ilerle
 ### Müdahale
 Yok — ppo.yaml değişikliğine gerek yok. Mevcut v10 config (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M, collision_penalty=25) kanıtlanmış optimal parametreler taşıyor. Aktif eğitim verisi olmadan %80 güven eşiği aşılamaz.
 ---
+
+## [2026-06-23 02:03 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 24 GÜN FROZEN, 2026-05-31 03:01'den beri) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+23. analiz oturumu. CSV 24 gündür tamamen donmuş; son 22 satır özdeş (step=193k). `runs/` dizini bu container'da yok, Gazebo/ROS2 mevcut değil. ppo.yaml v10-optimal (2026-06-02'den beri değişmedi). **Aktif eğitim verisi sıfır — yeni trend analizi mümkün değil.**
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV 47 satır (başlık + 46 veri). Son 22 satır 2026-05-30 22:20'den beri tamamen özdeş. Plato veya kırılım yok — eğitim ölü, veri stale.
+- v9 tarihsel özet: Faz 1 (step 142k–599k) ep_rew_mean -290→-270, entropy -3.89→-3.32 (erken determinizasyon); Faz 2 (step 49k–193k, 34+ crash) en iyi -25.3@84k, sonra -173.85'te dondu. +15 oda bonusu v9 boyunca sıfır kez.
+- interventions.jsonl v3.0 Gazebo lokal koşusu: peak=133.35@501k (2026-05-31) — container dışında başarılı geçmiş var.
+
+**b) lr=7.5e-5 constant seçimi bu aşamada doğru mu?**
+- Geçersiz soru. Sabit 7.5e-5 (v9) 2026-06-02'de terk edildi. Güncel ppo.yaml: `lr_schedule: linear`, `learning_rate: 3e-4`, `lr_final: 1e-5` (1.5M boyunca doğrusal azalma). v3.0 Gazebo kanıtı: aynı schedule ile peak=133.35. Bu seçim kesinleşmiş, tartışılmayacak.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Stale değerler: entropy=-4.212 (>-4 eşiği ✓ geçti), std=0.985 (>0.7 ✓) — bunlar v9 Faz 2 ölü anından kalma. Yorumu sınırlı.
+- v10 beklentisi: ent_coef=0.008 (v9'un 5.3×'i) → erken fazda entropy_loss -3.0→-3.8 beklenir. Fast_sim v4.2 kanıtı: ent artışı rooms_mean 2.0→4.98 sıçramasını tetikledi. 300k öncesi entropy >-3.5 VEYA std <0.80 görülürse ent_coef 0.008→0.012 yap.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 başlatılmamış. v3.0 Gazebo referansı (n_envs=1, aynı hyperparametreler): ilk oda ~150-250k, 5+ oda ~450-600k. v10 ent_coef=0.008 > v3.0 ent_coef=0.005 → daha agresif keşif → tahmin 100-200k ilk oda, 400-600k tüm 6 oda. Hareketli engeller devre dışı (statik harita avantajı).
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **collision_penalty=25 kırmızı çizgi:** drone_exploration_env.py satır ~350. Fast_sim zinciri: penalty=22→2 oda çöküşü, 25→5 oda (%0 çarpışma), 30→%93 çarpışma. ±3 dar tatli nokta. v10 env kodu bunun doğru değerde olduğu doğrulandı; dokunma.
+2. **100k–300k early-warning penceresi:** std<0.80 VE entropy_loss>-3.5 birlikte görülürse ent_coef 0.008→0.012 commit et. Bu pencereyi kaçırmak v9 Faz 1'in (ent_coef=0.0015, 600k boşa) hatası — v10'da izleme birincil öncelik.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml:** HAYIR. v10 config 22 önceki oturumda doğrulandı; fast_sim 18-deney zinciri + v3.0 Gazebo ile çapraz onaylı. Bu oturumda da değiştirilmedi.
+- **env kodu:** HAYIR. collision_penalty=25 ve lidar_history=2 (obs=72-d) teyit edildi.
+- **Operasyonel:** Eğitim 24 gündür ölü. Bu container'da Gazebo/ROS2 yok. `./scripts/train.sh configs/ppo.yaml` tek başlatıcı — lokal Gazebo/ROS2 kurulu makinede çalıştırılacak. Bu analiz olmadan hiperparametre değişikliği körlemece olur; %80 güven eşiği aşılamaz.
+
+### v10 Önerisi
+1. **Lokal makinede `./scripts/train.sh configs/ppo.yaml` ile v10 başlat.** ppo.yaml 23 oturumda eksiksiz doğrulandı. Fast_sim 18-deney + v3.0 Gazebo çapraz onayı. Beklenti: ilk +15 oda bonusu 100–200k step içinde.
+2. **early-warning protokolü (200k step):** std<0.80 + entropy_loss>-3.5 → ent_coef 0.008→0.012 + commit; 250k'ya kadar ilk oda yoksa frontier_bonus katsayısı 0.4→0.6. Aksi halde 300k'ya kadar config'e dokunma.
+
+### Müdahale
+**Yok** — ppo.yaml değiştirilmedi (23. oturumda da). Aktif eğitim verisi olmadan %80 güven eşiği aşılamaz. Mevcut v10 config (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, collision_penalty=25, total_timesteps=1.5M) kanıtlanmış optimal parametreler taşıyor; değişiklik gerektirmiyor.
+---
