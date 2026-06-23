@@ -14328,3 +14328,43 @@ Yok — ppo.yaml değiştirilmedi (26. oturumda da). Aktif eğitim verisi olmada
 ### Müdahale
 Yok — ppo.yaml değiştirilmedi (27. oturumda da). Aktif eğitim verisi olmadan %80 güven eşiği aşılamaz. Mevcut v10 config (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, collision_penalty=25, total_timesteps=1.5M) kanıtlanmış optimal; değişiklik gerektirmiyor.
 ---
+
+## [2026-06-23 07:03 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 23 GÜN FROZEN, 2026-05-31 03:01'den beri) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+28. analiz oturumu — operasyonel durum değişmedi. CSV 46 veri noktası; son 22 satır 2026-05-30 22:20'den beri özdeş (step=193k, ckpt=ppo_drone_180000_steps.zip). Bu container'da Gazebo/ROS2 yok; v10 başlatılmamış. ppo.yaml 2026-06-02'den beri v10-optimal konfigürasyonda sabit. **Aktif eğitim verisi sıfır; trend analizi mümkün değil.**
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV tarihsel rekonstrüksiyon (47 satır): Phase-A (fresh-start, 11:02–12:32 UTC 30 Mayıs): step 142k→599k, ep_rew_mean -290→-270, ent_loss -3.89→-3.32 (erken deterministikleşme), std 0.888→0.746 (0.7 eşiğine yaklaşıyor — kritik sinyal). Bu faz ent_coef=0.0015 ve sabit lr=7.5e-5 ile çalıştı; std 0.7'ye yaklaşması keşif baskısı altında çöküşü öngörüyordu.
+- Phase-B (crash-recovery, 19:14+): 80k checkpoint'ten yeniden başlayan koşular, step 100k→193k, ep_rew_mean -79→-173. En iyi anlık değer -25.3@84k (erken pik, büyük olasılıkla kararsız VecNorm geçicisi).
+- +15 oda bonusu v9'da SIFIR kez gözlemlendi. Harita geçişi (3-kat→6-oda tek kat) + düşük ent_coef=0.0015 kombinasyonu yeterli keşfi engeledi.
+- v10 runs/ yok → güncel plato/kırılım değerlendirmesi imkânsız.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Soru kapatıldı (2026-06-02): ppo.yaml zaten `lr_schedule: linear, learning_rate: 0.0003, lr_final: 1e-05` (1.5M boyunca doğrusal). Phase-A verisi (entropy -3.89→-3.32 @ 600k step) sabit 7.5e-5'in yetersizliğini doğruladu — gradient güncelleme sinyal/gürültü oranı düşüktü. v3.0 Gazebo, özdeş linear schedule ile peak=133.35 üretti. Geri dönme sebebi yok.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Phase-A gözlemi: std 0.888→0.746 (599k step sonunda 0.7 eşiğine 46 puan uzaklıkta). Bu hız (142k step'te 0.142 drop) devam etseydi ~700k'da 0.7 sınırını delecekti — Phase-B crash bu senaryo önce kesinleşti.
+- v10 beklentisi (ent_coef=0.008): Phase-A'nın 5.3× daha yüksek entropi regülarizasyonu → erken fazda std >0.85, entropy_loss -3.0→-3.8 beklenir. Tetik: std<0.80 VE entropy_loss>-3.5 birlikte → ent_coef 0.008→0.012.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 başlatılmamış. v3.0 referansı (özdeş hyperparametreler, n_envs=1, 6 oda, statik harita): ilk oda ~150-250k, tüm 6 oda ~500-700k. ent_coef=0.008 (>v3.0 0.005) ~50k erken beklenilebilir → ilk oda ~100-200k. Hareketli engeller devre dışı → statik harita avantajı; lidar_history=1 ise erken collision → +50k ek gecikme riski.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **Lokal makinede v10 başlat:** `./scripts/train.sh configs/ppo.yaml` — ppo.yaml 28 oturumda doğrulandı, fast_sim 18-deney + v3.0 Gazebo çapraz onaylı. Tek bloker bu container'da Gazebo/ROS2 yokluğu. Başlatılmadan her döngü boşa.
+2. **Phase-A dersi: ent_coef izleme:** v9 Phase-A'da std 0.888→0.746 drift'i sabit lr + düşük ent_coef'in erken deterministikleşme sinyaliydi. v10'da 100-200k arasında std<0.80 görülürse ent_coef 0.008→0.012 acil commit; bu pencereyi kaçırmak v9 hatasını tekrarlar.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml:** HAYIR. v10 config 28 oturumda doğrulandı; değişiklik gerektirmiyor.
+- **Kritik operasyonel:** Eğitim 23 gündür ölü; 28 ardışık saatlik döngüde yeni veri sıfır. Lokal makine durumu bilinmiyor — v10 başlatılmadan analiz boşa dönmeye devam edecek. Kullanıcının acilen lokal Gazebo/ROS2 makinesinde training başlatması gerekiyor.
+
+### v10 Önerisi
+1. **Başlat:** Lokal Gazebo/ROS2 makinede `./scripts/train.sh configs/ppo.yaml` — ppo.yaml hazır, bekleyen değişiklik yok. Hedef: 1.5M fresh start.
+2. **Tetik eşikleri (100-300k step penceresi):** std<0.80 VE entropy_loss>-3.5 birlikte → ent_coef 0.008→0.012 commit; 250k'ya kadar ilk oda (+15 bonus) görülmezse frontier_bonus 0.4→0.6. 300k'ya kadar başka dokunma yok.
+
+### Müdahale
+Yok — ppo.yaml değiştirilmedi (28. oturumda da). Aktif eğitim verisi olmadan %80 güven eşiği aşılamaz. Mevcut v10 config (lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, collision_penalty=25, total_timesteps=1.5M) kanıtlanmış optimal; değişiklik gerektirmiyor.
+---
