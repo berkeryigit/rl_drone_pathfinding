@@ -14211,3 +14211,40 @@ Yok — ppo.yaml değişikliğine gerek yok. Mevcut v10 config (lr linear 3e-4�
 ### Müdahale
 Yok — ppo.yaml değiştirilmedi (24. oturumda da). Aktif eğitim verisi olmadan %80 güven eşiği aşılamaz. Mevcut v10 config değişiklik gerektirmiyor.
 ---
+
+## [2026-06-23 04:03 UTC]
+**Step:** 193,248 (CSV SON KAYIT — 24 GÜN FROZEN, 2026-05-31 03:01'den beri) | **ep_rew_mean:** -173.85 | **entropy:** -4.212 | **std:** 0.985
+
+### Durum
+25. analiz oturumu — operasyonel durum değişmedi. CSV son 22 satırı 2026-05-30 22:20'den beri özdeş (step=193k). Bu container'da Gazebo/ROS2 yok; v10 başlatılmamış. ppo.yaml 2026-06-02'den beri v10-optimal konfigürasyonda sabit. **Aktif eğitim verisi sıfır; trend analizi mümkün değil.**
+
+### Detay
+
+**a) Reward eğrisi nerede? Platoya girdi mi, kırılım başladı mı?**
+- CSV 46 veri satırı, son 22'si özdeş → eğitim 24 gündür ölü. Plato/kırılım analizi mümkün değil.
+- v9 tarihsel: Phase 1 (142k–599k) ep_rew_mean -290→-270, entropy -3.89→-3.32 (determinizm riski); Phase 2 (crash loop, 49k–193k) en iyi -25.3@84k, +15 oda bonusu SIFIR kez. Referans: interventions.jsonl v3.0 Gazebo lokal koşusu peak=133.35@501k.
+
+**b) lr=7.5e-5 constant bu aşamada doğru mu?**
+- Geçersiz soru — v9'un bu sabit lr'si 2026-06-02'de terk edildi. Güncel ppo.yaml: `lr_schedule: linear`, `learning_rate: 0.0003 → lr_final: 1e-5` (1.5M boyunca). v3.0 Gazebo kanıtı: aynı schedule ile peak=133.35. Tartışma kapalı.
+
+**c) Entropy/std değerleri keşif için yeterli mi?**
+- Mevcut değerler v9 crash anından kalma (stale); v10 için anlam taşımıyor. v10 beklentisi (ent_coef=0.008, v9'un 5.3×'i): erken fazda entropy_loss -3.0→-3.8, std >0.85. Tetik: std<0.80 VE entropy>-3.5 birlikte görülürse → ent_coef 0.008→0.012.
+
+**d) Oda geçişi için ne kadar step daha gerekmesi beklenir?**
+- v10 başlatılmamış. v3.0 referansı (özdeş hyperparametreler, n_envs=1, statik harita): ilk oda ~150-250k step, tüm 6 oda ~500-700k step. ent_coef=0.008 > v3.0 0.005 olduğundan biraz daha erken beklenilebilir.
+
+**e) v10 için şu an en kritik 1-2 öneri:**
+1. **Lokal makinede v10 başlat:** `./scripts/train.sh configs/ppo.yaml` — 25 oturumda doğrulanmış ppo.yaml, fast_sim 18-deney + v3.0 Gazebo çapraz onaylı. Tek bloker bu container'da Gazebo/ROS2 yokluğu.
+2. **100k–300k early-warning penceresi:** std<0.80 VE entropy_loss>-3.5 birlikte → ent_coef 0.008→0.012 commit; 250k'ya kadar ilk oda (+15 bonus) görülmezse frontier_bonus katsayısını 0.4→0.6 yap. Bu pencereyi kaçırmak v9'un 600k step boşa harcamasını tekrarlar.
+
+**f) Acil müdahale gerektiren bir şey var mı?**
+- **ppo.yaml:** HAYIR. v10 config değiştirilmedi (25. oturumda da). lr linear 3e-4→1e-5, ent_coef=0.008, n_steps=2048, n_epochs=10, gae_lambda=0.95, clip_range=0.2, total_timesteps=1.5M, collision_penalty=25 — kanıtlanmış optimal.
+- **Operasyonel:** Eğitim 24 gündür ölü. Aktif veri olmadan %80 güven eşiği aşılamaz → parametre değişikliği körlemece olur.
+
+### v10 Önerisi
+1. **Başlat:** Lokal Gazebo/ROS2 makinede `./scripts/train.sh configs/ppo.yaml`. ppo.yaml hazır, bekleyen değişiklik yok.
+2. **Tetik eşikleri (200k step sonrası):** std<0.80 VE entropy>-3.5 → ent_coef 0.008→0.012; 250k'ya kadar ilk oda yoksa frontier_bonus 0.4→0.6; aksi halde 300k'ya kadar config'e dokunma.
+
+### Müdahale
+Yok — ppo.yaml değiştirilmedi (25. oturumda da). Aktif eğitim verisi olmadan %80 güven eşiği aşılamaz. Mevcut v10 config değişiklik gerektirmiyor.
+---
